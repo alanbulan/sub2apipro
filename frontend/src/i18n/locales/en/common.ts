@@ -186,13 +186,85 @@ export default {
     lightMode: 'Light Mode',
     darkMode: 'Dark Mode',
     appearance: 'Appearance',
+    appearanceHint: 'Choose a design theme and interface preferences',
+    colorMode: 'Color mode',
+    systemMode: 'System',
     theme: 'Theme',
+    themeCount: '{count} design themes',
+    themeSource: 'Source',
+    colorPreset: 'Accent color',
+    colorPresets: {
+      theme: 'Theme color',
+      indigo: 'Indigo',
+      teal: 'Teal',
+      violet: 'Violet',
+      rose: 'Rose',
+      amber: 'Amber',
+      graphite: 'Graphite'
+    },
+    fontPreset: 'Font',
+    fonts: {
+      system: 'System sans',
+      humanist: 'Humanist sans',
+      serif: 'Serif',
+      mono: 'Monospace'
+    },
+    radiusPreset: 'Corners',
+    radii: {
+      sharp: 'Sharp',
+      soft: 'Soft',
+      round: 'Rounded'
+    },
+    density: 'Density',
+    densities: {
+      compact: 'Compact',
+      comfortable: 'Comfortable',
+      spacious: 'Spacious'
+    },
+    sidebarStyle: 'Sidebar',
+    sidebarStyles: {
+      default: 'Standard',
+      floating: 'Floating',
+      compact: 'Compact'
+    },
+    layout: 'Layout',
+    layouts: {
+      default: 'Standard',
+      wide: 'Wide',
+      centered: 'Centered'
+    },
+    contentWidth: 'Content width',
+    contentWidths: {
+      standard: 'Standard',
+      wide: 'Wide',
+      full: 'Full'
+    },
+    resetAppearance: 'Reset appearance',
     themes: {
       minimalism: 'Modern Minimalism',
-      neoBrutalism: 'Neo Brutalism',
       apple: 'Apple HIG',
       notion: 'Notion Style',
-      wabiSabi: 'Wabi-sabi'
+      bento: 'Bento Grid',
+      glass: 'Glassmorphism',
+      neoBrutalism: 'Neo Brutalism',
+      swiss: 'Swiss Style',
+      editorial: 'Editorial',
+      skeuomorphism: 'Skeuomorphism',
+      flat: 'Flat Design',
+      material: 'Material Design',
+      neumorphism: 'Neumorphism',
+      saas: 'SaaS Marketing Site',
+      enterprise: 'B2B Corporate Site',
+      commerce: 'DTC E-commerce',
+      darkTech: 'Dark UI',
+      playful: 'Playful Illustration',
+      organic: 'Organic Design',
+      y2k: 'Y2K',
+      memphis: 'Memphis',
+      terminal: 'Terminal Aesthetic',
+      wabiSabi: 'Wabi-sabi',
+      bauhaus: 'Bauhaus',
+      artDeco: 'Art Deco'
     },
     collapse: 'Collapse',
     expand: 'Expand',

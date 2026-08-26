@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { initAppTheme, setAppTheme, useAppTheme } from '@/composables/useAppTheme'
+import { appThemes, initAppTheme, setAppTheme, useAppTheme } from '@/composables/useAppTheme'
 
 describe('app theme runtime', () => {
   beforeEach(() => {
@@ -23,5 +23,13 @@ describe('app theme runtime', () => {
     expect(localStorage.getItem('app-theme')).toBe('neoBrutalism')
     expect(useAppTheme().activeTheme.value).toBe('neoBrutalism')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('keeps one local stylesheet and source URL for every design topic', () => {
+    expect(appThemes).toHaveLength(24)
+    expect(new Set(appThemes.map((theme) => theme.id)).size).toBe(24)
+    expect(new Set(appThemes.map((theme) => theme.source)).size).toBe(24)
+    expect(new Set(appThemes.map((theme) => theme.stylesheet)).size).toBe(24)
+    expect(appThemes.every((theme) => theme.source.startsWith('https://vibe-hub.org/style-'))).toBe(true)
   })
 })

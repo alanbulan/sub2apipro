@@ -1,3 +1,4 @@
+/* VibeHub design source: https://vibe-hub.org/style-notion */
 [data-app-theme='notion'] {
   --primary-50: #f7f6f3;
   --primary-50-rgb: 247 246 243;
@@ -22,6 +23,10 @@
   --primary-950: #121313;
   --primary-950-rgb: 18 19 19;
   --accent-base: #2383e2;
+  --on-primary: #ffffff;
+  --on-primary-500: #ffffff;
+  --on-primary-600: #ffffff;
+  --on-primary-700: #ffffff;
   --accent-base-rgb: 35 131 226;
   --accent-50: #eff8ff;
   --accent-50-rgb: 239 248 255;
@@ -61,6 +66,7 @@
   --muted: #787774;
   --muted-rgb: 120 119 116;
   --shadow-color: rgba(15, 15, 15, .07);
+  --radius: 8px;
   --dark-base: #191919;
   --dark-base-rgb: 25 25 25;
   --dark-50: #ffffff;
@@ -129,6 +135,7 @@
   --muted: #9b9b9b;
   --muted-rgb: 155 155 155;
   --shadow-color: rgba(0, 0, 0, .38);
+  --radius: 8px;
   --dark-base: #191919;
   --dark-base-rgb: 25 25 25;
   --status-success: #4db783;

@@ -222,7 +222,7 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.previousResponseWeight": "previous_response 粘性",
     "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
     "admin.settings.upstreamBillingProbe.title": "上游倍率自动探测",
-    "admin.settings.upstreamBillingProbe.description": "定期获取 OpenAI API Key 所连接上游 Sub2API 站点声明的计费倍率。",
+    "admin.settings.upstreamBillingProbe.description": "定期获取 OpenAI API Key 所连接上游平台声明的计费倍率。",
     "admin.settings.upstreamBillingProbe.enabled": "启用全局自动探测",
     "admin.settings.upstreamBillingProbe.enabledHint": "开启后，仅对账号自身已启用自动检测的账号执行定时探测。",
     "admin.settings.upstreamBillingProbe.intervalMinutes": "探测周期（分钟）",
@@ -380,7 +380,7 @@ const baseSettingsResponse = {
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
-  site_name: "Sub2API",
+  site_name: "API Gateway",
   site_logo: "",
   site_subtitle: "",
   api_base_url: "",
@@ -1659,11 +1659,9 @@ describe("admin SettingsView wechat connect controls", () => {
     await flushPromises();
     await openSecurityTab(wrapper);
 
-    const link = wrapper.get('[data-testid="github-oauth-apps-guide-link"]');
-    expect(link.text()).toContain("OAuth Apps");
-    expect(link.attributes("href")).toBe("https://github.com/settings/developers");
-    expect(link.attributes("target")).toBe("_blank");
-    expect(link.attributes("rel")).toContain("noopener");
+    const guide = wrapper.get('[data-testid="github-oauth-apps-guide"]');
+    expect(guide.text()).toContain("GitHub Developer settings");
+    expect(guide.find('a').exists()).toBe(false);
   });
 
   it("saves WeChat Connect fields using the backend contract and clears the secret after save", async () => {

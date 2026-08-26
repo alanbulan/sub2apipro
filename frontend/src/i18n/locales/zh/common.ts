@@ -186,13 +186,85 @@ export default {
     lightMode: '浅色模式',
     darkMode: '深色模式',
     appearance: '外观',
+    appearanceHint: '选择设计主题与界面偏好',
+    colorMode: '显示模式',
+    systemMode: '跟随系统',
     theme: '主题',
+    themeCount: '共 {count} 个设计主题',
+    themeSource: '来源',
+    colorPreset: '强调色',
+    colorPresets: {
+      theme: '主题色',
+      indigo: '靛蓝',
+      teal: '黛绿',
+      violet: '紫罗兰',
+      rose: '玫红',
+      amber: '蜜橙',
+      graphite: '石墨'
+    },
+    fontPreset: '字体',
+    fonts: {
+      system: '系统无衬线',
+      humanist: '人文无衬线',
+      serif: '衬线',
+      mono: '等宽'
+    },
+    radiusPreset: '圆角',
+    radii: {
+      sharp: '利落',
+      soft: '柔和',
+      round: '圆润'
+    },
+    density: '密度',
+    densities: {
+      compact: '紧凑',
+      comfortable: '舒适',
+      spacious: '宽松'
+    },
+    sidebarStyle: '侧边栏',
+    sidebarStyles: {
+      default: '标准',
+      floating: '悬浮',
+      compact: '紧凑'
+    },
+    layout: '布局',
+    layouts: {
+      default: '标准',
+      wide: '宽屏',
+      centered: '居中'
+    },
+    contentWidth: '内容宽度',
+    contentWidths: {
+      standard: '标准',
+      wide: '宽',
+      full: '全宽'
+    },
+    resetAppearance: '恢复默认外观',
     themes: {
       minimalism: '现代简约',
-      neoBrutalism: '新粗野',
       apple: '苹果风 HIG',
       notion: 'Notion 风',
-      wabiSabi: '日式侘寂'
+      bento: 'Bento 便当格',
+      glass: '玻璃拟态',
+      neoBrutalism: '新粗野',
+      swiss: '瑞士排版',
+      editorial: '杂志编辑风',
+      skeuomorphism: '拟物化',
+      flat: '扁平化',
+      material: '材料设计',
+      neumorphism: '新拟态',
+      saas: 'SaaS 产品官网',
+      enterprise: 'B2B 企业官网',
+      commerce: 'DTC 品牌电商',
+      darkTech: '深色界面',
+      playful: '趣味插画',
+      organic: '有机设计',
+      y2k: 'Y2K',
+      memphis: '孟菲斯',
+      terminal: '终端极客风',
+      wabiSabi: '日式侘寂',
+      bauhaus: '包豪斯',
+      artDeco: '装饰艺术'
     },
     collapse: '收起',
     expand: '展开',

@@ -1,3 +1,4 @@
+/* VibeHub design source: https://vibe-hub.org/style-wabisabi */
 [data-app-theme='wabiSabi'] {
   --primary-50: #faf6ee;
   --primary-50-rgb: 250 246 238;
@@ -22,6 +23,10 @@
   --primary-950: #271611;
   --primary-950-rgb: 39 22 17;
   --accent-base: #b23a28;
+  --on-primary: #ffffff;
+  --on-primary-500: #ffffff;
+  --on-primary-600: #ffffff;
+  --on-primary-700: #ffffff;
   --accent-base-rgb: 178 58 40;
   --accent-50: #fdf3f1;
   --accent-50-rgb: 253 243 241;
@@ -55,6 +60,7 @@
   --surface-muted: #ece3d3;
   --surface-muted-rgb: 236 227 211;
   --border-color: rgba(63, 56, 47, .18);
+  --border-color-rgb: 63 56 47;
   --ink: #3f382f;
   --ink-rgb: 63 56 47;
   --muted: #756c5f;
@@ -123,6 +129,7 @@
   --surface-muted: #332d26;
   --surface-muted-rgb: 51 45 38;
   --border-color: rgba(244, 238, 227, .14);
+  --border-color-rgb: 244 238 227;
   --ink: #efe7da;
   --ink-rgb: 239 231 218;
   --muted: #ab9f90;

@@ -54,7 +54,7 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
   function requireAcknowledgement(partialStatus?: Partial<AdminComplianceStatus>): void {
     status.value = {
       required: true,
-      version: partialStatus?.version || status.value?.version || 'v2026.06.10',
+      version: partialStatus?.version || status.value?.version || 'v2026.08.26',
       document_path_zh: partialStatus?.document_path_zh || status.value?.document_path_zh || 'docs/legal/admin-compliance.zh.md',
       document_path_en: partialStatus?.document_path_en || status.value?.document_path_en || 'docs/legal/admin-compliance.en.md',
       document_url_zh: partialStatus?.document_url_zh || status.value?.document_url_zh || '',

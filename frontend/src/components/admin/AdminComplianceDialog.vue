@@ -31,10 +31,11 @@
               {{ t('adminCompliance.version') }}
             </p>
             <p class="mt-1 break-all font-mono text-gray-900 dark:text-white">
-              {{ complianceStore.status?.version || 'v2026.06.10' }}
+              {{ complianceStore.status?.version || 'v2026.08.26' }}
             </p>
           </div>
           <a
+            v-if="documentUrl"
             :href="documentUrl"
             target="_blank"
             rel="noopener noreferrer"

@@ -1,0 +1,102 @@
+/* VibeHub design source: https://vibe-hub.org/style-dark-tech */
+/* Complete semantic token contract for this design source. */
+[data-app-theme='darkTech'] {
+  --accent-50: var(--primary-50); --accent-50-rgb: var(--primary-50-rgb);
+  --accent-100: var(--primary-100); --accent-100-rgb: var(--primary-100-rgb);
+  --accent-200: var(--primary-200); --accent-200-rgb: var(--primary-200-rgb);
+  --accent-300: var(--primary-300); --accent-300-rgb: var(--primary-300-rgb);
+  --accent-400: rgb(var(--accent-400-rgb));
+  --accent-500: var(--accent-base); --accent-500-rgb: var(--accent-base-rgb);
+  --accent-600: rgb(var(--accent-600-rgb));
+  --accent-700: var(--primary-700); --accent-700-rgb: var(--primary-700-rgb);
+  --accent-800: var(--primary-800); --accent-800-rgb: var(--primary-800-rgb);
+  --accent-900: var(--primary-900); --accent-900-rgb: var(--primary-900-rgb);
+  --accent-950: var(--primary-950); --accent-950-rgb: var(--primary-950-rgb);
+  --border-color-rgb: 184 220 229;
+  --ink-rgb: 16 42 53;
+  --muted-rgb: 82 113 124;
+  --dark-base: var(--ink); --dark-base-rgb: var(--ink-rgb);
+  --dark-50: var(--surface); --dark-50-rgb: var(--surface-rgb);
+  --dark-100: var(--surface-muted); --dark-100-rgb: var(--surface-muted-rgb);
+  --dark-200: var(--border-color); --dark-200-rgb: var(--border-color-rgb);
+  --dark-300: var(--muted); --dark-300-rgb: var(--muted-rgb);
+  --dark-400: var(--muted); --dark-400-rgb: var(--muted-rgb);
+  --dark-500: var(--muted); --dark-500-rgb: var(--muted-rgb);
+  --dark-600: var(--ink); --dark-600-rgb: var(--ink-rgb);
+  --dark-700: var(--ink); --dark-700-rgb: var(--ink-rgb);
+  --dark-800: var(--ink); --dark-800-rgb: var(--ink-rgb);
+  --dark-900: var(--ink); --dark-900-rgb: var(--ink-rgb);
+  --dark-950: var(--ink); --dark-950-rgb: var(--ink-rgb);
+  --gray-50: var(--surface-raised); --gray-50-rgb: var(--surface-raised-rgb);
+  --gray-100: var(--surface-muted); --gray-100-rgb: var(--surface-muted-rgb);
+  --gray-200: var(--border-color); --gray-200-rgb: var(--border-color-rgb);
+  --gray-300: var(--border-color); --gray-300-rgb: var(--border-color-rgb);
+  --gray-400: var(--muted); --gray-400-rgb: var(--muted-rgb);
+  --gray-500: var(--muted); --gray-500-rgb: var(--muted-rgb);
+  --gray-600: var(--ink); --gray-600-rgb: var(--ink-rgb);
+  --gray-700: var(--ink); --gray-700-rgb: var(--ink-rgb);
+  --gray-800: var(--ink); --gray-800-rgb: var(--ink-rgb);
+  --gray-900: var(--ink); --gray-900-rgb: var(--ink-rgb);
+  --gray-950: var(--ink); --gray-950-rgb: var(--ink-rgb);
+  --status-success: #15803d; --status-success-rgb: 21 128 61;
+  --status-warning: #b45309; --status-warning-rgb: 180 83 9;
+  --status-danger: #b91c1c; --status-danger-rgb: 185 28 28;
+}
+
+[data-app-theme='darkTech'].dark {
+  --border-color-rgb: 22 78 99;
+  --ink-rgb: 207 250 254;
+  --muted-rgb: 103 232 249;
+  --dark-base-rgb: var(--dark-base);
+  --dark-50: var(--surface-raised); --dark-50-rgb: var(--surface-raised-rgb);
+  --dark-100: var(--surface-muted); --dark-100-rgb: var(--surface-muted-rgb);
+  --dark-200: var(--border-color); --dark-200-rgb: var(--border-color-rgb);
+  --dark-300: var(--muted); --dark-300-rgb: var(--muted-rgb);
+  --dark-400: var(--muted); --dark-400-rgb: var(--muted-rgb);
+  --dark-500: var(--muted); --dark-500-rgb: var(--muted-rgb);
+  --dark-600: var(--surface-muted); --dark-600-rgb: var(--surface-muted-rgb);
+  --dark-700: var(--surface-muted); --dark-700-rgb: var(--surface-muted-rgb);
+  --dark-800: var(--surface-raised); --dark-800-rgb: var(--surface-raised-rgb);
+  --dark-900: var(--surface); --dark-900-rgb: var(--surface-rgb);
+  --dark-950: var(--dark-base); --dark-950-rgb: var(--dark-base-rgb);
+  --status-success: #4ade80; --status-success-rgb: 74 222 128;
+  --status-warning: #fbbf24; --status-warning-rgb: 251 191 36;
+  --status-danger: #f87171; --status-danger-rgb: 248 113 113;
+}
+[data-app-theme='darkTech'] {
+  --primary-50: #ecfeff; --primary-50-rgb: 236 254 255;
+  --primary-100: #cffafe; --primary-100-rgb: 207 250 254;
+  --primary-200: #a5f3fc; --primary-200-rgb: 165 243 252;
+  --primary-300: #67e8f9; --primary-300-rgb: 103 232 249;
+  --primary-400: #22d3ee; --primary-400-rgb: 34 211 238;
+  --primary-500: #06b6d4; --primary-500-rgb: 6 182 212;
+  --primary-600: #0891b2; --primary-600-rgb: 8 145 178;
+  --primary-700: #0e7490; --primary-700-rgb: 14 116 144;
+  --primary-800: #155e75; --primary-800-rgb: 21 94 117;
+  --primary-900: #164e63; --primary-900-rgb: 22 78 99;
+  --primary-950: #083344; --primary-950-rgb: 8 51 68;
+  --accent-base: #a78bfa; --accent-base-rgb: 167 139 250;
+  --on-primary: #020617;
+  --on-primary-500: #020617;
+  --on-primary-600: #020617;
+  --on-primary-700: #ffffff;
+  --accent-400-rgb: 196 181 253; --accent-500-rgb: 167 139 250; --accent-600-rgb: 139 92 246;
+  --surface: #f3f8fb; --surface-rgb: 243 248 251;
+  --surface-raised: #ffffff; --surface-raised-rgb: 255 255 255;
+  --surface-muted: #e5f3f7; --surface-muted-rgb: 229 243 247;
+  --border-color: #b8dce5; --ink: #102a35; --muted: #52717c;
+  --shadow-color: rgba(8, 51, 68, .14); --radius: 10px; --card-shadow: 0 0 22px rgba(6, 182, 212, .1);
+}
+
+[data-app-theme='darkTech'].dark {
+  --surface: #050b13; --surface-rgb: 5 11 19;
+  --surface-raised: #0c1624; --surface-raised-rgb: 12 22 36;
+  --surface-muted: #102235; --surface-muted-rgb: 16 34 53;
+  --border-color: #164e63; --ink: #cffafe; --muted: #67e8f9;
+  --shadow-color: rgba(0, 0, 0, .64); --dark-base: #020617; --dark-base-rgb: 2 6 23;
+  --dark-800: #0c1624; --dark-800-rgb: 12 22 36; --dark-900: #050b13; --dark-900-rgb: 5 11 19;
+  --dark-950: #020617; --dark-950-rgb: 2 6 23;
+  --backdrop-filter: blur(12px);
+}
+
+[data-app-theme='darkTech'] .card { box-shadow: var(--card-shadow); }

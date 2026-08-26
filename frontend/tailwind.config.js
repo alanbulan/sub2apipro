@@ -68,8 +68,8 @@ export default {
         zinc: { DEFAULT: 'var(--muted)', 50: 'rgb(var(--gray-50-rgb) / <alpha-value>)', 100: 'rgb(var(--gray-100-rgb) / <alpha-value>)', 200: 'rgb(var(--gray-200-rgb) / <alpha-value>)', 300: 'rgb(var(--gray-300-rgb) / <alpha-value>)', 400: 'rgb(var(--gray-400-rgb) / <alpha-value>)', 500: 'rgb(var(--gray-500-rgb) / <alpha-value>)', 600: 'rgb(var(--gray-600-rgb) / <alpha-value>)', 700: 'rgb(var(--gray-700-rgb) / <alpha-value>)', 800: 'rgb(var(--gray-800-rgb) / <alpha-value>)', 900: 'rgb(var(--gray-900-rgb) / <alpha-value>)', 950: 'rgb(var(--gray-950-rgb) / <alpha-value>)' },
         neutral: { DEFAULT: 'var(--muted)', 50: 'rgb(var(--gray-50-rgb) / <alpha-value>)', 100: 'rgb(var(--gray-100-rgb) / <alpha-value>)', 200: 'rgb(var(--gray-200-rgb) / <alpha-value>)', 300: 'rgb(var(--gray-300-rgb) / <alpha-value>)', 400: 'rgb(var(--gray-400-rgb) / <alpha-value>)', 500: 'rgb(var(--gray-500-rgb) / <alpha-value>)', 600: 'rgb(var(--gray-600-rgb) / <alpha-value>)', 700: 'rgb(var(--gray-700-rgb) / <alpha-value>)', 800: 'rgb(var(--gray-800-rgb) / <alpha-value>)', 900: 'rgb(var(--gray-900-rgb) / <alpha-value>)', 950: 'rgb(var(--gray-950-rgb) / <alpha-value>)' },
         stone: { DEFAULT: 'var(--muted)', 50: 'rgb(var(--surface-muted-rgb) / <alpha-value>)', 100: 'rgb(var(--gray-100-rgb) / <alpha-value>)', 200: 'rgb(var(--gray-200-rgb) / <alpha-value>)', 300: 'rgb(var(--gray-300-rgb) / <alpha-value>)', 400: 'rgb(var(--gray-400-rgb) / <alpha-value>)', 500: 'rgb(var(--gray-500-rgb) / <alpha-value>)', 600: 'rgb(var(--gray-600-rgb) / <alpha-value>)', 700: 'rgb(var(--gray-700-rgb) / <alpha-value>)', 800: 'rgb(var(--gray-800-rgb) / <alpha-value>)', 900: 'rgb(var(--gray-900-rgb) / <alpha-value>)', 950: 'rgb(var(--gray-950-rgb) / <alpha-value>)' },
-        white: 'rgb(var(--gray-50-rgb) / <alpha-value>)',
-        black: 'rgb(var(--dark-base-rgb) / <alpha-value>)',
+        white: '#fff',
+        black: '#000',
         red: { DEFAULT: 'var(--status-danger)', 50: 'rgb(var(--status-danger-rgb) / .08)', 100: 'rgb(var(--status-danger-rgb) / .14)', 200: 'rgb(var(--status-danger-rgb) / .22)', 300: 'rgb(var(--status-danger-rgb) / .32)', 400: 'rgb(var(--status-danger-rgb) / .48)', 500: 'rgb(var(--status-danger-rgb) / <alpha-value>)', 600: 'rgb(var(--status-danger-rgb) / <alpha-value>)', 700: 'rgb(var(--status-danger-rgb) / <alpha-value>)', 800: 'rgb(var(--status-danger-rgb) / <alpha-value>)', 900: 'rgb(var(--status-danger-rgb) / <alpha-value>)', 950: 'rgb(var(--status-danger-rgb) / <alpha-value>)' },
         orange: { DEFAULT: 'var(--status-warning)', 50: 'rgb(var(--status-warning-rgb) / .10)', 100: 'rgb(var(--status-warning-rgb) / .16)', 200: 'rgb(var(--status-warning-rgb) / .26)', 300: 'rgb(var(--status-warning-rgb) / .38)', 400: 'rgb(var(--status-warning-rgb) / .55)', 500: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 600: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 700: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 800: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 900: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 950: 'rgb(var(--status-warning-rgb) / <alpha-value>)' },
         amber: { DEFAULT: 'var(--status-warning)', 50: 'rgb(var(--status-warning-rgb) / .12)', 100: 'rgb(var(--status-warning-rgb) / .20)', 200: 'rgb(var(--status-warning-rgb) / .30)', 300: 'rgb(var(--status-warning-rgb) / .45)', 400: 'rgb(var(--status-warning-rgb) / .60)', 500: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 600: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 700: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 800: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 900: 'rgb(var(--status-warning-rgb) / <alpha-value>)', 950: 'rgb(var(--status-warning-rgb) / <alpha-value>)' },
@@ -120,7 +120,16 @@ export default {
         glow: { '0%': { boxShadow: 'var(--glow)' }, '100%': { boxShadow: 'var(--glow-lg)' } }
       },
       backdropBlur: { xs: '2px' },
-      borderRadius: { '4xl': '2rem' }
+      borderRadius: {
+        DEFAULT: 'var(--radius-md)',
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+        '2xl': 'var(--radius-2xl)',
+        '3xl': 'var(--radius-3xl)',
+        '4xl': '2rem'
+      }
     }
   },
   plugins: []

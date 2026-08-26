@@ -1,3 +1,4 @@
+/* VibeHub design source: https://vibe-hub.org/style-apple */
 [data-app-theme='apple'] {
   --primary-50: #f5f9ff;
   --primary-50-rgb: 245 249 255;
@@ -22,6 +23,10 @@
   --primary-950: #0a2445;
   --primary-950-rgb: 10 36 69;
   --accent-base: #64d2ff;
+  --on-primary: #020617;
+  --on-primary-500: #020617;
+  --on-primary-600: #ffffff;
+  --on-primary-700: #ffffff;
   --accent-base-rgb: 100 210 255;
   --accent-50: #f0fbff;
   --accent-50-rgb: 240 251 255;
@@ -55,6 +60,7 @@
   --surface-muted: #f5f5f7;
   --surface-muted-rgb: 245 245 247;
   --border-color: rgba(29, 29, 31, .12);
+  --border-color-rgb: 29 29 31;
   --ink: #1d1d1f;
   --ink-rgb: 29 29 31;
   --muted: #6e6e73;
@@ -124,6 +130,7 @@
   --surface-muted: #111113;
   --surface-muted-rgb: 17 17 19;
   --border-color: rgba(255, 255, 255, .14);
+  --border-color-rgb: 255 255 255;
   --ink: #f5f5f7;
   --ink-rgb: 245 245 247;
   --muted: #a1a1a6;

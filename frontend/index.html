@@ -7,18 +7,31 @@
     <script>
       (() => {
         try {
-          document.documentElement.dataset.appTheme =
-            ['minimalism', 'neoBrutalism', 'apple', 'notion', 'wabiSabi'].includes(
-              localStorage.getItem('app-theme')
-            )
-              ? localStorage.getItem('app-theme')
-              : 'minimalism';
+          const root = document.documentElement;
+          const themes = [
+            'minimalism', 'apple', 'notion', 'bento', 'glass', 'neoBrutalism',
+            'swiss', 'editorial', 'skeuomorphism', 'flat', 'material',
+            'neumorphism', 'saas', 'enterprise', 'commerce', 'darkTech',
+            'playful', 'organic', 'y2k', 'memphis', 'terminal', 'wabiSabi',
+            'bauhaus', 'artDeco'
+          ];
+          const read = (key, values, fallback) => {
+            const value = localStorage.getItem(key);
+            return values.includes(value) ? value : fallback;
+          };
+          root.dataset.appTheme = read('app-theme', themes, 'minimalism');
           const savedColorMode = localStorage.getItem('theme');
-          document.documentElement.classList.toggle(
-            'dark',
-            savedColorMode === 'dark' ||
-              (!savedColorMode && window.matchMedia('(prefers-color-scheme: dark)').matches)
-          );
+          const resolvedColorMode = savedColorMode === 'dark' ||
+            (savedColorMode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          root.dataset.colorMode = ['system', 'light', 'dark'].includes(savedColorMode) ? savedColorMode : 'system';
+          root.dataset.colorPreset = read('color-preset', ['theme', 'indigo', 'teal', 'violet', 'rose', 'amber', 'graphite'], 'theme');
+          root.dataset.fontPreset = read('font-preset', ['system', 'humanist', 'serif', 'mono'], 'system');
+          root.dataset.radius = read('radius-preset', ['sharp', 'soft', 'round'], 'soft');
+          root.dataset.density = read('density', ['compact', 'comfortable', 'spacious'], 'comfortable');
+          root.dataset.sidebarStyle = read('sidebar-style', ['default', 'floating', 'compact'], 'default');
+          root.dataset.layout = read('layout', ['default', 'wide', 'centered'], 'default');
+          root.dataset.contentWidth = read('content-width', ['standard', 'wide', 'full'], 'standard');
+          root.classList.toggle('dark', resolvedColorMode);
         } catch {}
       })();
     </script>

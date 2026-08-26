@@ -1,3 +1,4 @@
+/* VibeHub design source: https://vibe-hub.org/style-brutalism */
 [data-app-theme='neoBrutalism'] {
   --primary-50: #fefce8;
   --primary-50-rgb: 254 252 232;
@@ -22,6 +23,10 @@
   --primary-950: #422006;
   --primary-950-rgb: 66 32 6;
   --accent-base: #ff3ea5;
+  --on-primary: #020617;
+  --on-primary-500: #020617;
+  --on-primary-600: #020617;
+  --on-primary-700: #ffffff;
   --accent-base-rgb: 255 62 165;
   --accent-50: #fff0f7;
   --accent-50-rgb: 255 240 247;
