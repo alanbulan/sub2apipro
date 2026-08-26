@@ -1246,7 +1246,28 @@ body {
   --status-danger-text: #fca5a5;
   --on-status-success: #052e16;
   --on-status-warning: #1c1917;
-  --on-status-danger: #450a0a;
+  --on-status-danger: #3f0a0a;
+}
+
+/* Primary colors are also used for links and compact labels. Keep those
+   foregrounds separate from decorative or solid fills so a bright source
+   palette cannot turn a readable link into low-contrast text. */
+[data-app-theme]:not(.dark) {
+  --readable-primary: var(--primary-700);
+}
+
+[data-app-theme].dark {
+  --readable-primary: var(--primary-400);
+}
+
+[data-app-theme='neoBrutalism']:not(.dark),
+[data-app-theme='terminal']:not(.dark) {
+  --readable-primary: var(--primary-800);
+}
+
+[data-app-theme='neumorphism'].dark,
+[data-app-theme='skeuomorphism'].dark {
+  --readable-primary: var(--primary-300);
 }
 
 [data-app-theme='apple']:not(.dark),
@@ -1260,6 +1281,10 @@ body {
 
 [data-app-theme='wabiSabi']:not(.dark) {
   --on-status-warning: #020617;
+}
+
+[data-app-theme='neoBrutalism'].dark {
+  --on-status-danger: #020617;
 }
 
 [data-app-theme]:not(.dark) :is(
@@ -1417,6 +1442,151 @@ body {
   color: var(--on-primary-700, var(--on-primary, #fff)) !important;
 }
 
+/* The component library still has a few fixed Tailwind brand fills. Use a
+   dark foreground on their bright shades, including their dark-mode variants,
+   so small labels and badges remain readable in every source theme. */
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-blue-400'], [class~='text-white'][class~='bg-blue-500'],
+  [class~='text-white'][class~='bg-indigo-400'], [class~='text-white'][class~='bg-indigo-500'],
+  [class~='text-white'][class~='bg-violet-400'], [class~='text-white'][class~='bg-violet-500'],
+  [class~='text-white'][class~='bg-purple-400'], [class~='text-white'][class~='bg-purple-500'],
+  [class~='text-white'][class~='bg-pink-400'], [class~='text-white'][class~='bg-pink-500'],
+  [class~='text-white'][class~='bg-fuchsia-400'], [class~='text-white'][class~='bg-fuchsia-500'],
+  [class~='text-white'][class~='bg-sky-400'], [class~='text-white'][class~='bg-sky-500'], [class~='text-white'][class~='bg-sky-600'],
+  [class~='text-white'][class~='bg-cyan-400'], [class~='text-white'][class~='bg-cyan-500'], [class~='text-white'][class~='bg-cyan-600'],
+  [class~='text-white'][class~='bg-teal-400'], [class~='text-white'][class~='bg-teal-500'], [class~='text-white'][class~='bg-teal-600'],
+  [class~='text-white'][class~='bg-lime-400'], [class~='text-white'][class~='bg-lime-500'], [class~='text-white'][class~='bg-lime-600'],
+  [class~='text-white'][class~='bg-rose-400'], [class~='text-white'][class~='bg-rose-500']
+) {
+  color: #020617 !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-blue-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-blue-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-indigo-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-indigo-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-violet-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-violet-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-purple-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-purple-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-pink-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-pink-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-fuchsia-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-fuchsia-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-sky-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-sky-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-sky-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-cyan-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-cyan-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-cyan-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-teal-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-teal-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-teal-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-lime-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-lime-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-lime-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-rose-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-rose-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='dark:bg-blue-400'], [class~='text-white'][class~='dark:bg-blue-500'],
+  [class~='text-white'][class~='dark:bg-indigo-400'], [class~='text-white'][class~='dark:bg-indigo-500'],
+  [class~='text-white'][class~='dark:bg-violet-400'], [class~='text-white'][class~='dark:bg-violet-500'],
+  [class~='text-white'][class~='dark:bg-purple-400'], [class~='text-white'][class~='dark:bg-purple-500'],
+  [class~='text-white'][class~='dark:bg-pink-400'], [class~='text-white'][class~='dark:bg-pink-500'],
+  [class~='text-white'][class~='dark:bg-fuchsia-400'], [class~='text-white'][class~='dark:bg-fuchsia-500'],
+  [class~='text-white'][class~='dark:bg-sky-400'], [class~='text-white'][class~='dark:bg-sky-500'], [class~='text-white'][class~='dark:bg-sky-600'],
+  [class~='text-white'][class~='dark:bg-cyan-400'], [class~='text-white'][class~='dark:bg-cyan-500'], [class~='text-white'][class~='dark:bg-cyan-600'],
+  [class~='text-white'][class~='dark:bg-teal-400'], [class~='text-white'][class~='dark:bg-teal-500'], [class~='text-white'][class~='dark:bg-teal-600'],
+  [class~='text-white'][class~='dark:bg-lime-400'], [class~='text-white'][class~='dark:bg-lime-500'], [class~='text-white'][class~='dark:bg-lime-600'],
+  [class~='text-white'][class~='dark:bg-rose-400'], [class~='text-white'][class~='dark:bg-rose-500']
+) {
+  color: #020617 !important;
+}
+
+/* Warm gradients use the same semantic warning fill as amber/orange buttons,
+   so their foreground follows the already-audited status foreground. */
+[data-app-theme] :is(
+  [class~='text-white'][class~='from-amber-500'],
+  [class~='text-white'][class~='from-orange-500']
+) {
+  color: var(--on-status-warning, #fff) !important;
+}
+
+/* Darken the first stop of the blue announcement gradient. This preserves a
+   white label without leaving it on the low-contrast blue-500 stop. */
+[data-app-theme] :is(
+  [class~='text-white'][class~='from-blue-500'][class*='to-indigo-']
+) {
+  --tw-gradient-from: #2563eb !important;
+}
+
+/* Link and selected-label utilities are allowed to use the source accent, but
+   only through a shade that is readable on the current surface. */
+[data-app-theme]:not(.dark) :is(
+  [class~='text-primary-300'], [class~='text-primary-400'], [class~='text-primary-500'],
+  [class~='text-primary-600'], [class~='text-primary-600/90'], [class~='text-primary-700']
+) {
+  color: var(--readable-primary) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-primary-400'], [class~='text-primary-500'],
+  [class~='text-primary-600'], [class~='text-primary-700'],
+  [class~='dark:text-primary-300'], [class~='dark:text-primary-400'],
+  [class~='dark:text-primary-400/90']
+) {
+  color: var(--readable-primary) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='hover:text-primary-400'], [class~='hover:text-primary-500'],
+  [class~='focus:text-primary-400'], [class~='focus:text-primary-500']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--readable-primary) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='hover:text-primary-400'], [class~='hover:text-primary-500'],
+  [class~='focus:text-primary-400'], [class~='focus:text-primary-500'],
+  [class~='dark:hover:text-primary-400'], [class~='dark:hover:text-primary-500'],
+  [class~='dark:focus:text-primary-400'], [class~='dark:focus:text-primary-500']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--readable-primary) !important;
+}
+
+/* The balance banner uses one audited solid shade. A gradient beginning at
+   primary-500 is too bright for light foreground text in several sources. */
+[data-app-theme] .theme-primary-banner {
+  background-image: none !important;
+  background-color: var(--primary-600) !important;
+}
+
+[data-app-theme] .theme-primary-banner-foreground {
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+/* Select is teleported to body and its @apply rules produce structural
+   selectors, so utility-class remapping alone cannot protect its text. */
+[data-app-theme] :is(.select-trigger, .select-dropdown-portal, .select-dropdown) {
+  color: var(--ink) !important;
+}
+
+[data-app-theme] :is(.select-trigger, .select-dropdown-portal, .select-dropdown) {
+  border-color: var(--border-color) !important;
+}
+
+[data-app-theme] :is(.select-trigger, .select-dropdown-portal, .select-dropdown) {
+  background-color: var(--surface-raised) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-option {
+  color: var(--ink) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-option-selected {
+  color: var(--readable-primary) !important;
+  background-color: color-mix(in srgb, var(--readable-primary) 12%, var(--surface-raised)) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-option-group {
+  color: var(--muted) !important;
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-search-input,
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-value {
+  color: var(--ink) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-empty {
+  color: var(--muted) !important;
+}
+
 /* Action buttons use one audited shade, while decorative gradients elsewhere
    keep their source-specific appearance. */
 [data-app-theme] .btn-primary {
@@ -1467,7 +1637,7 @@ body {
 }
 
 [data-app-theme] .btn-success:hover {
-  background-color: color-mix(in srgb, var(--status-success) 88%, var(--dark-base)) !important;
+  background-color: color-mix(in srgb, var(--status-success) 96%, var(--dark-base)) !important;
 }
 
 [data-app-theme] .btn-warning {
@@ -1476,7 +1646,7 @@ body {
 }
 
 [data-app-theme] .btn-warning:hover {
-  background-color: color-mix(in srgb, var(--status-warning) 88%, var(--dark-base)) !important;
+  background-color: color-mix(in srgb, var(--status-warning) 96%, var(--dark-base)) !important;
 }
 
 [data-app-theme] .btn-danger {
@@ -1485,7 +1655,7 @@ body {
 }
 
 [data-app-theme] .btn-danger:hover {
-  background-color: color-mix(in srgb, var(--status-danger) 88%, var(--dark-base)) !important;
+  background-color: color-mix(in srgb, var(--status-danger) 96%, var(--dark-base)) !important;
 }
 
 [data-app-theme] .btn,

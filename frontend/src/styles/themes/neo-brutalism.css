@@ -136,6 +136,8 @@
   --muted: #b3bac7;
   --muted-rgb: 179 186 199;
   --shadow-color: rgba(250, 204, 21, .88);
+  --dark-base: #101216;
+  --dark-base-rgb: 16 18 22;
   --dark-50: var(--surface-raised);
   --dark-50-rgb: var(--surface-raised-rgb);
   --dark-100: var(--surface-muted);
@@ -180,4 +182,10 @@
   --gray-900-rgb: var(--ink-rgb);
   --gray-950: var(--ink);
   --gray-950-rgb: var(--ink-rgb);
+  --status-success: #00c2a8;
+  --status-success-rgb: 0 194 168;
+  --status-warning: #ff8a00;
+  --status-warning-rgb: 255 138 0;
+  --status-danger: #ff2d55;
+  --status-danger-rgb: 255 45 85;
 }

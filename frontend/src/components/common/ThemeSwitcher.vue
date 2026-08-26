@@ -440,12 +440,12 @@ watch(isOpen, (open) => {
   height: 2.5rem;
   flex: 0 0 auto;
   border-radius: var(--control-radius, 0.75rem);
-  color: var(--primary-700);
+  color: var(--readable-primary, var(--ink));
   background: color-mix(in srgb, var(--primary-500) 13%, var(--surface-muted));
 }
 
 .dark .theme-drawer-icon {
-  color: var(--primary-300);
+  color: var(--readable-primary, var(--ink));
 }
 
 .theme-drawer-title {
@@ -544,14 +544,14 @@ watch(isOpen, (open) => {
 
 .theme-choice:hover,
 .theme-choice-active {
-  color: var(--primary-700);
+  color: var(--readable-primary, var(--ink));
   border-color: var(--primary-500);
   background: color-mix(in srgb, var(--primary-500) 10%, var(--surface-raised));
 }
 
 .dark .theme-choice:hover,
 .dark .theme-choice-active {
-  color: var(--primary-300);
+  color: var(--readable-primary, var(--ink));
 }
 
 .theme-card-grid {
@@ -604,7 +604,7 @@ watch(isOpen, (open) => {
 
 .theme-card-check {
   flex: 0 0 auto;
-  color: var(--primary-500);
+  color: var(--readable-primary, var(--ink));
 }
 
 .theme-setting-grid-section {
