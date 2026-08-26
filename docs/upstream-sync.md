@@ -25,3 +25,7 @@ Required configuration:
 - `custom/protected-paths.txt` lists files and directories that must not be overwritten;
 - `codex` must be available on `PATH` for scheduled execution;
 - logs are written under `.codex-upstream-sync/logs/`.
+
+The scheduled wrapper is designed for the 4GB production server. When upstream commits are pending, it runs Codex in a systemd transient service with bounded memory, swap, process count, and runtime. It permits only low-cost static checks; Docker builds, frontend production builds, backend tests, Go tests, TypeScript compilation, package-manager scripts, and development servers are left to GitHub Actions. The wrapper pushes approved changes only to `origin/main`, never to `upstream`.
+
+An interrupted, failed, or blocked review does not advance `.codex-upstream-sync/last-seen-head`. The next scheduled run will review the same upstream commits. A successful `noop` review advances the state only after the complete review proves that no code change is required.

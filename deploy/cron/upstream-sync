@@ -4,6 +4,10 @@ set -eu
 
 PATH="/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export PATH
+HOME="${HOME:-/root}"
+export HOME
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+export CODEX_HOME
 umask 077
 
 REPO_DIR="${REPO_DIR:-/sub2api}"
@@ -11,13 +15,21 @@ STATE_DIR="$REPO_DIR/.codex-upstream-sync"
 LOG_DIR="${LOG_DIR:-$STATE_DIR/logs}"
 LOCK_FILE="${LOCK_FILE:-$STATE_DIR/upstream-sync.lock}"
 CHECK_TIMEOUT="${CHECK_TIMEOUT:-5m}"
+CHECK_KILL_AFTER="${CHECK_KILL_AFTER:-30s}"
 CODEX_TIMEOUT="${CODEX_TIMEOUT:-45m}"
+CODEX_MEMORY_MAX="${CODEX_MEMORY_MAX:-1536M}"
+CODEX_SWAP_MAX="${CODEX_SWAP_MAX:-256M}"
+CODEX_TASKS_MAX="${CODEX_TASKS_MAX:-256}"
 CODEX_BIN="${CODEX_BIN:-codex}"
+CODEX_UNIT="${CODEX_UNIT:-sub2api-upstream-sync-$$.service}"
 CODEX_STARTED=0
+CODEX_UNIT_ACTIVE=0
 REMOTE_PUSHED=0
 RUN_FINISHED=0
 BEFORE_HEAD=""
 CHANGED_FILE=""
+CODEX_TMP_DIR=""
+CODEX_BIN_PATH=""
 STATE_FILE="$STATE_DIR/last-seen-head"
 REPORT_FILE="$STATE_DIR/report.md"
 ANALYSIS_FILE="$STATE_DIR/analysis.md"
@@ -49,8 +61,32 @@ fail() {
   exit 1
 }
 
+stop_codex_unit() {
+  if [ "$CODEX_UNIT_ACTIVE" -eq 1 ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl stop "$CODEX_UNIT" >/dev/null 2>&1 || true
+    CODEX_UNIT_ACTIVE=0
+  fi
+}
+
+cleanup_codex_tmp() {
+  if [ -n "$CODEX_TMP_DIR" ] && [ -d "$CODEX_TMP_DIR" ]; then
+    if ! find "$CODEX_TMP_DIR" -depth -delete; then
+      log "WARNING: unable to remove Codex temporary directory: $CODEX_TMP_DIR"
+    fi
+  fi
+}
+
+handle_signal() {
+  signal_name="$1"
+  log "received $signal_name; stopping Codex unit"
+  stop_codex_unit
+  exit 143
+}
+
 cleanup_on_exit() {
   exit_code=$?
+
+  stop_codex_unit
 
   if [ "$CODEX_STARTED" -eq 1 ] && [ "$RUN_FINISHED" -eq 0 ] && [ "$REMOTE_PUSHED" -eq 0 ]; then
     current_branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
@@ -71,10 +107,14 @@ cleanup_on_exit() {
   if [ -n "$CHANGED_FILE" ]; then
     rm -f "$CHANGED_FILE"
   fi
+  cleanup_codex_tmp
   exit "$exit_code"
 }
 
 trap cleanup_on_exit EXIT
+trap 'handle_signal TERM' TERM
+trap 'handle_signal INT' INT
+trap 'handle_signal HUP' HUP
 
 check_clean_worktree() {
   status="$(git status --porcelain=v1 --untracked-files=all)"
@@ -140,9 +180,8 @@ check_clean_worktree
 git fetch --quiet origin main || fail 'unable to refresh origin/main'
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail 'local main is not identical to origin/main'
 check_remote_policy
-command -v "$CODEX_BIN" >/dev/null 2>&1 || fail "Codex executable not found: $CODEX_BIN"
 
-COUNT="$(timeout "$CHECK_TIMEOUT" ./scripts/check-upstream.sh)" || fail 'upstream check failed or timed out'
+COUNT="$(timeout --kill-after="$CHECK_KILL_AFTER" "$CHECK_TIMEOUT" ./scripts/check-upstream.sh)" || fail 'upstream check failed or timed out'
 case "$COUNT" in
   ''|*[!0-9]*) fail "upstream checker returned a non-numeric count: $COUNT" ;;
 esac
@@ -151,6 +190,11 @@ if [ "$COUNT" -eq 0 ]; then
   log 'no upstream update'
   exit 0
 fi
+
+command -v "$CODEX_BIN" >/dev/null 2>&1 || fail "Codex executable not found: $CODEX_BIN"
+command -v systemd-run >/dev/null 2>&1 || fail 'systemd-run is required for bounded unattended Codex execution'
+command -v systemctl >/dev/null 2>&1 || fail 'systemctl is required to stop an interrupted Codex execution'
+CODEX_BIN_PATH="$(command -v "$CODEX_BIN")"
 
 TARGET_HEAD="$(sed -n 's/^Remote head: `\([^`]*\)`.*/\1/p' "$REPORT_FILE" | head -n 1)"
 BASE_HEAD="$(sed -n 's/^Previous head: `\([^`]*\)`.*/\1/p' "$REPORT_FILE" | head -n 1)"
@@ -164,22 +208,50 @@ if [ -f "$ANALYSIS_FILE" ]; then
   ANALYSIS_BEFORE="$(stat -c '%Y' "$ANALYSIS_FILE")"
 fi
 rm -f "$RESULT_FILE" "$RESPONSE_FILE"
+CODEX_TMP_DIR="$(mktemp -d "$STATE_DIR/codex-tmp.XXXXXX")" || fail 'unable to create Codex temporary directory'
+TMPDIR="$CODEX_TMP_DIR"
+export TMPDIR
+GOMAXPROCS="${GOMAXPROCS:-2}"
+export GOMAXPROCS
 
 export CODEX_UPSTREAM_SYNC_AUTOMATION=1
 export UPSTREAM_SYNC_TARGET_HEAD="$TARGET_HEAD"
 export UPSTREAM_SYNC_BASE_HEAD="$BASE_HEAD"
 export UPSTREAM_SYNC_LOW_MEMORY=1
 
-log "found $COUNT upstream commits; invoking Codex"
+log "found $COUNT upstream commits; invoking Codex in $CODEX_UNIT (memory=$CODEX_MEMORY_MAX swap=$CODEX_SWAP_MAX tasks=$CODEX_TASKS_MAX runtime=$CODEX_TIMEOUT)"
 CODEX_STARTED=1
-if ! timeout "$CODEX_TIMEOUT" "$CODEX_BIN" exec \
+CODEX_UNIT_ACTIVE=1
+CODEX_EXIT=0
+if systemd-run \
+  --quiet \
+  --pipe \
+  --wait \
+  --collect \
+  --unit="$CODEX_UNIT" \
+  --setenv="HOME=$HOME" \
+  --setenv="CODEX_HOME=$CODEX_HOME" \
+  --setenv="TMPDIR=$CODEX_TMP_DIR" \
+  --setenv="GOMAXPROCS=$GOMAXPROCS" \
+  --setenv='CODEX_UPSTREAM_SYNC_AUTOMATION=1' \
+  --setenv="UPSTREAM_SYNC_TARGET_HEAD=$TARGET_HEAD" \
+  --setenv="UPSTREAM_SYNC_BASE_HEAD=$BASE_HEAD" \
+  --setenv='UPSTREAM_SYNC_LOW_MEMORY=1' \
+  --property=WorkingDirectory="$REPO_DIR" \
+  --property=RuntimeMaxSec="$CODEX_TIMEOUT" \
+  --property=MemoryMax="$CODEX_MEMORY_MAX" \
+  --property=MemorySwapMax="$CODEX_SWAP_MAX" \
+  --property=TasksMax="$CODEX_TASKS_MAX" \
+  --property=KillMode=control-group \
+  "$CODEX_BIN_PATH" exec \
+  --cd "$REPO_DIR" \
   --sandbox danger-full-access \
   --ephemeral \
   --output-last-message "$RESPONSE_FILE" \
   - <<'EOF'
 Use the `upstream-sync` skill for this authorized unattended server run.
 
-Read `.codex-upstream-sync/report.md`, inspect every pending upstream commit, and apply the skill's protected-path and escalation rules. This repository owner has explicitly authorized ordinary upstream updates to be merged into `main` and subsequently pushed to `origin/main` by this wrapper. Never push to `upstream`.
+Read `skills/upstream-sync/SKILL.md` and its referenced playbook, then read `.codex-upstream-sync/report.md`; inspect every pending upstream commit and apply the skill's protected-path and escalation rules. This repository owner has explicitly authorized ordinary upstream updates, including compatible public API changes, to be merged into `main` and subsequently pushed to `origin/main` by this wrapper. Never push to `upstream` and do not wait for interactive confirmation for changes allowed by unattended mode.
 
 This is a 4GB production server. Do not run a Docker build, frontend production build, backend test command, Go test command, TypeScript compiler, package-manager script, dev server, or any other command that compiles or builds. Use only low-cost text/static checks such as `git diff --check`, `bash -n`, and `sh -n`; GitHub Actions performs the full build and deployment after the wrapper pushes.
 
@@ -190,8 +262,14 @@ Before the final response, write `.codex-upstream-sync/result.json` as a JSON ob
 Use the current report's `Remote head` value for `remote_head`. Do not push; the wrapper validates the result, commits any uncommitted approved changes, pushes only `origin/main`, and advances the state only after success.
 EOF
 then
-  fail 'Codex failed or timed out; upstream state was not advanced'
+  CODEX_EXIT=0
+else
+  CODEX_EXIT=$?
 fi
+if [ "$CODEX_EXIT" -ne 0 ]; then
+  fail "Codex failed or timed out (exit=$CODEX_EXIT); upstream state was not advanced"
+fi
+CODEX_UNIT_ACTIVE=0
 
 branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
 [ "$branch" = 'main' ] || fail "Codex left repository on unexpected branch: ${branch:-detached}"
