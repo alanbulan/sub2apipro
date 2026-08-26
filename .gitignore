@@ -148,6 +148,7 @@ docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
 .serena/
 .codex/
+.codex-upstream-sync/
 frontend/coverage/
 aicodex
 output/

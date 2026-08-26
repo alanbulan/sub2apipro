@@ -268,8 +268,8 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   dingtalk: t('profile.authBindings.providers.dingtalk'),
   oidc: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName }),
   wechat: t('profile.authBindings.providers.wechat'),
-  github: 'GitHub',
-  google: 'Google'
+  google: 'Google',
+  github: 'GitHub'
 }))
 
 function formatCurrency(value: number): string {

@@ -5,7 +5,7 @@ export default {
   },
   // Home Page
   home: {
-    viewOnGithub: '在 GitHub 上查看',
+    viewOnGithub: '打开文档',
     viewDocs: '查看文档',
     docs: '文档',
     switchToLight: '切换到浅色模式',
@@ -191,8 +191,8 @@ export default {
 
   // Setup Wizard
   setup: {
-    title: 'Sub2API 安装向导',
-    description: '配置您的 Sub2API 实例',
+    title: '安装向导',
+    description: '配置您的平台实例',
     database: {
       title: '数据库配置',
       description: '连接到您的 PostgreSQL 数据库',

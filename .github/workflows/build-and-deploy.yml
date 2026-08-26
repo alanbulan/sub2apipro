@@ -1,0 +1,200 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the image to the configured production server
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "image=$repository:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.repository }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+
+      - name: Read application version
+        id: version
+        shell: bash
+        run: echo "version=$(tr -d '\r\n' < backend/cmd/server/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ github.event.head_commit.timestamp || '' }}
+          cache-from: type=gha,scope=application-image
+          cache-to: type=gha,mode=max,scope=application-image
+
+  deploy:
+    name: Deploy to production server
+    needs: image
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && vars.DEPLOY_ENABLED == 'true' && (github.event_name != 'workflow_dispatch' || inputs.deploy) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out deployment configuration
+        uses: actions/checkout@v4
+
+      - name: Validate deployment inputs
+        env:
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+        shell: bash
+        run: |
+          case "$DEPLOY_COMPOSE_FILE" in
+            docker-compose.yml|docker-compose.local.yml|docker-compose.standalone.yml) ;;
+            *) echo "Unsupported DEPLOY_COMPOSE_FILE: $DEPLOY_COMPOSE_FILE" >&2; exit 1 ;;
+          esac
+          test -f "deploy/$DEPLOY_COMPOSE_FILE"
+          case "$DEPLOY_PATH" in
+            /*) ;;
+            *) echo "DEPLOY_PATH must be an absolute path without shell metacharacters" >&2; exit 1 ;;
+          esac
+          case "$DEPLOY_PATH" in
+            ''|*[!A-Za-z0-9._/-]*) echo "DEPLOY_PATH contains unsupported characters" >&2; exit 1 ;;
+          esac
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          case "$DEPLOY_PORT" in
+            ''|*[!0-9]*) echo 'DEPLOY_PORT must be numeric' >&2; exit 1 ;;
+          esac
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Upload Compose file
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+        shell: bash
+        run: |
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh -p "$DEPLOY_PORT" "$target" "mkdir -p '$DEPLOY_PATH'"
+          scp -P "$DEPLOY_PORT" "deploy/$DEPLOY_COMPOSE_FILE" "$target:$DEPLOY_PATH/$DEPLOY_COMPOSE_FILE"
+
+      - name: Log in to GHCR on the server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_REGISTRY_USERNAME: ${{ secrets.DEPLOY_REGISTRY_USERNAME }}
+          DEPLOY_REGISTRY_TOKEN: ${{ secrets.DEPLOY_REGISTRY_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$DEPLOY_REGISTRY_TOKEN" ]; then
+            echo 'DEPLOY_REGISTRY_TOKEN is not configured; assuming the GHCR image is public'
+            exit 0
+          fi
+          test -n "$DEPLOY_REGISTRY_USERNAME"
+          printf '%s' "$DEPLOY_REGISTRY_TOKEN" | ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "docker login ghcr.io --username '$DEPLOY_REGISTRY_USERNAME' --password-stdin"
+
+      - name: Pull and restart application
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+          APP_IMAGE: ${{ needs.image.outputs.image }}
+        shell: bash
+        run: |
+          ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && test -f .env && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' config --quiet && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' pull sub2api && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' up -d --no-build sub2api && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' ps sub2api"
+
+      - name: Wait for application health
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 30); do
+            health="$(ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+              "docker inspect --format '{{.State.Health.Status}}' sub2api 2>/dev/null || true")"
+            case "$health" in
+              healthy)
+                echo 'Application health check passed.'
+                exit 0
+                ;;
+              unhealthy)
+                echo 'Application health check failed.' >&2
+                exit 1
+                ;;
+            esac
+            sleep 2
+          done
+          echo 'Application did not become healthy within 60 seconds.' >&2
+          exit 1

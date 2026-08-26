@@ -5,7 +5,7 @@ export default {
   },
   // Home Page
   home: {
-    viewOnGithub: 'View on GitHub',
+    viewOnGithub: 'Open document',
     viewDocs: 'View Documentation',
     docs: 'Docs',
     switchToLight: 'Switch to Light Mode',
@@ -191,8 +191,8 @@ export default {
 
   // Setup Wizard
   setup: {
-    title: 'Sub2API Setup',
-    description: 'Configure your Sub2API instance',
+    title: 'Setup',
+    description: 'Configure your platform instance',
     database: {
       title: 'Database Configuration',
       description: 'Connect to your PostgreSQL database',

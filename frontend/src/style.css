@@ -1,6 +1,101 @@
+@import './styles/themes/minimalism.css';
+@import './styles/themes/neo-brutalism.css';
+@import './styles/themes/apple.css';
+@import './styles/themes/notion.css';
+@import './styles/themes/wabi-sabi.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --color-primary: var(--primary-500);
+  --shadow-glass: 0 8px 32px var(--shadow-color);
+  --shadow-glass-sm: 0 4px 16px var(--shadow-color);
+  --glow: 0 0 20px color-mix(in srgb, var(--primary-500) 25%, transparent);
+  --glow-lg: 0 0 40px color-mix(in srgb, var(--primary-500) 35%, transparent);
+  --shadow-card: 0 1px 3px var(--shadow-color);
+  --shadow-card-hover: 0 10px 40px var(--shadow-color);
+  --inner-glow: inset 0 1px 0 color-mix(in srgb, var(--surface-raised) 10%, transparent);
+  --glass-tint: color-mix(in srgb, var(--surface-raised) 10%, transparent);
+  --glass-tint-strong: color-mix(in srgb, var(--surface-raised) 5%, transparent);
+  --mesh-a: color-mix(in srgb, var(--primary-500) 12%, transparent);
+  --mesh-b: color-mix(in srgb, var(--accent-500) 8%, transparent);
+  --mesh-c: color-mix(in srgb, var(--primary-400) 8%, transparent);
+  --glow-sm: 0 0 0 1px color-mix(in srgb, var(--primary-500) 20%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--muted) 50%, transparent);
+  --scrollbar-thumb-dark: color-mix(in srgb, var(--dark-500) 50%, transparent);
+  --stripe-base: #635bff;
+  --stripe-hover: #5851ea;
+  --stripe-dark: #7a73ff;
+  --airwallex-base: #14171a;
+  --airwallex-hover: #20252a;
+  --airwallex-dark: #7af0c4;
+  --airwallex-dark-hover: #62d9ad;
+  --alipay-base: #00aeef;
+  --alipay-hover: #009dd6;
+  --alipay-active: #008cbe;
+  --wxpay-base: #2bb741;
+  --wxpay-hover: #24a038;
+  --wxpay-active: #1d8a2f;
+}
+
+[data-app-theme]:not(.dark) {
+  color-scheme: light;
+}
+
+[data-app-theme].dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.card,
+.modal-content,
+.dialog-container,
+.sidebar {
+  border-radius: var(--radius, 0.75rem);
+  background: var(--surface-raised);
+  border-color: var(--border-color, currentColor);
+  box-shadow: 0 1px calc(var(--hard-offset, 0px) + 3px) var(--shadow-color);
+  backdrop-filter: var(--backdrop-filter, none);
+}
+
+[data-app-theme='neoBrutalism'] .card,
+[data-app-theme='neoBrutalism'] .modal-content,
+[data-app-theme='neoBrutalism'] .dialog-container,
+[data-app-theme='neoBrutalism'] .sidebar,
+[data-app-theme='neoBrutalism'] .btn-secondary,
+[data-app-theme='neoBrutalism'] .input {
+  border-width: var(--outline-width) !important;
+  border-style: solid !important;
+  box-shadow: var(--hard-offset) var(--hard-offset) 0 var(--shadow-color) !important;
+}
+
+[data-app-theme='neoBrutalism'] .btn:not(:disabled):hover,
+[data-app-theme='neoBrutalism'] .card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: calc(var(--hard-offset) + 2px) calc(var(--hard-offset) + 2px) 0 var(--shadow-color) !important;
+}
+
+[data-app-theme='neoBrutalism'] .btn:not(:disabled):active,
+[data-app-theme='neoBrutalism'] .card:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--shadow-color) !important;
+}
+
+[data-app-theme='wabiSabi'] .btn-primary {
+  background-image: none;
+}
+
+.theme-grid-pattern {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary-500) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary-500) 3%, transparent) 1px, transparent 1px);
+}
 
 @layer base {
   * {
@@ -30,12 +125,12 @@
 
     *:hover,
     *:focus-within {
-      scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
     }
 
     .dark *:hover,
     .dark *:focus-within {
-      scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+      scrollbar-color: var(--scrollbar-thumb-dark) transparent;
     }
   }
 
@@ -120,32 +215,45 @@
   }
 
   .btn-stripe {
-    @apply bg-[#635bff] text-white shadow-md shadow-[#635bff]/25;
-    @apply hover:bg-[#5851ea] hover:shadow-lg hover:shadow-[#635bff]/30;
-    @apply dark:bg-[#7a73ff] dark:shadow-[#7a73ff]/20;
-    @apply dark:hover:bg-[#635bff];
+    background-color: var(--stripe-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
+
+  .btn-stripe:hover { background-color: var(--stripe-hover); }
+  .dark .btn-stripe { background-color: var(--stripe-dark); }
+  .dark .btn-stripe:hover { background-color: var(--stripe-base); }
 
   .btn-airwallex {
-    @apply bg-[#14171A] text-white shadow-md shadow-emerald-500/20;
-    @apply hover:bg-[#20252a] hover:shadow-lg hover:shadow-emerald-500/25;
-    @apply dark:bg-[#7AF0C4] dark:text-gray-950 dark:shadow-emerald-500/20;
-    @apply dark:hover:bg-[#62d9ad];
+    background-color: var(--airwallex-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
+
+  .btn-airwallex:hover { background-color: var(--airwallex-hover); }
+  .dark .btn-airwallex {
+    background-color: var(--airwallex-dark);
+    color: var(--gray-950);
+  }
+  .dark .btn-airwallex:hover { background-color: var(--airwallex-dark-hover); }
 
   .btn-alipay {
-    @apply bg-[#00AEEF] text-white shadow-md shadow-[#00AEEF]/25;
-    @apply hover:bg-[#009dd6] hover:shadow-lg hover:shadow-[#00AEEF]/30;
-    @apply active:bg-[#008cbe];
-    @apply dark:shadow-[#00AEEF]/20;
+    background-color: var(--alipay-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
 
+  .btn-alipay:hover { background-color: var(--alipay-hover); }
+  .btn-alipay:active { background-color: var(--alipay-active); }
+
   .btn-wxpay {
-    @apply bg-[#2BB741] text-white shadow-md shadow-[#2BB741]/25;
-    @apply hover:bg-[#24a038] hover:shadow-lg hover:shadow-[#2BB741]/30;
-    @apply active:bg-[#1d8a2f];
-    @apply dark:shadow-[#2BB741]/20;
+    background-color: var(--wxpay-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
+
+  .btn-wxpay:hover { background-color: var(--wxpay-hover); }
+  .btn-wxpay:active { background-color: var(--wxpay-active); }
 
   .btn-sm {
     @apply rounded-lg px-3 py-1.5 text-xs;
@@ -276,11 +384,23 @@
   }
 
   .stat-icon-success {
-    @apply bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400;
+    background-color: color-mix(in srgb, var(--status-success) 10%, transparent);
+    @apply text-status-success;
+
+    .dark & {
+      background-color: color-mix(in srgb, var(--status-success) 20%, transparent);
+      @apply text-status-success;
+    }
   }
 
   .stat-icon-warning {
-    @apply bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400;
+    background-color: color-mix(in srgb, var(--status-warning) 10%, transparent);
+    @apply text-status-warning;
+
+    .dark & {
+      background-color: color-mix(in srgb, var(--status-warning) 20%, transparent);
+      @apply text-status-warning;
+    }
   }
 
   .stat-icon-danger {

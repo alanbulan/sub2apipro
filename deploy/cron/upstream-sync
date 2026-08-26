@@ -1,0 +1,30 @@
+#!/bin/sh
+# Daily upstream check. Set CODEX_UPSTREAM_SYNC_ARGS to pass extra Codex options.
+set -eu
+
+PATH="/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH
+
+REPO_DIR="${REPO_DIR:-/sub2api}"
+LOG_DIR="${LOG_DIR:-$REPO_DIR/.codex-upstream-sync/logs}"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/$(date +%Y-%m-%d).log"
+
+cd "$REPO_DIR"
+COUNT="$(./scripts/check-upstream.sh)"
+
+if [ "$COUNT" -eq 0 ]; then
+  echo "$(date -Is) no update" >> "$LOG_FILE"
+  exit 0
+fi
+
+{
+  echo "$(date -Is) found $COUNT commits; invoking Codex"
+  if [ -n "${CODEX_UPSTREAM_SYNC_ARGS:-}" ]; then
+    codex exec $CODEX_UPSTREAM_SYNC_ARGS "Use the upstream-sync skill. Read .codex-upstream-sync/report.md and analyze/merge the pending upstream updates without modifying protected paths."
+  else
+    codex exec "Use the upstream-sync skill. Read .codex-upstream-sync/report.md and analyze/merge the pending upstream updates without modifying protected paths."
+  fi
+  git rev-parse "${UPSTREAM_REMOTE:-upstream}/${UPSTREAM_BRANCH:-main}" > "$REPO_DIR/.codex-upstream-sync/last-seen"
+  echo "$(date -Is) Codex finished"
+} >> "$LOG_FILE" 2>&1
