@@ -191,17 +191,6 @@ export default {
     systemMode: 'System',
     theme: 'Theme',
     themeCount: '{count} design themes',
-    themeSource: 'Source',
-    colorPreset: 'Accent color',
-    colorPresets: {
-      theme: 'Theme color',
-      indigo: 'Indigo',
-      teal: 'Teal',
-      violet: 'Violet',
-      rose: 'Rose',
-      amber: 'Amber',
-      graphite: 'Graphite'
-    },
     fontPreset: 'Font',
     fonts: {
       system: 'System sans',

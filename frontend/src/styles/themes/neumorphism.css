@@ -1,4 +1,3 @@
-/* VibeHub design source: https://vibe-hub.org/style-neumorphism */
 /* Complete semantic token contract for this design source. */
 [data-app-theme='neumorphism'] {
   --accent-50: var(--primary-50); --accent-50-rgb: var(--primary-50-rgb);
@@ -75,16 +74,17 @@
   --primary-800: #1e293b; --primary-800-rgb: 30 41 59;
   --primary-900: #0f172a; --primary-900-rgb: 15 23 42;
   --primary-950: #020617; --primary-950-rgb: 2 6 23;
-  --accent-base: #0f766e; --accent-base-rgb: 15 118 110;
+  --accent-base: #718096; --accent-base-rgb: 113 128 150;
   --on-primary: #ffffff;
   --on-primary-500: #ffffff;
   --on-primary-600: #ffffff;
   --on-primary-700: #ffffff;
-  --accent-400-rgb: 45 212 191; --accent-500-rgb: 15 118 110; --accent-600-rgb: 13 94 88;
-  --surface: #e4e9f0; --surface-rgb: 228 233 240;
-  --surface-raised: #e4e9f0; --surface-raised-rgb: 228 233 240;
-  --surface-muted: #d6dde7; --surface-muted-rgb: 214 221 231;
-  --border-color: rgba(255, 255, 255, .45); --ink: #263445; --muted: #607083;
+  --accent-400-rgb: 159 173 193; --accent-500-rgb: 113 128 150; --accent-600-rgb: 88 102 122;
+  --surface: #e3e9f2; --surface-rgb: 227 233 242;
+  --surface-raised: #e3e9f2; --surface-raised-rgb: 227 233 242;
+  --surface-muted: #d5deeb; --surface-muted-rgb: 213 222 235;
+  --border-color: rgba(255, 255, 255, .45); --ink: #263445; --muted: #526274;
+  --muted-rgb: 82 98 116;
   --shadow-color: rgba(94, 109, 128, .25); --radius: 18px;
   --card-shadow: 8px 8px 16px rgba(166, 180, 200, .55), -8px -8px 16px rgba(255, 255, 255, .85);
 }

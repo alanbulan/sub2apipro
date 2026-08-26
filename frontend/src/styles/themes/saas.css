@@ -1,4 +1,3 @@
-/* VibeHub design source: https://vibe-hub.org/style-saas */
 /* Complete semantic token contract for this design source. */
 [data-app-theme='saas'] {
   --accent-50: var(--primary-50); --accent-50-rgb: var(--primary-50-rgb);
@@ -84,7 +83,7 @@
   --surface: #f8fafc; --surface-rgb: 248 250 252;
   --surface-raised: #ffffff; --surface-raised-rgb: 255 255 255;
   --surface-muted: #f1f5f9; --surface-muted-rgb: 241 245 249;
-  --border-color: #e2e8f0; --ink: #172033; --muted: #64748b;
+  --border-color: #e2e8f0; --ink: #172033; --muted: #5b697d; --muted-rgb: 91 105 125;
   --shadow-color: rgba(30, 41, 59, .1); --radius: 16px; --card-shadow: 0 8px 24px rgba(30, 41, 59, .08);
 }
 

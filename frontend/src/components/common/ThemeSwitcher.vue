@@ -76,15 +76,6 @@
                   <h3>{{ t('nav.theme') }}</h3>
                   <p>{{ t('nav.themeCount', { count: appThemes.length }) }}</p>
                 </div>
-                <a
-                  class="theme-source-link"
-                  href="https://vibe-hub.org/topics/design"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {{ t('nav.themeSource') }}
-                  <Icon name="externalLink" size="xs" aria-hidden="true" />
-                </a>
               </div>
               <div class="theme-card-grid">
                 <button
@@ -94,10 +85,9 @@
                   class="theme-card"
                   :class="{ 'theme-card-active': theme.id === activeTheme }"
                   :aria-pressed="theme.id === activeTheme"
-                  :title="theme.source"
                   @click="setAppTheme(theme.id)"
                 >
-                  <span class="theme-preview" :style="{ '--theme-preview': theme.preview }" aria-hidden="true"></span>
+                  <ThemePreview :theme-id="theme.id" />
                   <span class="theme-card-footer">
                     <span class="theme-card-name">{{ t(theme.labelKey) }}</span>
                     <Icon v-if="theme.id === activeTheme" name="checkCircle" size="sm" class="theme-card-check" aria-hidden="true" />
@@ -106,59 +96,66 @@
               </div>
             </section>
 
-            <section class="theme-setting-section">
-              <div class="theme-setting-heading"><h3>{{ t('nav.colorPreset') }}</h3></div>
-              <div class="theme-color-grid">
-                <button
-                  v-for="preset in colorPresets"
-                  :key="preset.value"
-                  type="button"
-                  class="theme-color-choice"
-                  :class="{ 'theme-choice-active': colorPreset === preset.value }"
-                  @click="setColorPreset(preset.value)"
-                >
-                  <span class="theme-color-swatch" :style="{ background: preset.color }" aria-hidden="true"></span>
-                  <span>{{ t(preset.labelKey) }}</span>
-                </button>
-              </div>
-            </section>
-
             <section class="theme-setting-section theme-setting-grid-section">
               <div class="theme-setting-control">
                 <div class="theme-setting-heading"><h3>{{ t('nav.fontPreset') }}</h3></div>
-                <select :value="fontPreset" class="theme-select" :aria-label="t('nav.fontPreset')" @change="handleFontPresetChange">
-                  <option v-for="option in fontOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
-                </select>
+                <Select
+                  class="theme-select"
+                  :model-value="fontPreset"
+                  :options="selectOptions.font"
+                  :aria-label="t('nav.fontPreset')"
+                  @update:model-value="handleFontPresetChange"
+                />
               </div>
               <div class="theme-setting-control">
                 <div class="theme-setting-heading"><h3>{{ t('nav.radiusPreset') }}</h3></div>
-                <select :value="radiusPreset" class="theme-select" :aria-label="t('nav.radiusPreset')" @change="handleRadiusPresetChange">
-                  <option v-for="option in radiusOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
-                </select>
+                <Select
+                  class="theme-select"
+                  :model-value="radiusPreset"
+                  :options="selectOptions.radius"
+                  :aria-label="t('nav.radiusPreset')"
+                  @update:model-value="handleRadiusPresetChange"
+                />
               </div>
               <div class="theme-setting-control">
                 <div class="theme-setting-heading"><h3>{{ t('nav.density') }}</h3></div>
-                <select :value="density" class="theme-select" :aria-label="t('nav.density')" @change="handleDensityChange">
-                  <option v-for="option in densityOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
-                </select>
+                <Select
+                  class="theme-select"
+                  :model-value="density"
+                  :options="selectOptions.density"
+                  :aria-label="t('nav.density')"
+                  @update:model-value="handleDensityChange"
+                />
               </div>
               <div class="theme-setting-control">
                 <div class="theme-setting-heading"><h3>{{ t('nav.sidebarStyle') }}</h3></div>
-                <select :value="sidebarStyle" class="theme-select" :aria-label="t('nav.sidebarStyle')" @change="handleSidebarStyleChange">
-                  <option v-for="option in sidebarOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
-                </select>
+                <Select
+                  class="theme-select"
+                  :model-value="sidebarStyle"
+                  :options="selectOptions.sidebar"
+                  :aria-label="t('nav.sidebarStyle')"
+                  @update:model-value="handleSidebarStyleChange"
+                />
               </div>
               <div class="theme-setting-control">
                 <div class="theme-setting-heading"><h3>{{ t('nav.layout') }}</h3></div>
-                <select :value="layout" class="theme-select" :aria-label="t('nav.layout')" @change="handleLayoutChange">
-                  <option v-for="option in layoutOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
-                </select>
+                <Select
+                  class="theme-select"
+                  :model-value="layout"
+                  :options="selectOptions.layout"
+                  :aria-label="t('nav.layout')"
+                  @update:model-value="handleLayoutChange"
+                />
               </div>
               <div class="theme-setting-control">
                 <div class="theme-setting-heading"><h3>{{ t('nav.contentWidth') }}</h3></div>
-                <select :value="contentWidth" class="theme-select" :aria-label="t('nav.contentWidth')" @change="handleContentWidthChange">
-                  <option v-for="option in contentWidthOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
-                </select>
+                <Select
+                  class="theme-select"
+                  :model-value="contentWidth"
+                  :options="selectOptions.contentWidth"
+                  :aria-label="t('nav.contentWidth')"
+                  @update:model-value="handleContentWidthChange"
+                />
               </div>
             </section>
 
@@ -174,14 +171,15 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
+import ThemePreview from '@/components/common/ThemePreview.vue'
 import {
   appThemes,
   setAppTheme,
   setColorMode,
-  setColorPreset,
   setContentWidth,
   setDensity,
   setFontPreset,
@@ -190,7 +188,6 @@ import {
   setSidebarStyle,
   useAppTheme,
   type ColorMode,
-  type ColorPresetId,
   type ContentWidthPresetId,
   type DensityPresetId,
   type FontPresetId,
@@ -208,7 +205,6 @@ const { t } = useI18n()
 const {
   activeTheme,
   colorMode,
-  colorPreset,
   contentWidth,
   density,
   fontPreset,
@@ -221,15 +217,6 @@ const modeOptions: readonly { value: ColorMode; labelKey: string; icon: 'globe' 
   { value: 'system', labelKey: 'nav.systemMode', icon: 'globe' },
   { value: 'light', labelKey: 'nav.lightMode', icon: 'sun' },
   { value: 'dark', labelKey: 'nav.darkMode', icon: 'moon' }
-]
-const colorPresets: readonly { value: ColorPresetId; labelKey: string; color: string }[] = [
-  { value: 'theme', labelKey: 'nav.colorPresets.theme', color: 'linear-gradient(135deg, var(--primary-500), var(--accent-base))' },
-  { value: 'indigo', labelKey: 'nav.colorPresets.indigo', color: '#4f46e5' },
-  { value: 'teal', labelKey: 'nav.colorPresets.teal', color: '#0d9488' },
-  { value: 'violet', labelKey: 'nav.colorPresets.violet', color: '#7c3aed' },
-  { value: 'rose', labelKey: 'nav.colorPresets.rose', color: '#e11d48' },
-  { value: 'amber', labelKey: 'nav.colorPresets.amber', color: '#d97706' },
-  { value: 'graphite', labelKey: 'nav.colorPresets.graphite', color: '#27272a' }
 ]
 const fontOptions: readonly { value: FontPresetId; labelKey: string }[] = [
   { value: 'system', labelKey: 'nav.fonts.system' },
@@ -263,6 +250,15 @@ const contentWidthOptions: readonly { value: ContentWidthPresetId; labelKey: str
   { value: 'full', labelKey: 'nav.contentWidths.full' }
 ]
 
+const selectOptions = computed(() => ({
+  font: fontOptions.map((option): SelectOption => ({ value: option.value, label: t(option.labelKey) })),
+  radius: radiusOptions.map((option): SelectOption => ({ value: option.value, label: t(option.labelKey) })),
+  density: densityOptions.map((option): SelectOption => ({ value: option.value, label: t(option.labelKey) })),
+  sidebar: sidebarOptions.map((option): SelectOption => ({ value: option.value, label: t(option.labelKey) })),
+  layout: layoutOptions.map((option): SelectOption => ({ value: option.value, label: t(option.labelKey) })),
+  contentWidth: contentWidthOptions.map((option): SelectOption => ({ value: option.value, label: t(option.labelKey) }))
+}))
+
 const isOpen = ref(false)
 const triggerRef = ref<HTMLElement | null>(null)
 const drawerRef = ref<HTMLElement | null>(null)
@@ -288,38 +284,33 @@ function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && isOpen.value) closeDrawer()
 }
 
-function selectedValue(event: Event) {
-  return (event.target as HTMLSelectElement).value
+function handleFontPresetChange(value: SelectOption['value']) {
+  if (typeof value === 'string') setFontPreset(value as FontPresetId)
 }
 
-function handleFontPresetChange(event: Event) {
-  setFontPreset(selectedValue(event) as FontPresetId)
+function handleRadiusPresetChange(value: SelectOption['value']) {
+  if (typeof value === 'string') setRadiusPreset(value as RadiusPresetId)
 }
 
-function handleRadiusPresetChange(event: Event) {
-  setRadiusPreset(selectedValue(event) as RadiusPresetId)
+function handleDensityChange(value: SelectOption['value']) {
+  if (typeof value === 'string') setDensity(value as DensityPresetId)
 }
 
-function handleDensityChange(event: Event) {
-  setDensity(selectedValue(event) as DensityPresetId)
+function handleSidebarStyleChange(value: SelectOption['value']) {
+  if (typeof value === 'string') setSidebarStyle(value as SidebarStyleId)
 }
 
-function handleSidebarStyleChange(event: Event) {
-  setSidebarStyle(selectedValue(event) as SidebarStyleId)
+function handleLayoutChange(value: SelectOption['value']) {
+  if (typeof value === 'string') setLayout(value as LayoutPresetId)
 }
 
-function handleLayoutChange(event: Event) {
-  setLayout(selectedValue(event) as LayoutPresetId)
-}
-
-function handleContentWidthChange(event: Event) {
-  setContentWidth(selectedValue(event) as ContentWidthPresetId)
+function handleContentWidthChange(value: SelectOption['value']) {
+  if (typeof value === 'string') setContentWidth(value as ContentWidthPresetId)
 }
 
 function resetAppearance() {
   setAppTheme('minimalism')
   setColorMode('system')
-  setColorPreset('theme')
   setFontPreset('system')
   setRadiusPreset('soft')
   setDensity('comfortable')
@@ -526,8 +517,7 @@ watch(isOpen, (open) => {
   font-size: 0.7rem;
 }
 
-.theme-mode-grid,
-.theme-color-grid {
+.theme-mode-grid {
   display: grid;
   gap: 0.5rem;
 }
@@ -536,12 +526,7 @@ watch(isOpen, (open) => {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.theme-color-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.theme-choice,
-.theme-color-choice {
+.theme-choice {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -558,7 +543,6 @@ watch(isOpen, (open) => {
 }
 
 .theme-choice:hover,
-.theme-color-choice:hover,
 .theme-choice-active {
   color: var(--primary-700);
   border-color: var(--primary-500);
@@ -566,46 +550,7 @@ watch(isOpen, (open) => {
 }
 
 .dark .theme-choice:hover,
-.dark .theme-color-choice:hover,
 .dark .theme-choice-active {
-  color: var(--primary-300);
-}
-
-.theme-color-choice {
-  justify-content: flex-start;
-  overflow: hidden;
-  text-align: left;
-}
-
-.theme-color-swatch {
-  width: 1.1rem;
-  height: 1.1rem;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 14%);
-}
-
-.theme-source-link,
-.theme-card-source {
-  color: var(--primary-600);
-  font-size: 0.7rem;
-  text-decoration: none;
-}
-
-.theme-source-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex: 0 0 auto;
-}
-
-.theme-source-link:hover,
-.theme-card-source:hover {
-  text-decoration: underline;
-}
-
-.dark .theme-source-link,
-.dark .theme-card-source {
   color: var(--primary-300);
 }
 
@@ -641,13 +586,6 @@ watch(isOpen, (open) => {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-500) 22%, transparent);
 }
 
-.theme-preview {
-  display: block;
-  height: 2.65rem;
-  border-radius: calc(var(--control-radius, 0.75rem) - 0.2rem);
-  background: var(--theme-preview);
-}
-
 .theme-card-footer {
   display: flex;
   align-items: center;
@@ -669,20 +607,6 @@ watch(isOpen, (open) => {
   color: var(--primary-500);
 }
 
-.theme-card-source {
-  position: absolute;
-  right: 0.55rem;
-  bottom: 0.55rem;
-  display: inline-flex;
-  opacity: 0;
-  transition: opacity 160ms ease;
-}
-
-.theme-card:hover .theme-card-source,
-.theme-card:focus-within .theme-card-source {
-  opacity: 1;
-}
-
 .theme-setting-grid-section {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -695,19 +619,16 @@ watch(isOpen, (open) => {
 
 .theme-select {
   width: 100%;
+}
+
+.theme-select :deep(.select-trigger) {
   min-height: 2.25rem;
   padding: 0.4rem 0.55rem;
-  border: 1px solid var(--border-color);
+  border-color: var(--border-color);
   border-radius: var(--control-radius, 0.75rem);
   color: var(--ink);
   background: var(--surface);
   font-size: 0.74rem;
-}
-
-.theme-select:focus-visible {
-  border-color: var(--primary-500);
-  outline: 2px solid color-mix(in srgb, var(--primary-500) 30%, transparent);
-  outline-offset: 1px;
 }
 
 .theme-reset-button {

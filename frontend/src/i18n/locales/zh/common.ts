@@ -191,17 +191,6 @@ export default {
     systemMode: '跟随系统',
     theme: '主题',
     themeCount: '共 {count} 个设计主题',
-    themeSource: '来源',
-    colorPreset: '强调色',
-    colorPresets: {
-      theme: '主题色',
-      indigo: '靛蓝',
-      teal: '黛绿',
-      violet: '紫罗兰',
-      rose: '玫红',
-      amber: '蜜橙',
-      graphite: '石墨'
-    },
     fontPreset: '字体',
     fonts: {
       system: '系统无衬线',

@@ -132,122 +132,6 @@
 :root[data-content-width='wide'] { --app-content-max: 92rem; }
 :root[data-content-width='full'] { --app-content-max: none; }
 
-/* Accent presets keep the design surface intact while replacing the action
-   palette with a complete, contrast-safe scale. */
-:root[data-color-preset='indigo'] {
-  --primary-50: #eef2ff; --primary-50-rgb: 238 242 255;
-  --primary-100: #e0e7ff; --primary-100-rgb: 224 231 255;
-  --primary-200: #c7d2fe; --primary-200-rgb: 199 210 254;
-  --primary-300: #a5b4fc; --primary-300-rgb: 165 180 252;
-  --primary-400: #818cf8; --primary-400-rgb: 129 140 248;
-  --primary-500: #4f46e5; --primary-500-rgb: 79 70 229;
-  --primary-600: #4338ca; --primary-600-rgb: 67 56 202;
-  --primary-700: #3730a3; --primary-700-rgb: 55 48 163;
-  --primary-800: #312e81; --primary-800-rgb: 49 46 129;
-  --primary-900: #1e1b4b; --primary-900-rgb: 30 27 75;
-  --primary-950: #11103a; --primary-950-rgb: 17 16 58;
-  --accent-base: #06b6d4; --accent-base-rgb: 6 182 212;
-  --on-primary: #ffffff;
-  --on-primary-500: #ffffff;
-  --on-primary-600: #ffffff;
-  --on-primary-700: #ffffff;
-}
-
-:root[data-color-preset='teal'] {
-  --primary-50: #f0fdfa; --primary-50-rgb: 240 253 250;
-  --primary-100: #ccfbf1; --primary-100-rgb: 204 251 241;
-  --primary-200: #99f6e4; --primary-200-rgb: 153 246 228;
-  --primary-300: #5eead4; --primary-300-rgb: 94 234 212;
-  --primary-400: #2dd4bf; --primary-400-rgb: 45 212 191;
-  --primary-500: #0d9488; --primary-500-rgb: 13 148 136;
-  --primary-600: #0f766e; --primary-600-rgb: 15 118 110;
-  --primary-700: #115e59; --primary-700-rgb: 17 94 89;
-  --primary-800: #134e4a; --primary-800-rgb: 19 78 74;
-  --primary-900: #0f3d3a; --primary-900-rgb: 15 61 58;
-  --primary-950: #042f2e; --primary-950-rgb: 4 47 46;
-  --accent-base: #14b8a6; --accent-base-rgb: 20 184 166;
-  --on-primary: #020617;
-  --on-primary-500: #020617;
-  --on-primary-600: #ffffff;
-  --on-primary-700: #ffffff;
-}
-
-:root[data-color-preset='violet'] {
-  --primary-50: #f5f3ff; --primary-50-rgb: 245 243 255;
-  --primary-100: #ede9fe; --primary-100-rgb: 237 233 254;
-  --primary-200: #ddd6fe; --primary-200-rgb: 221 214 254;
-  --primary-300: #c4b5fd; --primary-300-rgb: 196 181 253;
-  --primary-400: #a78bfa; --primary-400-rgb: 167 139 250;
-  --primary-500: #7c3aed; --primary-500-rgb: 124 58 237;
-  --primary-600: #6d28d9; --primary-600-rgb: 109 40 217;
-  --primary-700: #5b21b6; --primary-700-rgb: 91 33 182;
-  --primary-800: #4c1d95; --primary-800-rgb: 76 29 149;
-  --primary-900: #3b0764; --primary-900-rgb: 59 7 100;
-  --primary-950: #2e1065; --primary-950-rgb: 46 16 101;
-  --accent-base: #c026d3; --accent-base-rgb: 192 38 211;
-  --on-primary: #ffffff;
-  --on-primary-500: #ffffff;
-  --on-primary-600: #ffffff;
-  --on-primary-700: #ffffff;
-}
-
-:root[data-color-preset='rose'] {
-  --primary-50: #fff1f2; --primary-50-rgb: 255 241 242;
-  --primary-100: #ffe4e6; --primary-100-rgb: 255 228 230;
-  --primary-200: #fecdd3; --primary-200-rgb: 254 205 211;
-  --primary-300: #fda4af; --primary-300-rgb: 253 164 175;
-  --primary-400: #fb7185; --primary-400-rgb: 251 113 133;
-  --primary-500: #e11d48; --primary-500-rgb: 225 29 72;
-  --primary-600: #be123c; --primary-600-rgb: 190 18 60;
-  --primary-700: #9f1239; --primary-700-rgb: 159 18 57;
-  --primary-800: #881337; --primary-800-rgb: 136 19 55;
-  --primary-900: #4c0519; --primary-900-rgb: 76 5 25;
-  --primary-950: #2b0210; --primary-950-rgb: 43 2 16;
-  --accent-base: #f97316; --accent-base-rgb: 249 115 22;
-  --on-primary: #ffffff;
-  --on-primary-500: #ffffff;
-  --on-primary-600: #ffffff;
-  --on-primary-700: #ffffff;
-}
-
-:root[data-color-preset='amber'] {
-  --primary-50: #fffbeb; --primary-50-rgb: 255 251 235;
-  --primary-100: #fef3c7; --primary-100-rgb: 254 243 199;
-  --primary-200: #fde68a; --primary-200-rgb: 253 230 138;
-  --primary-300: #fcd34d; --primary-300-rgb: 252 211 77;
-  --primary-400: #fbbf24; --primary-400-rgb: 251 191 36;
-  --primary-500: #d97706; --primary-500-rgb: 217 119 6;
-  --primary-600: #b45309; --primary-600-rgb: 180 83 9;
-  --primary-700: #92400e; --primary-700-rgb: 146 64 14;
-  --primary-800: #78350f; --primary-800-rgb: 120 53 15;
-  --primary-900: #451a03; --primary-900-rgb: 69 26 3;
-  --primary-950: #2a1002; --primary-950-rgb: 42 16 2;
-  --accent-base: #ea580c; --accent-base-rgb: 234 88 12;
-  --on-primary: #020617;
-  --on-primary-500: #020617;
-  --on-primary-600: #ffffff;
-  --on-primary-700: #ffffff;
-}
-
-:root[data-color-preset='graphite'] {
-  --primary-50: #f4f4f5; --primary-50-rgb: 244 244 245;
-  --primary-100: #e4e4e7; --primary-100-rgb: 228 228 231;
-  --primary-200: #d4d4d8; --primary-200-rgb: 212 212 216;
-  --primary-300: #a1a1aa; --primary-300-rgb: 161 161 170;
-  --primary-400: #71717a; --primary-400-rgb: 113 113 122;
-  --primary-500: #52525b; --primary-500-rgb: 82 82 91;
-  --primary-600: #3f3f46; --primary-600-rgb: 63 63 70;
-  --primary-700: #27272a; --primary-700-rgb: 39 39 42;
-  --primary-800: #18181b; --primary-800-rgb: 24 24 27;
-  --primary-900: #09090b; --primary-900-rgb: 9 9 11;
-  --primary-950: #050506; --primary-950-rgb: 5 5 6;
-  --accent-base: #a1a1aa; --accent-base-rgb: 161 161 170;
-  --on-primary: #ffffff;
-  --on-primary-500: #ffffff;
-  --on-primary-600: #ffffff;
-  --on-primary-700: #ffffff;
-}
-
 [data-app-theme]:not(.dark) {
   color-scheme: light;
 }
@@ -1222,32 +1106,386 @@ body {
   background-color: #fff !important;
 }
 
+/* A literal white dark-mode surface is intentional for a few public actions.
+   Keep its matching dark variant from being replaced by the active theme. */
+[data-app-theme].dark [class~='bg-white'][class*='dark:bg-white'] {
+  background-color: #fff !important;
+}
+
+[data-app-theme].dark [class~='bg-white/10'][class*='dark:bg-white/10'] {
+  background-color: rgb(255 255 255 / 10%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/20'][class*='dark:bg-white/20'] {
+  background-color: rgb(255 255 255 / 20%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/40'][class*='dark:bg-white/40'] {
+  background-color: rgb(255 255 255 / 40%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/50'][class*='dark:bg-white/50'] {
+  background-color: rgb(255 255 255 / 50%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/60'][class*='dark:bg-white/60'] {
+  background-color: rgb(255 255 255 / 60%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/70'][class*='dark:bg-white/70'] {
+  background-color: rgb(255 255 255 / 70%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/80'][class*='dark:bg-white/80'] {
+  background-color: rgb(255 255 255 / 80%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/85'][class*='dark:bg-white/85'] {
+  background-color: rgb(255 255 255 / 85%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/90'][class*='dark:bg-white/90'] {
+  background-color: rgb(255 255 255 / 90%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/95'][class*='dark:bg-white/95'] {
+  background-color: rgb(255 255 255 / 95%) !important;
+}
+
+/* Keep legacy dark-gray surface utilities dark when a source theme maps gray
+   text utilities to its readable ink color. Alpha variants retain their
+   original translucency. */
+[data-app-theme].dark [class*='dark:bg-gray-800/80'] {
+  background-color: color-mix(in srgb, var(--surface-raised) 80%, transparent) !important;
+}
+
+[data-app-theme].dark [class*='dark:bg-gray-900/30'] {
+  background-color: color-mix(in srgb, var(--surface) 30%, transparent) !important;
+}
+
+[data-app-theme].dark [class*='dark:bg-gray-500/20'] {
+  background-color: color-mix(in srgb, var(--surface-muted) 20%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-500'] {
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-600'] {
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-700'] {
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-800'] {
+  background-color: var(--surface-raised) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-900'] {
+  background-color: var(--surface) !important;
+}
+
+/* Raw gray-900/950 surfaces are used for code and tooltip layers. Keep them
+   dark in dark mode instead of allowing a theme's ink token to turn them
+   light. Explicit dark background variants above still win for their own
+   surfaces. */
+[data-app-theme].dark :is(
+  [class~='bg-gray-900']:not([class*='dark:bg-']),
+  [class~='bg-gray-950']:not([class*='dark:bg-'])
+) {
+  background-color: var(--dark-base) !important;
+}
+
+/* Explicit dark text utilities are legacy names, not color tokens. Resolve
+   them against the active surface so dark themes never render gray-100 as a
+   dark foreground or gray-900 as an unintended black foreground. */
+[data-app-theme].dark :is(
+  [class~='dark:text-gray-100'], [class~='dark:text-gray-200'],
+  [class~='dark:text-gray-600'], [class~='dark:text-gray-700'], [class~='dark:text-gray-800'],
+  [class~='dark:text-gray-900'], [class~='dark:text-gray-950'],
+  [class~='dark:text-dark-600'], [class~='dark:text-dark-700'], [class~='dark:text-dark-800'],
+  [class~='dark:text-dark-900'], [class~='dark:text-dark-950']
+) {
+  color: var(--ink) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='dark:text-gray-300'], [class~='dark:text-gray-400'], [class~='dark:text-gray-500'],
+  [class~='dark:text-dark-100'], [class~='dark:text-dark-200'], [class~='dark:text-dark-300'],
+  [class~='dark:text-dark-400'], [class~='dark:text-dark-500']
+) {
+  color: var(--muted) !important;
+}
+
+[data-app-theme].dark [class*='dark:bg-white']:is(
+  [class~='dark:text-gray-100'], [class~='dark:text-gray-200'], [class~='dark:text-gray-300'],
+  [class~='dark:text-gray-400'], [class~='dark:text-gray-500'], [class~='dark:text-gray-600'],
+  [class~='dark:text-gray-700'], [class~='dark:text-gray-800'], [class~='dark:text-gray-900'],
+  [class~='dark:text-gray-950']
+) {
+  color: #111827 !important;
+}
+
+/* Status text has a separate contrast-safe value from status fills. The fill
+   keeps each source's visual language, while labels remain readable on light
+   and dark surfaces. */
+[data-app-theme]:not(.dark) {
+  --status-success-text: #166534;
+  --status-warning-text: #92400e;
+  --status-danger-text: #b91c1c;
+  --on-status-success: #ffffff;
+  --on-status-warning: #ffffff;
+  --on-status-danger: #ffffff;
+}
+
+[data-app-theme].dark {
+  --status-success-text: #86efac;
+  --status-warning-text: #fcd34d;
+  --status-danger-text: #fca5a5;
+  --on-status-success: #052e16;
+  --on-status-warning: #1c1917;
+  --on-status-danger: #450a0a;
+}
+
+[data-app-theme='apple']:not(.dark),
+[data-app-theme='minimalism']:not(.dark),
+[data-app-theme='neoBrutalism']:not(.dark),
+[data-app-theme='notion']:not(.dark) {
+  --on-status-success: #020617;
+  --on-status-warning: #020617;
+  --on-status-danger: #020617;
+}
+
+[data-app-theme='wabiSabi']:not(.dark) {
+  --on-status-warning: #020617;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-status-success'],
+  [class~='text-green-400'], [class~='text-green-500'], [class~='text-green-600'], [class~='text-green-700'], [class~='text-green-800'], [class~='text-green-900'],
+  [class~='text-emerald-400'], [class~='text-emerald-500'], [class~='text-emerald-600'], [class~='text-emerald-700'], [class~='text-emerald-800'], [class~='text-emerald-900']
+) {
+  color: var(--status-success-text) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-status-warning'],
+  [class~='text-orange-400'], [class~='text-orange-500'], [class~='text-orange-600'], [class~='text-orange-700'], [class~='text-orange-800'], [class~='text-orange-900'],
+  [class~='text-amber-400'], [class~='text-amber-500'], [class~='text-amber-600'], [class~='text-amber-700'], [class~='text-amber-800'], [class~='text-amber-900'],
+  [class~='text-yellow-400'], [class~='text-yellow-500'], [class~='text-yellow-600'], [class~='text-yellow-700'], [class~='text-yellow-800'], [class~='text-yellow-900']
+) {
+  color: var(--status-warning-text) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-status-danger'],
+  [class~='text-red-400'], [class~='text-red-500'], [class~='text-red-600'], [class~='text-red-700'], [class~='text-red-800'], [class~='text-red-900']
+) {
+  color: var(--status-danger-text) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-status-success'],
+  [class~='text-green-400'], [class~='text-green-500'], [class~='text-green-600'], [class~='text-green-700'], [class~='text-green-800'], [class~='text-green-900'],
+  [class~='text-emerald-400'], [class~='text-emerald-500'], [class~='text-emerald-600'], [class~='text-emerald-700'], [class~='text-emerald-800'], [class~='text-emerald-900']
+) {
+  color: var(--status-success-text) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-status-warning'],
+  [class~='text-orange-400'], [class~='text-orange-500'], [class~='text-orange-600'], [class~='text-orange-700'], [class~='text-orange-800'], [class~='text-orange-900'],
+  [class~='text-amber-400'], [class~='text-amber-500'], [class~='text-amber-600'], [class~='text-amber-700'], [class~='text-amber-800'], [class~='text-amber-900'],
+  [class~='text-yellow-400'], [class~='text-yellow-500'], [class~='text-yellow-600'], [class~='text-yellow-700'], [class~='text-yellow-800'], [class~='text-yellow-900']
+) {
+  color: var(--status-warning-text) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-status-danger'],
+  [class~='text-red-400'], [class~='text-red-500'], [class~='text-red-600'], [class~='text-red-700'], [class~='text-red-800'], [class~='text-red-900']
+) {
+  color: var(--status-danger-text) !important;
+}
+
+/* Code surfaces intentionally keep a stable dark canvas and light ink in
+   every design source. This is separate from page text token remapping. */
+[data-app-theme] :is(
+  .code-block,
+  pre[class~='bg-gray-900'], pre[class~='bg-gray-950'],
+  [class~='bg-gray-900'][class~='text-gray-100'],
+  [class~='bg-gray-950'][class~='text-gray-100']
+) {
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+}
+
+[data-app-theme] :is(.code-block, pre[class~='bg-gray-900'], pre[class~='bg-gray-950']) :is(code, [class~='text-gray-100']) {
+  color: #f3f4f6 !important;
+}
+
+/* Solid status actions can use the source's bright status fill in light mode,
+   but a white label would disappear on several of the referenced palettes. */
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-green-400'], [class~='text-white'][class~='bg-green-500'], [class~='text-white'][class~='bg-green-600'], [class~='text-white'][class~='bg-green-700'],
+  [class~='text-white'][class~='bg-emerald-400'], [class~='text-white'][class~='bg-emerald-500'], [class~='text-white'][class~='bg-emerald-600'], [class~='text-white'][class~='bg-emerald-700']
+) {
+  color: var(--on-status-success) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-orange-400'], [class~='text-white'][class~='bg-orange-500'], [class~='text-white'][class~='bg-orange-600'], [class~='text-white'][class~='bg-orange-700'],
+  [class~='text-white'][class~='bg-amber-400'], [class~='text-white'][class~='bg-amber-500'], [class~='text-white'][class~='bg-amber-600'], [class~='text-white'][class~='bg-amber-700'],
+  [class~='text-white'][class~='bg-yellow-400'], [class~='text-white'][class~='bg-yellow-500'], [class~='text-white'][class~='bg-yellow-600'], [class~='text-white'][class~='bg-yellow-700']
+) {
+  color: var(--on-status-warning) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-red-400'], [class~='text-white'][class~='bg-red-500'], [class~='text-white'][class~='bg-red-600'], [class~='text-white'][class~='bg-red-700']
+) {
+  color: var(--on-status-danger) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-green-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-green-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-green-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-green-700']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-emerald-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-emerald-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-emerald-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-emerald-700']:not([class*='dark:bg-'])
+) {
+  color: var(--on-status-success) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-orange-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-orange-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-orange-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-orange-700']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-amber-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-amber-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-amber-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-amber-700']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-yellow-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-yellow-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-yellow-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-yellow-700']:not([class*='dark:bg-'])
+) {
+  color: var(--on-status-warning) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-red-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-red-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-red-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-red-700']:not([class*='dark:bg-'])
+) {
+  color: var(--on-status-danger) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class*='dark:bg-green-400'], [class~='text-white'][class*='dark:bg-green-500'], [class~='text-white'][class*='dark:bg-green-600'], [class~='text-white'][class*='dark:bg-green-700'],
+  [class~='text-white'][class*='dark:bg-emerald-400'], [class~='text-white'][class*='dark:bg-emerald-500'], [class~='text-white'][class*='dark:bg-emerald-600'], [class~='text-white'][class*='dark:bg-emerald-700']
+) {
+  color: var(--on-status-success) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class*='dark:bg-orange-400'], [class~='text-white'][class*='dark:bg-orange-500'], [class~='text-white'][class*='dark:bg-orange-600'], [class~='text-white'][class*='dark:bg-orange-700'],
+  [class~='text-white'][class*='dark:bg-amber-400'], [class~='text-white'][class*='dark:bg-amber-500'], [class~='text-white'][class*='dark:bg-amber-600'], [class~='text-white'][class*='dark:bg-amber-700'],
+  [class~='text-white'][class*='dark:bg-yellow-400'], [class~='text-white'][class*='dark:bg-yellow-500'], [class~='text-white'][class*='dark:bg-yellow-600'], [class~='text-white'][class*='dark:bg-yellow-700']
+) {
+  color: var(--on-status-warning) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class*='dark:bg-red-400'], [class~='text-white'][class*='dark:bg-red-500'], [class~='text-white'][class*='dark:bg-red-600'], [class~='text-white'][class*='dark:bg-red-700']
+) {
+  color: var(--on-status-danger) !important;
+}
+
 /* Bright source palettes need dark labels on solid primary actions. Keep the
    rule tied to the background utility so white remains available elsewhere. */
-[data-app-theme] .btn-primary,
-[data-app-theme] [class~='text-white'][class^='from-primary-'],
-[data-app-theme] [class~='text-white'][class*=' from-primary-'],
-[data-app-theme] [class~='text-white'][class^='bg-primary-500'],
-[data-app-theme] [class~='text-white'][class*=' bg-primary-500'] {
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-500'] {
   color: var(--on-primary-500, var(--on-primary, #fff)) !important;
 }
 
-[data-app-theme] [class~='text-white'][class^='bg-primary-600'],
-[data-app-theme] [class~='text-white'][class*=' bg-primary-600'] {
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-500']:not([class*='dark:bg-']) {
+  color: var(--on-primary-500, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-600'] {
   color: var(--on-primary-600, var(--on-primary, #fff)) !important;
 }
 
-[data-app-theme] [class~='text-white'][class^='bg-primary-700'],
-[data-app-theme] [class~='text-white'][class*=' bg-primary-700'] {
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-600']:not([class*='dark:bg-']) {
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-700'] {
   color: var(--on-primary-700, var(--on-primary, #fff)) !important;
 }
 
-/* Primary gradients span multiple token shades. Use the audited base shade
-   so one label remains readable across the whole action surface. */
-[data-app-theme] [class~='from-primary-400'],
-[data-app-theme] [class~='from-primary-500'][class~='to-primary-600'] {
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-700']:not([class*='dark:bg-']) {
+  color: var(--on-primary-700, var(--on-primary, #fff)) !important;
+}
+
+/* Action buttons use one audited shade, while decorative gradients elsewhere
+   keep their source-specific appearance. */
+[data-app-theme] .btn-primary {
   background-image: none !important;
-  background-color: var(--primary-500) !important;
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme] .btn-primary:hover {
+  background-image: none !important;
+  background-color: var(--primary-700) !important;
+  color: var(--on-primary-700, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-400'],
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-400']:not([class*='dark:bg-']) {
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='from-primary-400'],
+  [class~='text-white'][class~='from-primary-500']
+) {
+  background-image: none !important;
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='from-primary-400'],
+  [class~='text-white'][class~='from-primary-500']
+):not([class*='dark:bg-']) {
+  background-image: none !important;
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme] .btn-success,
+[data-app-theme] .btn-warning,
+[data-app-theme] .btn-danger {
+  background-image: none !important;
+}
+
+[data-app-theme] .btn-success {
+  background-color: var(--status-success) !important;
+  color: var(--on-status-success, #fff) !important;
+}
+
+[data-app-theme] .btn-success:hover {
+  background-color: color-mix(in srgb, var(--status-success) 88%, var(--dark-base)) !important;
+}
+
+[data-app-theme] .btn-warning {
+  background-color: var(--status-warning) !important;
+  color: var(--on-status-warning, #fff) !important;
+}
+
+[data-app-theme] .btn-warning:hover {
+  background-color: color-mix(in srgb, var(--status-warning) 88%, var(--dark-base)) !important;
+}
+
+[data-app-theme] .btn-danger {
+  background-color: var(--status-danger) !important;
+  color: var(--on-status-danger, #fff) !important;
+}
+
+[data-app-theme] .btn-danger:hover {
+  background-color: color-mix(in srgb, var(--status-danger) 88%, var(--dark-base)) !important;
 }
 
 [data-app-theme] .btn,

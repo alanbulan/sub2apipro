@@ -24,7 +24,6 @@
           const resolvedColorMode = savedColorMode === 'dark' ||
             (savedColorMode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
           root.dataset.colorMode = ['system', 'light', 'dark'].includes(savedColorMode) ? savedColorMode : 'system';
-          root.dataset.colorPreset = read('color-preset', ['theme', 'indigo', 'teal', 'violet', 'rose', 'amber', 'graphite'], 'theme');
           root.dataset.fontPreset = read('font-preset', ['system', 'humanist', 'serif', 'mono'], 'system');
           root.dataset.radius = read('radius-preset', ['sharp', 'soft', 'round'], 'soft');
           root.dataset.density = read('density', ['compact', 'comfortable', 'spacious'], 'comfortable');

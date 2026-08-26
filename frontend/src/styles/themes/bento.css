@@ -1,4 +1,3 @@
-/* VibeHub design source: https://vibe-hub.org/style-bento */
 /* Complete semantic token contract for this design source. */
 [data-app-theme='bento'] {
   --accent-50: var(--primary-50); --accent-50-rgb: var(--primary-50-rgb);
@@ -84,7 +83,7 @@
   --surface: #f8faff; --surface-rgb: 248 250 255;
   --surface-raised: #ffffff; --surface-raised-rgb: 255 255 255;
   --surface-muted: #eef2ff; --surface-muted-rgb: 238 242 255;
-  --border-color: #dbe3ff; --ink: #172554; --muted: #64748b;
+  --border-color: #dbe3ff; --ink: #172554; --muted: #5b697d; --muted-rgb: 91 105 125;
   --shadow-color: rgba(49, 46, 129, .12); --radius: 18px;
   --card-shadow: 0 10px 30px rgba(49, 46, 129, .09);
 }

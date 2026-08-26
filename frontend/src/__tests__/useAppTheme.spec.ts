@@ -25,11 +25,10 @@ describe('app theme runtime', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 
-  it('keeps one local stylesheet and source URL for every design topic', () => {
+  it('keeps one local stylesheet for every design topic', () => {
     expect(appThemes).toHaveLength(24)
     expect(new Set(appThemes.map((theme) => theme.id)).size).toBe(24)
-    expect(new Set(appThemes.map((theme) => theme.source)).size).toBe(24)
     expect(new Set(appThemes.map((theme) => theme.stylesheet)).size).toBe(24)
-    expect(appThemes.every((theme) => theme.source.startsWith('https://vibe-hub.org/style-'))).toBe(true)
+    expect(appThemes.every((theme) => theme.stylesheet.endsWith('.css'))).toBe(true)
   })
 })
