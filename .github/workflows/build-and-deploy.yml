@@ -57,6 +57,7 @@ jobs:
           images: ${{ steps.image.outputs.repository }}
           tags: |
             type=sha,prefix=sha-
+            type=raw,value=sha-${{ github.sha }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=ref,event=tag
