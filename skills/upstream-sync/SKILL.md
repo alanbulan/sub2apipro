@@ -34,7 +34,7 @@ When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner
 - preserve every protected path and stop if one would be changed;
 - stop for database migrations, payment flows, authentication protocols, security boundaries, unresolved conflicts, or failed validation;
 - public API contract changes may proceed only when they are not also a protected or high-risk change and the review explains compatibility and validation;
-- do not run Docker builds, production frontend builds, full backend test suites, or development servers when `UPSTREAM_SYNC_LOW_MEMORY=1` is present; CI performs the full build;
+- do not run Docker builds, production frontend builds, backend test commands, Go test commands, TypeScript compilers, package-manager scripts, development servers, or any other command that compiles/builds when `UPSTREAM_SYNC_LOW_MEMORY=1` is present; use only low-cost text/static checks and let CI perform the full build;
 - before the final response, write `.codex-upstream-sync/result.json` with `status` set to `applied`, `noop`, or `blocked`, and `remote_head` set to the report's exact remote SHA;
 - write `analysis.md` for every non-empty review, including a blocked review. A blocked result must leave `main` unchanged.
 

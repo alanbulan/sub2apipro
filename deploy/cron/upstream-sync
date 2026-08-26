@@ -13,6 +13,11 @@ LOCK_FILE="${LOCK_FILE:-$STATE_DIR/upstream-sync.lock}"
 CHECK_TIMEOUT="${CHECK_TIMEOUT:-5m}"
 CODEX_TIMEOUT="${CODEX_TIMEOUT:-45m}"
 CODEX_BIN="${CODEX_BIN:-codex}"
+CODEX_STARTED=0
+REMOTE_PUSHED=0
+RUN_FINISHED=0
+BEFORE_HEAD=""
+CHANGED_FILE=""
 STATE_FILE="$STATE_DIR/last-seen-head"
 REPORT_FILE="$STATE_DIR/report.md"
 ANALYSIS_FILE="$STATE_DIR/analysis.md"
@@ -43,6 +48,33 @@ fail() {
   fi
   exit 1
 }
+
+cleanup_on_exit() {
+  exit_code=$?
+
+  if [ "$CODEX_STARTED" -eq 1 ] && [ "$RUN_FINISHED" -eq 0 ] && [ "$REMOTE_PUSHED" -eq 0 ]; then
+    current_branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+    if [ "$current_branch" = 'main' ] && [ -n "$BEFORE_HEAD" ]; then
+      current_status="$(git status --porcelain=v1 --untracked-files=all)"
+      if [ "$(git rev-parse HEAD 2>/dev/null || true)" != "$BEFORE_HEAD" ] || [ -n "$current_status" ]; then
+        log "restoring main to $BEFORE_HEAD after incomplete Codex run"
+        git reset --hard "$BEFORE_HEAD" >/dev/null 2>&1 || log 'ERROR: unable to restore main automatically'
+        if [ -n "$(git status --porcelain=v1 --untracked-files=all)" ]; then
+          log 'WARNING: untracked changes remain after rollback; manual review is required'
+        fi
+      fi
+    else
+      log 'WARNING: incomplete Codex run did not leave main checked out; manual review is required'
+    fi
+  fi
+
+  if [ -n "$CHANGED_FILE" ]; then
+    rm -f "$CHANGED_FILE"
+  fi
+  exit "$exit_code"
+}
+
+trap cleanup_on_exit EXIT
 
 check_clean_worktree() {
   status="$(git status --porcelain=v1 --untracked-files=all)"
@@ -139,6 +171,7 @@ export UPSTREAM_SYNC_BASE_HEAD="$BASE_HEAD"
 export UPSTREAM_SYNC_LOW_MEMORY=1
 
 log "found $COUNT upstream commits; invoking Codex"
+CODEX_STARTED=1
 if ! timeout "$CODEX_TIMEOUT" "$CODEX_BIN" exec \
   --sandbox danger-full-access \
   --ephemeral \
@@ -148,7 +181,7 @@ Use the `upstream-sync` skill for this authorized unattended server run.
 
 Read `.codex-upstream-sync/report.md`, inspect every pending upstream commit, and apply the skill's protected-path and escalation rules. This repository owner has explicitly authorized ordinary upstream updates to be merged into `main` and subsequently pushed to `origin/main` by this wrapper. Never push to `upstream`.
 
-This is a 4GB production server. Do not run a Docker build, frontend production build, backend full test suite, dev server, or other high-memory build. Use low-cost validation such as diff checks and focused static checks; GitHub Actions performs the full build and deployment after the wrapper pushes.
+This is a 4GB production server. Do not run a Docker build, frontend production build, backend test command, Go test command, TypeScript compiler, package-manager script, dev server, or any other command that compiles or builds. Use only low-cost text/static checks such as `git diff --check`, `bash -n`, and `sh -n`; GitHub Actions performs the full build and deployment after the wrapper pushes.
 
 If the update is safe and applicable, merge or port it while preserving protected paths, create the required backup branch, and write `.codex-upstream-sync/analysis.md`. If no code changes are needed after reviewing all commits, use the `noop` result. If a protected path would be changed, a database migration/payment flow/authentication or security-boundary change appears, a conflict cannot be resolved safely, or low-cost checks fail, stop without changing main and use the `blocked` result.
 
@@ -184,10 +217,6 @@ process.stdout.write(result.remote_head || "");
 [ "$RESULT_HEAD" = "$TARGET_HEAD" ] || fail 'result.json remote_head does not match report'
 
 CHANGED_FILE="$(mktemp "$STATE_DIR/changed.XXXXXX")"
-cleanup() {
-  rm -f "$CHANGED_FILE"
-}
-trap cleanup EXIT
 {
   git diff --name-only "$BEFORE_HEAD" HEAD
   git diff --name-only
@@ -201,6 +230,7 @@ case "$RESULT_STATUS" in
     [ "$(git rev-parse HEAD)" = "$BEFORE_HEAD" ] || fail 'blocked result changed repository history'
     [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || fail 'blocked result left uncommitted changes'
     log 'Codex blocked this update; state remains pending'
+    RUN_FINISHED=1
     exit 2
     ;;
   noop)
@@ -208,6 +238,7 @@ case "$RESULT_STATUS" in
     [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || fail 'noop result left uncommitted changes'
     write_state "$TARGET_HEAD"
     log "upstream review complete with no code changes; state advanced to $TARGET_HEAD"
+    RUN_FINISHED=1
     ;;
   applied)
     git diff --check "$BEFORE_HEAD" || fail 'upstream sync contains whitespace errors'
@@ -219,9 +250,11 @@ case "$RESULT_STATUS" in
     check_clean_worktree
     log 'pushing approved upstream sync to origin/main'
     git push origin main || fail 'push to origin/main failed; state was not advanced'
+    REMOTE_PUSHED=1
     [ "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$(git rev-parse HEAD)" ] || fail 'origin/main does not match pushed HEAD'
     write_state "$TARGET_HEAD"
     log "upstream sync pushed successfully; state advanced to $TARGET_HEAD"
+    RUN_FINISHED=1
     ;;
   *)
     fail "unsupported Codex result status: $RESULT_STATUS"
