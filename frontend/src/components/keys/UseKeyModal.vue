@@ -1235,7 +1235,7 @@ function generateRoutedCodexFiles(
     ? `$env:SUB2API_API_KEY="${apiKey}"`
     : `export SUB2API_API_KEY="${apiKey}"`
 
-  const configContent = `# Codex CLI -> Sub2API ${label} group
+  const configContent = `# Codex CLI -> platform ${label} group
 model_provider = "sub2api"
 model = "${model}"
 review_model = "${model}"
@@ -1243,7 +1243,7 @@ disable_response_storage = true
 model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 
 [model_providers.sub2api]
-name = "Sub2API ${label}"
+name = "Platform ${label}"
 base_url = "${baseUrl}"
 env_key = "SUB2API_API_KEY"
 wire_api = "responses"
