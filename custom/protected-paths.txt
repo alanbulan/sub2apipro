@@ -1,6 +1,8 @@
 # One glob per line. Upstream sync must never overwrite or delete these files.
 custom/
 skills/upstream-sync/
+deploy/cron/
+.github/workflows/
 frontend/src/styles/themes/
 frontend/src/composables/useAppTheme.ts
 frontend/src/components/common/ThemeSwitcher.vue

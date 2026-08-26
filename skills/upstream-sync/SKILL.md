@@ -25,11 +25,26 @@ Use this skill after `scripts/check-upstream.sh` reports new upstream commits. T
 7. Write `.codex-upstream-sync/analysis.md` with commit-by-commit decisions, protected-path actions, test commands, and remaining risks.
 8. Do not push, deploy, restart services, rotate secrets, or delete branches unless the user explicitly requests those operations.
 
+## Unattended server mode
+
+When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner's explicitly authorized maintenance job. In this mode:
+
+- ordinary upstream updates may be merged into `main`; the wrapper, not Codex, pushes only `origin/main`;
+- never enable or use a push URL for `upstream`;
+- preserve every protected path and stop if one would be changed;
+- stop for database migrations, payment flows, authentication protocols, security boundaries, unresolved conflicts, or failed validation;
+- public API contract changes may proceed only when they are not also a protected or high-risk change and the review explains compatibility and validation;
+- do not run Docker builds, production frontend builds, full backend test suites, or development servers when `UPSTREAM_SYNC_LOW_MEMORY=1` is present; CI performs the full build;
+- before the final response, write `.codex-upstream-sync/result.json` with `status` set to `applied`, `noop`, or `blocked`, and `remote_head` set to the report's exact remote SHA;
+- write `analysis.md` for every non-empty review, including a blocked review. A blocked result must leave `main` unchanged.
+
+The wrapper advances `last-seen-head` only after an applied update has been pushed to `origin/main`, or after a complete review proves that no code change is needed. A failed, interrupted, or blocked run must leave the upstream state pending.
+
 ## Escalation Rules
 
 Stop and ask the user before proceeding when:
 
-- upstream changes a database migration, payment flow, authentication protocol, API contract, or security boundary;
+- upstream changes a database migration, payment flow, authentication protocol, or security boundary;
 - a conflict cannot preserve a documented custom behavior;
 - required tests fail and the cause is not clearly contained within one upstream change;
 - upstream removes code that a protected custom implementation imports.

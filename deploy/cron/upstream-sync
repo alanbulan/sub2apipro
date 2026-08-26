@@ -1,30 +1,229 @@
 #!/bin/sh
-# Daily upstream check. Set CODEX_UPSTREAM_SYNC_ARGS to pass extra Codex options.
+# Daily upstream check and authorized unattended sync for the customized fork.
 set -eu
 
 PATH="/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export PATH
+umask 077
 
 REPO_DIR="${REPO_DIR:-/sub2api}"
-LOG_DIR="${LOG_DIR:-$REPO_DIR/.codex-upstream-sync/logs}"
+STATE_DIR="$REPO_DIR/.codex-upstream-sync"
+LOG_DIR="${LOG_DIR:-$STATE_DIR/logs}"
+LOCK_FILE="${LOCK_FILE:-$STATE_DIR/upstream-sync.lock}"
+CHECK_TIMEOUT="${CHECK_TIMEOUT:-5m}"
+CODEX_TIMEOUT="${CODEX_TIMEOUT:-45m}"
+CODEX_BIN="${CODEX_BIN:-codex}"
+STATE_FILE="$STATE_DIR/last-seen-head"
+REPORT_FILE="$STATE_DIR/report.md"
+ANALYSIS_FILE="$STATE_DIR/analysis.md"
+RESULT_FILE="$STATE_DIR/result.json"
+RESPONSE_FILE="$STATE_DIR/last-response.txt"
+UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-upstream}"
+UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
+
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/$(date +%Y-%m-%d).log"
-
-cd "$REPO_DIR"
-COUNT="$(./scripts/check-upstream.sh)"
-
-if [ "$COUNT" -eq 0 ]; then
-  echo "$(date -Is) no update" >> "$LOG_FILE"
+exec 9>>"$LOCK_FILE"
+chmod 0600 "$LOCK_FILE"
+if ! flock -n 9; then
+  printf '%s upstream sync already running; exiting\n' "$(date -Is)" >&2
   exit 0
 fi
 
-{
-  echo "$(date -Is) found $COUNT commits; invoking Codex"
-  if [ -n "${CODEX_UPSTREAM_SYNC_ARGS:-}" ]; then
-    codex exec $CODEX_UPSTREAM_SYNC_ARGS "Use the upstream-sync skill. Read .codex-upstream-sync/report.md and analyze/merge the pending upstream updates without modifying protected paths."
-  else
-    codex exec "Use the upstream-sync skill. Read .codex-upstream-sync/report.md and analyze/merge the pending upstream updates without modifying protected paths."
+exec >>"$LOG_FILE" 2>&1
+
+log() {
+  printf '%s %s\n' "$(date -Is)" "$*"
+}
+
+fail() {
+  log "ERROR: $*"
+  if command -v logger >/dev/null 2>&1; then
+    logger -t sub2api-upstream-sync -- "$*" || true
   fi
-  git rev-parse "${UPSTREAM_REMOTE:-upstream}/${UPSTREAM_BRANCH:-main}" > "$REPO_DIR/.codex-upstream-sync/last-seen"
-  echo "$(date -Is) Codex finished"
-} >> "$LOG_FILE" 2>&1
+  exit 1
+}
+
+check_clean_worktree() {
+  status="$(git status --porcelain=v1 --untracked-files=all)"
+  [ -z "$status" ] || fail 'worktree is not clean; refusing to modify user changes'
+}
+
+check_remote_policy() {
+  origin_push="$(git remote get-url --push origin 2>/dev/null || true)"
+  [ -n "$origin_push" ] || fail 'origin has no push URL'
+  [ "$origin_push" != 'DISABLED' ] || fail 'origin push URL is disabled'
+
+  upstream_push="$(git remote get-url --push "$UPSTREAM_REMOTE" 2>/dev/null || true)"
+  [ "$upstream_push" = 'DISABLED' ] || fail "upstream push URL must remain DISABLED; got: $upstream_push"
+}
+
+is_protected_path() {
+  path="$1"
+  while IFS= read -r pattern || [ -n "$pattern" ]; do
+    case "$pattern" in
+      ''|'#'*) continue ;;
+    esac
+    case "$pattern" in
+      */)
+        case "$path" in
+          "$pattern"*) return 0 ;;
+        esac
+        ;;
+      *)
+        case "$path" in
+          $pattern) return 0 ;;
+        esac
+        ;;
+    esac
+  done < "$REPO_DIR/custom/protected-paths.txt"
+  return 1
+}
+
+check_protected_changes() {
+  changed_file="$1"
+  while IFS= read -r path || [ -n "$path" ]; do
+    [ -n "$path" ] || continue
+    if is_protected_path "$path"; then
+      fail "protected path changed by automated sync: $path"
+    fi
+  done < "$changed_file"
+}
+
+is_sha() {
+  printf '%s\n' "$1" | grep -Eq '^[0-9a-fA-F]{40}$'
+}
+
+write_state() {
+  target_head="$1"
+  printf '%s\n' "$target_head" | install -m 0600 /dev/stdin "$STATE_FILE"
+}
+
+cd "$REPO_DIR"
+log 'starting upstream sync'
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+[ "$branch" = 'main' ] || fail "current branch must be main; got: ${branch:-detached}"
+check_clean_worktree
+git fetch --quiet origin main || fail 'unable to refresh origin/main'
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail 'local main is not identical to origin/main'
+check_remote_policy
+command -v "$CODEX_BIN" >/dev/null 2>&1 || fail "Codex executable not found: $CODEX_BIN"
+
+COUNT="$(timeout "$CHECK_TIMEOUT" ./scripts/check-upstream.sh)" || fail 'upstream check failed or timed out'
+case "$COUNT" in
+  ''|*[!0-9]*) fail "upstream checker returned a non-numeric count: $COUNT" ;;
+esac
+
+if [ "$COUNT" -eq 0 ]; then
+  log 'no upstream update'
+  exit 0
+fi
+
+TARGET_HEAD="$(sed -n 's/^Remote head: `\([^`]*\)`.*/\1/p' "$REPORT_FILE" | head -n 1)"
+BASE_HEAD="$(sed -n 's/^Previous head: `\([^`]*\)`.*/\1/p' "$REPORT_FILE" | head -n 1)"
+is_sha "$TARGET_HEAD" || fail 'upstream report has no valid remote head'
+is_sha "$BASE_HEAD" || fail 'upstream report has no valid baseline'
+
+BEFORE_HEAD="$(git rev-parse HEAD)"
+RUN_STARTED="$(date +%s)"
+ANALYSIS_BEFORE=0
+if [ -f "$ANALYSIS_FILE" ]; then
+  ANALYSIS_BEFORE="$(stat -c '%Y' "$ANALYSIS_FILE")"
+fi
+rm -f "$RESULT_FILE" "$RESPONSE_FILE"
+
+export CODEX_UPSTREAM_SYNC_AUTOMATION=1
+export UPSTREAM_SYNC_TARGET_HEAD="$TARGET_HEAD"
+export UPSTREAM_SYNC_BASE_HEAD="$BASE_HEAD"
+export UPSTREAM_SYNC_LOW_MEMORY=1
+
+log "found $COUNT upstream commits; invoking Codex"
+if ! timeout "$CODEX_TIMEOUT" "$CODEX_BIN" exec \
+  --sandbox danger-full-access \
+  --ephemeral \
+  --output-last-message "$RESPONSE_FILE" \
+  - <<'EOF'
+Use the `upstream-sync` skill for this authorized unattended server run.
+
+Read `.codex-upstream-sync/report.md`, inspect every pending upstream commit, and apply the skill's protected-path and escalation rules. This repository owner has explicitly authorized ordinary upstream updates to be merged into `main` and subsequently pushed to `origin/main` by this wrapper. Never push to `upstream`.
+
+This is a 4GB production server. Do not run a Docker build, frontend production build, backend full test suite, dev server, or other high-memory build. Use low-cost validation such as diff checks and focused static checks; GitHub Actions performs the full build and deployment after the wrapper pushes.
+
+If the update is safe and applicable, merge or port it while preserving protected paths, create the required backup branch, and write `.codex-upstream-sync/analysis.md`. If no code changes are needed after reviewing all commits, use the `noop` result. If a protected path would be changed, a database migration/payment flow/authentication or security-boundary change appears, a conflict cannot be resolved safely, or low-cost checks fail, stop without changing main and use the `blocked` result.
+
+Before the final response, write `.codex-upstream-sync/result.json` as a JSON object with exactly these required fields:
+{"status":"applied|noop|blocked","remote_head":"<40-character upstream commit SHA>"}
+Use the current report's `Remote head` value for `remote_head`. Do not push; the wrapper validates the result, commits any uncommitted approved changes, pushes only `origin/main`, and advances the state only after success.
+EOF
+then
+  fail 'Codex failed or timed out; upstream state was not advanced'
+fi
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+[ "$branch" = 'main' ] || fail "Codex left repository on unexpected branch: ${branch:-detached}"
+check_remote_policy
+
+[ -s "$ANALYSIS_FILE" ] || fail 'Codex did not write analysis.md'
+ANALYSIS_AFTER="$(stat -c '%Y' "$ANALYSIS_FILE")"
+[ "$ANALYSIS_AFTER" -ge "$RUN_STARTED" ] || [ "$ANALYSIS_AFTER" -gt "$ANALYSIS_BEFORE" ] || fail 'analysis.md was not updated for this run'
+
+[ -s "$RESULT_FILE" ] || fail 'Codex did not write result.json'
+RESULT_STATUS="$(node -e '
+const fs = require("fs");
+const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (!["applied", "noop", "blocked"].includes(result.status)) process.exit(2);
+if (!/^[0-9a-fA-F]{40}$/.test(result.remote_head || "")) process.exit(3);
+process.stdout.write(result.status);
+' "$RESULT_FILE")" || fail 'result.json is invalid'
+RESULT_HEAD="$(node -e '
+const fs = require("fs");
+const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+process.stdout.write(result.remote_head || "");
+' "$RESULT_FILE")" || fail 'result.json could not be read'
+[ "$RESULT_HEAD" = "$TARGET_HEAD" ] || fail 'result.json remote_head does not match report'
+
+CHANGED_FILE="$(mktemp "$STATE_DIR/changed.XXXXXX")"
+cleanup() {
+  rm -f "$CHANGED_FILE"
+}
+trap cleanup EXIT
+{
+  git diff --name-only "$BEFORE_HEAD" HEAD
+  git diff --name-only
+  git diff --cached --name-only
+  git status --porcelain=v1 --untracked-files=all | sed 's/^.. //'
+} | sort -u > "$CHANGED_FILE"
+check_protected_changes "$CHANGED_FILE"
+
+case "$RESULT_STATUS" in
+  blocked)
+    [ "$(git rev-parse HEAD)" = "$BEFORE_HEAD" ] || fail 'blocked result changed repository history'
+    [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || fail 'blocked result left uncommitted changes'
+    log 'Codex blocked this update; state remains pending'
+    exit 2
+    ;;
+  noop)
+    [ "$(git rev-parse HEAD)" = "$BEFORE_HEAD" ] || fail 'noop result changed repository history'
+    [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || fail 'noop result left uncommitted changes'
+    write_state "$TARGET_HEAD"
+    log "upstream review complete with no code changes; state advanced to $TARGET_HEAD"
+    ;;
+  applied)
+    git diff --check "$BEFORE_HEAD" || fail 'upstream sync contains whitespace errors'
+    if [ -n "$(git status --porcelain=v1 --untracked-files=all)" ]; then
+      git add -A
+      git commit -m 'chore: sync upstream updates' || fail 'unable to commit Codex changes'
+    fi
+    [ "$(git rev-parse HEAD)" != "$BEFORE_HEAD" ] || fail 'applied result produced no commit'
+    check_clean_worktree
+    log 'pushing approved upstream sync to origin/main'
+    git push origin main || fail 'push to origin/main failed; state was not advanced'
+    [ "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$(git rev-parse HEAD)" ] || fail 'origin/main does not match pushed HEAD'
+    write_state "$TARGET_HEAD"
+    log "upstream sync pushed successfully; state advanced to $TARGET_HEAD"
+    ;;
+  *)
+    fail "unsupported Codex result status: $RESULT_STATUS"
+    ;;
+esac
