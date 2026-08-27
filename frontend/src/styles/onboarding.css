@@ -196,11 +196,11 @@
 }
 
 .theme-tour-popover .driver-popover-next-btn {
-  background-color: var(--primary-500, #14b8a6) !important;
+  background-color: var(--primary-500, #64748b) !important;
   color: var(--on-primary-500, #ffffff) !important;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
 }
-.theme-tour-popover .driver-popover-next-btn:hover { background-color: var(--primary-600, #0d9488) !important; }
+.theme-tour-popover .driver-popover-next-btn:hover { background-color: var(--primary-600, #475569) !important; }
 
 .theme-tour-popover .driver-popover-prev-btn {
   background-color: var(--surface-raised, white) !important;

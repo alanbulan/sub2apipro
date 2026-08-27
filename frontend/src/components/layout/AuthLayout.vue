@@ -23,7 +23,7 @@
 
       <!-- Grid Pattern -->
       <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
+        class="auth-grid-pattern absolute inset-0"
       ></div>
     </div>
 
@@ -88,5 +88,12 @@ onMounted(() => {
 <style scoped>
 .text-gradient {
   @apply bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent;
+}
+
+.auth-grid-pattern {
+  background-image:
+    linear-gradient(rgb(var(--primary-500-rgb) / 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--primary-500-rgb) / 0.03) 1px, transparent 1px);
+  background-size: 64px 64px;
 }
 </style>
