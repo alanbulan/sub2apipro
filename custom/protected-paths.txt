@@ -2,6 +2,12 @@
 custom/
 skills/upstream-sync/
 deploy/cron/
+deploy/docker-compose.yml
+deploy/docker-compose.local.yml
+deploy/docker-compose.standalone.yml
+deploy/.env.example
+deploy/prepare-4g-server.sh
+deploy/tests/docker-compose-security-test.sh
 .github/workflows/
 frontend/src/styles/themes/
 frontend/src/composables/useAppTheme.ts

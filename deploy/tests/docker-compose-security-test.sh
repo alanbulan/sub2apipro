@@ -32,6 +32,23 @@ check_application_security_opt() {
   fi
 }
 
+check_default_origin_binding() {
+  file=$1
+  count=$(
+    awk '
+      index($0, "\"${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080\"") > 0 {
+        count++
+      }
+      END { print count + 0 }
+    ' "$file"
+  )
+
+  if [ "$count" -ne 1 ]; then
+    printf '%s must bind the default application origin to 127.0.0.1\n' "$file" >&2
+    exit 1
+  fi
+}
+
 for compose_file in \
   deploy/docker-compose.yml \
   deploy/docker-compose.local.yml \
@@ -39,6 +56,7 @@ for compose_file in \
   deploy/docker-compose.dev.yml
 do
   check_application_security_opt "$compose_file"
+  check_default_origin_binding "$compose_file"
 done
 
 printf 'docker compose security test passed\n'

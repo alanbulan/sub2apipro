@@ -59,7 +59,7 @@ if [[ ! -e "$ENV_FILE" ]]; then
   cat > "$temp_env" <<EOF
 # Generated on $(date -Is). Keep this file private.
 APP_IMAGE=ghcr.io/alanbulan/sub2apipro:latest
-BIND_HOST=0.0.0.0
+BIND_HOST=127.0.0.1
 SERVER_PORT=8080
 SERVER_MODE=release
 AUTO_SETUP=true
