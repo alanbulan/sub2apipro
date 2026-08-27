@@ -128,7 +128,7 @@
   --density-scale: 1.14;
 }
 
-:root[data-content-width='standard'] { --app-content-max: 76rem; }
+:root[data-content-width='standard'] { --app-content-max: 100%; }
 :root[data-content-width='wide'] { --app-content-max: 92rem; }
 :root[data-content-width='full'] { --app-content-max: none; }
 
