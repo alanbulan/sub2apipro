@@ -1587,6 +1587,42 @@ body {
   color: var(--muted) !important;
 }
 
+/* Theme-owned form colors keep dark inputs readable when gray utility shades
+   resolve to a surface color instead of a text color. */
+[data-app-theme] :is(
+  input.input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea.input,
+  select.input,
+  .date-picker-input
+) {
+  color: var(--ink) !important;
+  background-color: var(--surface-raised) !important;
+  caret-color: var(--ink);
+}
+
+[data-app-theme] :is(
+  input.input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea.input,
+  select.input,
+  .date-picker-input,
+  .select-dropdown-portal .select-search-input,
+  .select-dropdown .select-search-input
+)::placeholder {
+  color: var(--muted) !important;
+  opacity: 1;
+}
+
+[data-app-theme] :is(
+  input.input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea.input,
+  select.input,
+  .date-picker-input
+):disabled {
+  color: var(--muted) !important;
+  background-color: var(--surface-muted) !important;
+  -webkit-text-fill-color: var(--muted);
+}
+
 /* Action buttons use one audited shade, while decorative gradients elsewhere
    keep their source-specific appearance. */
 [data-app-theme] .btn-primary {
