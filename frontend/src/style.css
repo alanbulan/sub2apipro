@@ -22,6 +22,7 @@
 @import './styles/themes/wabi-sabi.css';
 @import './styles/themes/bauhaus.css';
 @import './styles/themes/art-deco.css';
+@import './styles/theme-readability.css';
 
 @tailwind base;
 @tailwind components;
@@ -1196,27 +1197,6 @@ body {
   [class~='bg-gray-950']:not([class*='dark:bg-'])
 ) {
   background-color: var(--dark-base) !important;
-}
-
-/* Explicit dark text utilities are legacy names, not color tokens. Resolve
-   them against the active surface so dark themes never render gray-100 as a
-   dark foreground or gray-900 as an unintended black foreground. */
-[data-app-theme].dark :is(
-  [class~='dark:text-gray-100'], [class~='dark:text-gray-200'],
-  [class~='dark:text-gray-600'], [class~='dark:text-gray-700'], [class~='dark:text-gray-800'],
-  [class~='dark:text-gray-900'], [class~='dark:text-gray-950'],
-  [class~='dark:text-dark-600'], [class~='dark:text-dark-700'], [class~='dark:text-dark-800'],
-  [class~='dark:text-dark-900'], [class~='dark:text-dark-950']
-) {
-  color: var(--ink) !important;
-}
-
-[data-app-theme].dark :is(
-  [class~='dark:text-gray-300'], [class~='dark:text-gray-400'], [class~='dark:text-gray-500'],
-  [class~='dark:text-dark-100'], [class~='dark:text-dark-200'], [class~='dark:text-dark-300'],
-  [class~='dark:text-dark-400'], [class~='dark:text-dark-500']
-) {
-  color: var(--muted) !important;
 }
 
 [data-app-theme].dark [class*='dark:bg-white']:is(

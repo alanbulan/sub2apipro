@@ -1,0 +1,227 @@
+/*
+ * Cross-theme readability contract.
+ *
+ * The source theme files define palettes. This file only gives legacy utility
+ * classes and shared overlays a semantic meaning, so a palette's border color
+ * cannot accidentally become a text color. The app-theme prefix is
+ * intentional: these aliases must not collide with existing theme tokens.
+ */
+[data-app-theme] {
+  --app-theme-ink: var(--ink, #111827);
+  --app-theme-muted: var(--muted, #4b5563);
+  --app-theme-surface-raised: var(--surface-raised, #ffffff);
+  --app-theme-surface-muted: var(--surface-muted, #f3f4f6);
+  --app-theme-border: var(--border-color, #d1d5db);
+  --app-theme-tooltip-surface: var(--dark-base, #111827);
+  --app-theme-tooltip-ink: #ffffff;
+}
+
+[data-app-theme] .app-theme-readable {
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-readable-muted {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme] .app-theme-control {
+  background-color: var(--app-theme-surface-raised) !important;
+  border-color: var(--app-theme-border) !important;
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-control:hover,
+[data-app-theme] .app-theme-control:focus-visible {
+  background-color: var(--app-theme-surface-muted) !important;
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-control:disabled {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme] .app-theme-menu-surface {
+  background-color: var(--app-theme-surface-raised) !important;
+  border-color: var(--app-theme-border) !important;
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-menu-item {
+  appearance: none;
+  background-color: transparent !important;
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-menu-item:hover,
+[data-app-theme] .app-theme-menu-item:focus-visible {
+  background-color: var(--app-theme-surface-muted) !important;
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-menu-item:disabled {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme] .app-theme-menu-item-danger,
+[data-app-theme] .app-theme-menu-item-danger:hover,
+[data-app-theme] .app-theme-menu-item-danger:focus-visible {
+  color: var(--status-danger-text, #b91c1c) !important;
+}
+
+[data-app-theme] .app-theme-menu-item-danger:hover,
+[data-app-theme] .app-theme-menu-item-danger:focus-visible {
+  background-color: color-mix(in srgb, var(--status-danger) 14%, var(--app-theme-surface-raised)) !important;
+}
+
+[data-app-theme] .app-theme-menu-heading {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme] .app-theme-menu-divider {
+  border-color: var(--app-theme-border) !important;
+}
+
+[data-app-theme] .app-theme-tooltip {
+  background-color: var(--app-theme-tooltip-surface) !important;
+  color: var(--app-theme-tooltip-ink) !important;
+}
+
+[data-app-theme] .app-theme-tooltip-close {
+  color: rgb(255 255 255 / 78%) !important;
+}
+
+[data-app-theme] .app-theme-tooltip-close:hover,
+[data-app-theme] .app-theme-tooltip-close:focus-visible {
+  background-color: rgb(255 255 255 / 14%) !important;
+  color: #ffffff !important;
+}
+
+[data-app-theme] .app-theme-tooltip-arrow {
+  background-color: var(--app-theme-tooltip-surface) !important;
+}
+
+[data-app-theme] .app-theme-toast {
+  background-color: var(--app-theme-surface-raised) !important;
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-toast-title {
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-toast-message {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme] .app-theme-toast-message.app-theme-toast-message-primary {
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-toast-close {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme] .app-theme-toast-close:hover,
+[data-app-theme] .app-theme-toast-close:focus-visible {
+  background-color: var(--app-theme-surface-muted) !important;
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] .app-theme-toast-progress-track {
+  background-color: var(--app-theme-surface-muted) !important;
+}
+
+/* Theme files map gray-300 to the border token. Legacy text utilities still
+   use that shade for labels and icons, so resolve text by semantic role. */
+[data-app-theme] :is(
+  [class~='text-gray-50'], [class~='text-gray-100'], [class~='text-gray-200'],
+  [class~='text-gray-600'], [class~='text-gray-700'], [class~='text-gray-800'],
+  [class~='text-gray-900'], [class~='text-gray-950'],
+  [class~='text-dark-100'], [class~='text-dark-200'],
+  [class~='text-dark-600'], [class~='text-dark-700'], [class~='text-dark-800'],
+  [class~='text-dark-900'], [class~='text-dark-950']
+) {
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme] :is(
+  [class~='text-gray-300'], [class~='text-gray-400'], [class~='text-gray-500'],
+  [class~='text-dark-300'], [class~='text-dark-400'], [class~='text-dark-500']
+) {
+  color: var(--app-theme-muted) !important;
+}
+
+/* Explicit dark variants need the same interpretation when the active mode
+   is dark. The higher-specificity scope wins over generated utility rules. */
+[data-app-theme].dark :is(
+  [class~='dark:text-gray-50'], [class~='dark:text-gray-100'], [class~='dark:text-gray-200'],
+  [class~='dark:text-gray-600'], [class~='dark:text-gray-700'], [class~='dark:text-gray-800'],
+  [class~='dark:text-gray-900'], [class~='dark:text-gray-950'],
+  [class~='dark:text-dark-50'], [class~='dark:text-dark-100'], [class~='dark:text-dark-200'],
+  [class~='dark:text-dark-600'], [class~='dark:text-dark-700'], [class~='dark:text-dark-800'],
+  [class~='dark:text-dark-900'], [class~='dark:text-dark-950']
+) {
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='dark:text-gray-300'], [class~='dark:text-gray-400'], [class~='dark:text-gray-500'],
+  [class~='dark:text-dark-300'], [class~='dark:text-dark-400'], [class~='dark:text-dark-500']
+) {
+  color: var(--app-theme-muted) !important;
+}
+
+/* Keep hover/focus labels readable too. These selectors are state-scoped so
+   a hover utility does not change the element's resting color. */
+[data-app-theme] :is(
+  [class~='hover:text-gray-300'], [class~='hover:text-gray-400'], [class~='hover:text-gray-500'],
+  [class~='focus:text-gray-300'], [class~='focus:text-gray-400'], [class~='focus:text-gray-500'],
+  [class~='hover:text-dark-300'], [class~='hover:text-dark-400'], [class~='hover:text-dark-500'],
+  [class~='focus:text-dark-300'], [class~='focus:text-dark-400'], [class~='focus:text-dark-500']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme] :is(
+  [class~='hover:text-gray-600'], [class~='hover:text-gray-700'], [class~='hover:text-gray-800'], [class~='hover:text-gray-900'],
+  [class~='focus:text-gray-600'], [class~='focus:text-gray-700'], [class~='focus:text-gray-800'], [class~='focus:text-gray-900'],
+  [class~='hover:text-dark-600'], [class~='hover:text-dark-700'], [class~='hover:text-dark-800'], [class~='hover:text-dark-900'],
+  [class~='focus:text-dark-600'], [class~='focus:text-dark-700'], [class~='focus:text-dark-800'], [class~='focus:text-dark-900']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--app-theme-ink) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='dark:hover:text-gray-300'], [class~='dark:hover:text-gray-400'], [class~='dark:hover:text-gray-500'],
+  [class~='dark:focus:text-gray-300'], [class~='dark:focus:text-gray-400'], [class~='dark:focus:text-gray-500'],
+  [class~='dark:hover:text-dark-300'], [class~='dark:hover:text-dark-400'], [class~='dark:hover:text-dark-500'],
+  [class~='dark:focus:text-dark-300'], [class~='dark:focus:text-dark-400'], [class~='dark:focus:text-dark-500']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--app-theme-muted) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='dark:hover:text-gray-600'], [class~='dark:hover:text-gray-700'], [class~='dark:hover:text-gray-800'], [class~='dark:hover:text-gray-900'],
+  [class~='dark:focus:text-gray-600'], [class~='dark:focus:text-gray-700'], [class~='dark:focus:text-gray-800'], [class~='dark:focus:text-gray-900'],
+  [class~='dark:hover:text-dark-600'], [class~='dark:hover:text-dark-700'], [class~='dark:hover:text-dark-800'], [class~='dark:hover:text-dark-900'],
+  [class~='dark:focus:text-dark-600'], [class~='dark:focus:text-dark-700'], [class~='dark:focus:text-dark-800'], [class~='dark:focus:text-dark-900']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--app-theme-ink) !important;
+}
+
+/* A white surface with a white label is never a valid dark-mode pair. The
+   explicit dark-background variants remain untouched for branded actions. */
+[data-app-theme].dark :is(
+  [class~='bg-white'][class~='text-white'],
+  [class~='bg-white'][class~='dark:text-white'],
+  [class~='dark:bg-white'][class~='dark:text-white']
+) {
+  color: var(--app-theme-ink) !important;
+}
+
+/* The Grok free mark is a filled currentColor glyph. Keeping the fill local
+   avoids a theme's SVG defaults or inherited text utility hiding its path. */
+[data-app-theme] .app-theme-grok-mark {
+  fill: currentColor !important;
+  color: inherit;
+}

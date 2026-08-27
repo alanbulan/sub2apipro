@@ -153,6 +153,22 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
     wrapper.unmount()
   })
 
+  it('所有菜单操作都使用主题菜单语义类', () => {
+    const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+
+    const menu = document.body.querySelector('.app-theme-menu-surface')
+    expect(menu).toBeTruthy()
+    const buttons = Array.from(menu!.querySelectorAll('button'))
+    expect(buttons.length).toBeGreaterThan(0)
+    expect(buttons.every(button => button.classList.contains('app-theme-menu-item'))).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('点击按钮触发 create-spark-shadow 事件并携带 account', async () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

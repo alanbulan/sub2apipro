@@ -35,6 +35,7 @@
       <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <GrokFreeIcon
           v-if="isGrokFreePlan"
+          class="app-theme-grok-mark"
           data-testid="grok-free-plan-icon"
         />
         <Icon
@@ -58,7 +59,7 @@
       </span>
     </div>
     <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
-    <div v-if="expiresLabel" class="text-[10px] leading-tight text-gray-400 dark:text-gray-500 pl-0.5" :title="subscriptionExpiresAt">
+    <div v-if="expiresLabel" class="app-theme-readable-muted pl-0.5 text-[10px] leading-tight" :title="subscriptionExpiresAt">
       {{ expiresLabel }}
     </div>
   </div>
