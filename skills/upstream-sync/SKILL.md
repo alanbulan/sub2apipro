@@ -21,20 +21,34 @@ Use this skill after `scripts/check-upstream.sh` reports new upstream commits. T
 3. Never overwrite protected paths. For upstream changes that overlap them, port only the upstream behavior into the custom implementation; keep theme IDs, token names, branding removals, and public interfaces stable.
 4. Before merging, create a backup branch named `backup/pre-upstream-<timestamp>`.
 5. Merge upstream in small batches when possible. Resolve conflicts by preserving local intent first and adding upstream behavior second.
-6. Run focused checks: frontend type check/build, backend tests for touched Go packages, and any tests named for changed modules.
+6. In a development worktree, run focused checks for touched code. On the production server, do not run local builds, package-manager scripts, type checks, or tests; record the GitHub Actions run that validates the pushed commit instead.
 7. Write `.codex-upstream-sync/analysis.md` with commit-by-commit decisions, protected-path actions, test commands, and remaining risks.
 8. Do not push, deploy, restart services, rotate secrets, or delete branches unless the user explicitly requests those operations.
 
-## Unattended server mode
+## Production Server Validation
+
+The production server is a sync-and-push host, not a build host. This rule
+applies to the scheduled wrapper and to any manual Codex run in the production
+repository:
+
+- never run Docker builds, frontend builds, backend tests, Go tests, TypeScript
+  compilers, package-manager scripts, development servers, or other compile or
+  test commands locally;
+- use only low-cost static checks such as `git diff --check`, `bash -n`, and
+  `sh -n`;
+- GitHub Actions is the sole authority for build and test validation after the
+  approved commit is pushed to `origin/main`.
+
+## Unattended Server Mode
 
 When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner's explicitly authorized maintenance job. In this mode:
 
 - ordinary upstream updates may be merged into `main`; the wrapper, not Codex, pushes only `origin/main`;
 - never enable or use a push URL for `upstream`;
 - preserve every protected path and stop if one would be changed;
-- stop for database migrations, payment flows, authentication protocols, security boundaries, unresolved conflicts, or failed validation;
-- public API contract changes may proceed only when they are not also a protected or high-risk change and the review explains compatibility and validation;
-- do not run Docker builds, production frontend builds, backend test commands, Go test commands, TypeScript compilers, package-manager scripts, development servers, or any other command that compiles/builds when `UPSTREAM_SYNC_LOW_MEMORY=1` is present; use only low-cost text/static checks and let CI perform the full build;
+- merge database migrations, payment flows, authentication protocols, security boundaries, and public API changes by default; these categories are not independent stop conditions;
+- stop only when a documented protected UI, copy, or automation requirement cannot be preserved, a conflict cannot be resolved, or a low-cost static check fails;
+- follow the production-server validation rules above regardless of `UPSTREAM_SYNC_LOW_MEMORY`; GitHub Actions performs every build and test;
 - the wrapper runs Codex in a systemd transient service on the 4GB production server with bounded memory, swap, task count, and runtime; do not bypass those limits or start detached child processes;
 - before the final response, write `.codex-upstream-sync/result.json` with `status` set to `applied`, `noop`, or `blocked`, and `remote_head` set to the report's exact remote SHA;
 - write `analysis.md` for every non-empty review, including a blocked review. A blocked result must leave `main` unchanged.
@@ -43,11 +57,9 @@ The wrapper advances `last-seen-head` only after an applied update has been push
 
 ## Escalation Rules
 
-Stop and ask the user before proceeding when:
+Stop and ask the user before proceeding only when:
 
-- upstream changes a database migration, payment flow, authentication protocol, or security boundary;
-- a conflict cannot preserve a documented custom behavior;
-- required tests fail and the cause is not clearly contained within one upstream change;
+- a conflict cannot preserve a documented protected UI, copy, or automation behavior; or
 - upstream removes code that a protected custom implementation imports.
 
 For detailed conflict recipes, read [references/sync-playbook.md](references/sync-playbook.md).
