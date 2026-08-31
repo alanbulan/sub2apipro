@@ -13,11 +13,16 @@ Run a manual Codex analysis:
 codex exec "Use the upstream-sync skill. Read .codex-upstream-sync/report.md and analyze/merge the pending upstream updates without modifying protected paths."
 ```
 
-Install a daily 09:00 server-time job:
+Install a daily 04:00 China Standard Time (`Asia/Shanghai`) job:
 
 ```cron
-0 9 * * * /sub2api/deploy/cron/upstream-sync
+0 15,16 * * * [ "$(TZ=Asia/Shanghai date +\%H)" = 04 ] && /sub2api/deploy/cron/upstream-sync
 ```
+
+The production server uses the `America/New_York` timezone and its Debian cron
+does not support `CRON_TZ`. The guard runs the wrapper only when the current
+hour in `Asia/Shanghai` is `04`, covering both daylight-saving and standard
+time without a manual schedule change.
 
 Required configuration:
 
