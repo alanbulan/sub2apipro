@@ -364,12 +364,12 @@ type ResponsesResponse struct {
 	// it non-optional and abort with `missing field 'created_at'` when it is
 	// absent, so it is always emitted — no omitempty. Same rule as ID (see the
 	// "clients treat it as required" fallback in ChatCompletionsResponseToAnthropic).
-	CreatedAt int64             `json:"created_at"`
-	Model     string            `json:"model"`
-	Status    string            `json:"status"` // "completed" | "incomplete" | "failed"
-	Output    []ResponsesOutput `json:"output"`
-	Usage     *ResponsesUsage   `json:"usage,omitempty"`
-	ServiceTier string           `json:"service_tier,omitempty"` // upstream tier, echoed back verbatim
+	CreatedAt   int64             `json:"created_at"`
+	Model       string            `json:"model"`
+	Status      string            `json:"status"` // "completed" | "incomplete" | "failed"
+	Output      []ResponsesOutput `json:"output"`
+	Usage       *ResponsesUsage   `json:"usage,omitempty"`
+	ServiceTier string            `json:"service_tier,omitempty"` // upstream tier, echoed back verbatim
 
 	// incomplete_details is present when status="incomplete"
 	IncompleteDetails *ResponsesIncompleteDetails `json:"incomplete_details,omitempty"`
