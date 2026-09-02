@@ -27,12 +27,12 @@ time without a manual schedule change.
 Required configuration:
 
 - `upstream` remote must point to the source repository;
-- `custom/protected-paths.txt` lists files and directories that must not be overwritten;
+- `custom/protected-paths.txt` lists fork-owned UI, copy, and sync/CI automation that must not be overwritten;
 - `codex` must be available on `PATH` for scheduled execution;
 - logs are written under `.codex-upstream-sync/logs/`.
 
 The scheduled wrapper is designed for the 4GB production server. When upstream commits are pending, it runs Codex in a systemd transient service with bounded memory, swap, process count, and runtime. The production server is never a build or test host: scheduled and manual production runs may use only low-cost static checks such as `git diff --check`, `bash -n`, and `sh -n`. Docker builds, frontend production builds, backend tests, Go tests, TypeScript compilation, package-manager scripts, and development servers are performed only by GitHub Actions after the wrapper pushes to `origin/main`.
 
-The automated merge is upstream-first. Database migrations, payment flows, OAuth or other authentication changes, security-boundary changes, and public API changes do not block a sync on their own. The only merge blockers are an unresolved conflict or an inability to preserve a documented protected UI, copy, or automation requirement.
+The automated merge is upstream-first. Database migrations, payment flows, OAuth or other authentication changes, security-boundary changes, public API changes, and deployment manifests follow upstream by default. The only merge blockers are an unresolved conflict or an inability to preserve a documented protected UI, copy, or automation requirement.
 
 An interrupted, failed, or blocked review does not advance `.codex-upstream-sync/last-seen-head`. The next scheduled run will review the same upstream commits. A successful `noop` review advances the state only after the complete review proves that no code change is required.

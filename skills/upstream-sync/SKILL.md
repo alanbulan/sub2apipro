@@ -18,7 +18,7 @@ Use this skill after `scripts/check-upstream.sh` reports new upstream commits. T
 
 1. Read `.codex-upstream-sync/report.md`, then run `git log --oneline <local>..<remote>/<branch>` and inspect each commit's changed files with `git show --stat`.
 2. Classify every changed file as `protected`, `mergeable`, or `conflict-risk` using `custom/protected-paths.txt`.
-3. Never overwrite protected paths. For upstream changes that overlap them, port only the upstream behavior into the custom implementation; keep theme IDs, token names, branding removals, and public interfaces stable.
+3. Never overwrite protected paths. For upstream changes that overlap them, port only the upstream behavior into the custom implementation; keep theme IDs, token names, branding removals, and local sync/CI behavior stable. Deployment manifests and helpers are not protected and follow upstream by default.
 4. Before merging, create a backup branch named `backup/pre-upstream-<timestamp>`.
 5. Merge upstream in small batches when possible. Resolve conflicts by preserving local intent first and adding upstream behavior second.
 6. In a development worktree, run focused checks for touched code. On the production server, do not run local builds, package-manager scripts, type checks, or tests; record the GitHub Actions run that validates the pushed commit instead.

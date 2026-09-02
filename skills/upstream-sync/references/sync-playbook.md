@@ -23,4 +23,4 @@ Upstream release/update logic points at the original project. Preserve the mecha
 
 ## Automation Files
 
-`skills/upstream-sync/**`, `scripts/check-upstream.sh`, and `custom/protected-paths.txt` define this fork's workflow. Prefer rebasing local improvements over accepting an upstream version of these files.
+`skills/upstream-sync/**`, `scripts/check-upstream.sh`, and `custom/protected-paths.txt` define this fork's workflow. Prefer rebasing local improvements over accepting an upstream version of these files. Deployment manifests and helpers are upstream-owned unless they are explicitly listed in `custom/protected-paths.txt`.
