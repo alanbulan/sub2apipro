@@ -36,14 +36,15 @@ repository:
   test commands locally;
 - use only low-cost static checks such as `git diff --check`, `bash -n`, and
   `sh -n`;
-- GitHub Actions is the sole authority for build and test validation after the
-  approved commit is pushed to `origin/main`.
+- GitHub Actions is the sole authority for build and test validation. The
+  wrapper first pushes an approved commit to `sync/upstream-candidate`, waits
+  for its `CI` workflow, and promotes only a passing candidate to `origin/main`.
 
 ## Unattended Server Mode
 
 When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner's explicitly authorized maintenance job. In this mode:
 
-- ordinary upstream updates may be merged into `main`; the wrapper, not Codex, pushes only `origin/main`;
+- ordinary upstream updates may be merged into local `main`; the wrapper, not Codex, pushes a GitHub CI candidate and promotes only a passing candidate to `origin/main`;
 - never enable or use a push URL for `upstream`;
 - preserve every protected path and stop if one would be changed;
 - merge database migrations, payment flows, authentication protocols, security boundaries, and public API changes by default; these categories are not independent stop conditions;
@@ -53,7 +54,7 @@ When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner
 - before the final response, write `.codex-upstream-sync/result.json` with `status` set to `applied`, `noop`, or `blocked`, and `remote_head` set to the report's exact remote SHA;
 - write `analysis.md` for every non-empty review, including a blocked review. A blocked result must leave `main` unchanged.
 
-The wrapper advances `last-seen-head` only after an applied update has been pushed to `origin/main`, or after a complete review proves that no code change is needed. A failed, interrupted, or blocked run must leave the upstream state pending.
+The wrapper advances `last-seen-head` only after candidate CI has passed and an applied update has been promoted to `origin/main`, or after a complete review proves that no code change is needed. A failed, interrupted, blocked, or CI-rejected run must leave the upstream state pending.
 
 ## Escalation Rules
 
