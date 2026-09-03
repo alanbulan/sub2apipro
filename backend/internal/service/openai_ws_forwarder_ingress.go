@@ -641,6 +641,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					return fmt.Errorf("resolve Grok websocket cache identity: %w", err)
 				}
 			}
+			bridgeWriteClientMessage := writeClientMessage
+			if hooks != nil && hooks.AfterResponseFrame != nil {
+				bridgeWriteClientMessage = func(message []byte) error {
+					if err := writeClientMessage(message); err != nil {
+						return err
+					}
+					hooks.AfterResponseFrame(turn, message)
+					return nil
+				}
+			}
 			result, bridgeErr := s.proxyOpenAIWSHTTPBridgeTurn(
 				ctx,
 				c,
@@ -654,7 +664,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				currentBridgePayload.imageInputSize,
 				grokCacheIdentity,
 				turn,
-				writeClientMessage,
+				bridgeWriteClientMessage,
 			)
 			if bridgeErr != nil && isOpenAIWSSessionPreempted(ctx) {
 				return errOpenAIWSSessionPreempted
@@ -1163,6 +1173,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					}
 				} else {
 					wroteDownstream = true
+					if hooks != nil && hooks.AfterResponseFrame != nil {
+						hooks.AfterResponseFrame(turn, clientMessage)
+					}
 					markOpenAIWSClientVisibleFailure(c, eventType, upstreamMessage)
 				}
 			}

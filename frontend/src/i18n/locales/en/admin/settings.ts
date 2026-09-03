@@ -1222,6 +1222,9 @@ export default {
       usageRecords: {
         title: 'Usage Records',
         description: 'Settings for usage and failed-request records visible to end users.',
+        conversationLogs: 'Conversation Records',
+        conversationLogsDescription: 'Store and review user requests and model response bodies.',
+        openConversationLogs: 'View conversation records',
       },
       user_error_view: {
         label: 'Allow users to view their own error requests',

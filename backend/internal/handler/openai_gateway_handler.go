@@ -37,6 +37,7 @@ type OpenAIGatewayHandler struct {
 	billingCacheService        *service.BillingCacheService
 	apiKeyService              *service.APIKeyService
 	usageRecordWorkerPool      *service.UsageRecordWorkerPool
+	conversationLogService     *service.ConversationLogService
 	errorPassthroughService    *service.ErrorPassthroughService
 	contentModerationService   *service.ContentModerationService
 	securityAuditCoordinator   *securityaudit.Coordinator
@@ -2278,6 +2279,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "previous_response_id must be a response.id (resp_*), not a message id")
 		return
 	}
+	conversationRecorder := newOpenAIWSConversationRecorder(h.conversationLogService, c, apiKey)
+	conversationRecorder.beginTurn(1, firstMessage, reqModel, firstTurnStartedAt)
+	defer conversationRecorder.closePending()
 	firstMessageToolCoverage := service.AnalyzeToolCallOutputContextCoverageBytes(firstMessage)
 	previousResponseCanMove := !firstMessageToolCoverage.HasFunctionCallOutput || firstMessageToolCoverage.ContextCoversAllCallIDs
 	reqLog = reqLog.With(
@@ -2655,8 +2659,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			MaxReasoningEffort:          maxReasoningEffort,
 			MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
 			ReasoningEffortMappings:     reasoningEffortMappings,
-			TurnStarted:                 recordTurnStart,
+			TurnStarted: func(turn int, startedAt time.Time) {
+				recordTurnStart(turn, startedAt)
+				conversationRecorder.setTurnStarted(turn, startedAt)
+			},
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				conversationRecorder.beginTurn(turn, payload, originalModel, time.Now())
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
@@ -2686,6 +2694,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				return nil
 			},
+			AfterResponseFrame: conversationRecorder.appendResponseFrame,
 			MapRequestModel: func(turn int, originalModel string) (string, error) {
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
@@ -2751,6 +2760,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return nil
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				defer conversationRecorder.finishTurn(turn, result, turnErr)
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
 				// F1: cyber 标记按 turn 生命周期清理——defer 保证任意早返回路径都执行；

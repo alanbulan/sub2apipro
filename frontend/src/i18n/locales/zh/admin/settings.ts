@@ -1216,6 +1216,9 @@ export default {
       usageRecords: {
         title: '使用记录',
         description: '与终端用户可见的用量及失败请求记录相关的设置。',
+        conversationLogs: '会话记录',
+        conversationLogsDescription: '保存并查看用户请求与模型回复正文。',
+        openConversationLogs: '查看会话记录',
       },
       user_error_view: {
         label: '允许用户查看自己的错误请求',

@@ -6210,6 +6210,13 @@
             </p>
           </div>
           <div class="space-y-4 p-6">
+            <div class="flex items-center justify-between border-b border-gray-100 pb-4 dark:border-dark-700">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.usageRecords.conversationLogs') }}</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.usageRecords.conversationLogsDescription') }}</p>
+              </div>
+              <router-link to="/admin/conversation-logs" class="btn btn-secondary btn-sm">{{ t('admin.settings.usageRecords.openConversationLogs') }}</router-link>
+            </div>
             <!-- User error requests visibility -->
             <div class="flex items-center justify-between">
               <div>

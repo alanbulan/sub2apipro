@@ -508,6 +508,15 @@ export default {
       failedToLoadUsages: 'Failed to load usage records'
     },
 
+    conversationLogs: {
+      title: 'Conversation Records', description: 'Review each user conversation request and model response for analysis',
+      empty: 'No conversation records', failedToLoad: 'Failed to load conversation records', detailTitle: 'Conversation Detail', request: 'User Request', response: 'Model Response',
+      payloadSize: 'Request / response size', truncated: 'The payload exceeded the per-record storage limit and is truncated.',
+      filters: { sessionId: 'Session ID', sessionPlaceholder: 'Search session ID', requestId: 'Request ID', user: 'User', userId: 'User ID', userPlaceholder: 'Search user by email', allUsers: 'All users', deletedUser: 'Deleted', apiKeyId: 'API key ID', model: 'Model', protocol: 'Protocol', status: 'Status', startTime: 'Start time', endTime: 'End time' },
+      status: { pending: 'Recording', completed: 'Completed', failed: 'Failed', incomplete: 'Incomplete' },
+      columns: { time: 'Time', session: 'Session', user: 'User / key', model: 'Model', protocol: 'Protocol', endpoint: 'Endpoint', status: 'Status', httpStatus: 'HTTP status', duration: 'Duration' }
+    },
+
     // Usage Records
     usage: {
       title: 'Usage Records',

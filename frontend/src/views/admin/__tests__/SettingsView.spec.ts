@@ -260,6 +260,17 @@ vi.mock("vue-i18n", async () => {
 });
 
 const AppLayoutStub = { template: "<div><slot /></div>" };
+const RouterLinkStub = defineComponent({
+  props: {
+    to: {
+      type: String,
+      required: true,
+    },
+  },
+  setup(props, { slots }) {
+    return () => h("a", { href: props.to }, slots.default?.());
+  },
+});
 const ToggleStub = defineComponent({
   props: {
     modelValue: {
@@ -548,6 +559,7 @@ function mountView() {
     global: {
       stubs: {
         AppLayout: AppLayoutStub,
+        RouterLink: RouterLinkStub,
         Select: SelectStub,
         Toggle: ToggleStub,
         Icon: true,
@@ -718,6 +730,14 @@ describe("admin SettingsView payment visible method controls", () => {
     });
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
+  });
+
+  it("links gateway settings to conversation records", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    expect(wrapper.find('a[href="/admin/conversation-logs"]').exists()).toBe(true);
   });
 
   it("submits the compact home page toggle", async () => {
@@ -1224,6 +1244,7 @@ describe("admin SettingsView payment visible method controls", () => {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
+          RouterLink: RouterLinkStub,
           Select: SelectStub,
           Toggle: ToggleStub,
           Icon: true,
@@ -1522,6 +1543,7 @@ describe("admin SettingsView payment visible method controls", () => {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
+          RouterLink: RouterLinkStub,
           Select: SelectStub,
           Toggle: ToggleStub,
           Icon: true,
