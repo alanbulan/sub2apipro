@@ -106,7 +106,7 @@ func (r *ConversationLogRepository) List(ctx context.Context, filter service.Con
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]*service.ConversationLog, 0, limit)
 	for rows.Next() {
 		item, scanErr := scanConversationSummary(rows)
