@@ -7,6 +7,34 @@ permissions:
   contents: read
 
 jobs:
+  sync-automation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Check sync scripts and recovery behavior
+        id: sync
+        run: |
+          set -o pipefail
+          sh -n deploy/cron/upstream-sync
+          bash -n scripts/check-upstream.sh
+          bash -n .github/scripts/report-ci-failure.sh
+          node --test deploy/tests/upstream-sync-ci.test.cjs 2>&1 | tee sync-test.log
+      - name: Report sync automation failure
+        if: failure() && steps.sync.outcome == 'failure'
+        run: bash .github/scripts/report-ci-failure.sh sync-test.log
+      - name: Save sync automation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-test-log-${{ github.run_attempt }}
+          path: sync-test.log
+          if-no-files-found: ignore
+          retention-days: 14
+
   shell:
     runs-on: macos-15
     steps:
@@ -33,27 +61,38 @@ jobs:
       - name: Verify Go version
         run: |
           go version | grep -q 'go1.27.0'
+      - name: Gateway initialization and fork module regression
+        id: gateway
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -tags=unit ./internal/server/routes ./internal/handler -run 'Test(GatewayRoutesGroupModelAllowlist|ConversationCapture|OpenAIWSConversationRecorder)' 2>&1 | tee gateway-test.log
       - name: Unit tests
+        id: unit
         working-directory: backend
         shell: bash
         run: |
           set -o pipefail
           make test-unit 2>&1 | tee unit-test.log
-      - name: Report unit test failure
-        if: failure()
+      - name: Integration tests
+        id: integration
         working-directory: backend
         shell: bash
         run: |
-          excerpt="$(grep -E -C 5 '(^--- FAIL:|^FAIL[[:space:]]|^panic:|^.*Error Trace:|^.*Expected:|^.*Not equal:)' unit-test.log | tail -n 120 || true)"
-          if [ -z "$excerpt" ]; then
-            excerpt="$(tail -n 120 unit-test.log)"
-          fi
-          excerpt="$(printf '%s' "$excerpt" | tr '\r\n' '  ' | cut -c1-6000)"
-          excerpt="${excerpt//%/%25}"
-          printf '::error title=Unit test failure excerpt::%s\n' "$excerpt"
-      - name: Integration tests
-        working-directory: backend
-        run: make test-integration
+          set -o pipefail
+          make test-integration 2>&1 | tee integration-test.log
+      - name: Report backend failure
+        if: failure() && (steps.gateway.outcome == 'failure' || steps.unit.outcome == 'failure' || steps.integration.outcome == 'failure')
+        run: bash .github/scripts/report-ci-failure.sh backend/*-test.log
+      - name: Save backend test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-logs-${{ github.run_attempt }}
+          path: backend/*-test.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   frontend:
     runs-on: ubuntu-latest
@@ -73,7 +112,22 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
       - name: Frontend typecheck and critical vitest
-        run: make test-frontend
+        id: frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          make test-frontend 2>&1 | tee frontend-test.log
+      - name: Report frontend failure
+        if: failure() && steps.frontend.outcome == 'failure'
+        run: bash .github/scripts/report-ci-failure.sh frontend-test.log
+      - name: Save frontend test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-log-${{ github.run_attempt }}
+          path: frontend-test.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   golangci-lint:
     runs-on: ubuntu-latest

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -144,6 +145,45 @@ func TestConversationCaptureRetainsRepeatedRequestIDs(t *testing.T) {
 	require.Len(t, repo.finalized, 2)
 	require.Equal(t, "reused-request-id", repo.created[0].RequestID)
 	require.Equal(t, "reused-request-id", repo.created[1].RequestID)
+}
+
+func TestConversationCaptureWithHandlerAsSingleRouteHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("capture_enabled=%t", enabled), func(t *testing.T) {
+			repo := &conversationLogRepositoryStub{}
+			h := &GatewayHandler{}
+			if enabled {
+				h.conversationLogService = service.NewConversationLogService(repo)
+			}
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 1, UserID: 2})
+				c.Next()
+			})
+			calls := 0
+			router.POST("/responses", h.ConversationCaptureWithHandler("openai_responses", func(c *gin.Context) {
+				calls++
+				_, err := io.Copy(io.Discard, c.Request.Body)
+				require.NoError(t, err)
+				c.JSON(http.StatusCreated, gin.H{"output": "captured"})
+			}))
+			req := httptest.NewRequest(http.MethodPost, "/responses", bytes.NewBufferString(`{"model":"gpt-test"}`))
+			req.Header.Set("X-Request-ID", "single-handler")
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+			require.Equal(t, 1, calls)
+			require.Equal(t, http.StatusCreated, recorder.Code)
+			if enabled {
+				require.Len(t, repo.created, 1)
+				require.NotNil(t, repo.finalized[1])
+				require.Equal(t, "completed", repo.finalized[1].Status)
+				require.JSONEq(t, recorder.Body.String(), repo.finalized[1].ResponseBody)
+			} else {
+				require.Empty(t, repo.created)
+			}
+		})
+	}
 }
 
 func TestShouldCaptureConversationSkipsNonConversationOperations(t *testing.T) {

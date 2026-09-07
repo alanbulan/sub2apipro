@@ -4,7 +4,12 @@ custom/
 skills/upstream-sync/
 deploy/cron/
 .github/workflows/
+.github/scripts/
+scripts/check-upstream.sh
+docs/upstream-sync.md
+deploy/tests/upstream-sync-ci.test.cjs
 frontend/src/styles/themes/
 frontend/src/composables/useAppTheme.ts
 frontend/src/components/common/ThemeSwitcher.vue
+frontend/src/components/common/ThemePreview.vue
 frontend/public/logo.svg

@@ -20,10 +20,10 @@ Use this skill after `scripts/check-upstream.sh` reports new upstream commits. T
 2. Classify every changed file as `protected`, `mergeable`, or `conflict-risk` using `custom/protected-paths.txt`.
 3. Never overwrite protected paths. For upstream changes that overlap them, port only the upstream behavior into the custom implementation; keep theme IDs, token names, branding removals, and local sync/CI behavior stable. Deployment manifests and helpers are not protected and follow upstream by default.
 4. Before merging, create a backup branch named `backup/pre-upstream-<timestamp>`.
-5. Merge upstream in small batches when possible. Resolve conflicts by preserving local intent first and adding upstream behavior second.
+5. Merge the reviewed upstream target, adapting overlapping fork features to the upstream interfaces. Read the playbook's Ent, gateway capture, and locale-key recipes when those files change. If `ci-status.json` records a failed candidate, inspect that run's annotations/artifacts and fix its cause before submitting the next candidate.
 6. In a development worktree, run focused checks for touched code. On the production server, do not run local builds, package-manager scripts, type checks, or tests; record the GitHub Actions run that validates the pushed commit instead.
 7. Write `.codex-upstream-sync/analysis.md` with commit-by-commit decisions, protected-path actions, test commands, and remaining risks.
-8. Do not push, deploy, restart services, rotate secrets, or delete branches unless the user explicitly requests those operations.
+8. Follow the push/deployment authorization already given in the session. In unattended mode the wrapper owns candidate push and promotion; the merge agent writes its result and exits. Do not perform unrelated service restarts, secret changes, or branch deletion.
 
 ## Production Server Validation
 
@@ -36,6 +36,7 @@ repository:
   test commands locally;
 - use only low-cost static checks such as `git diff --check`, `bash -n`, and
   `sh -n`;
+- the same restriction applies to isolated worktrees on this production host;
 - GitHub Actions is the sole authority for build and test validation. The
   wrapper first pushes an approved commit to `sync/upstream-candidate`, waits
   for its `CI` workflow, and promotes only a passing candidate to `origin/main`.
@@ -46,7 +47,7 @@ When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner
 
 - ordinary upstream updates may be merged into local `main`; the wrapper, not Codex, pushes a GitHub CI candidate and promotes only a passing candidate to `origin/main`;
 - never enable or use a push URL for `upstream`;
-- preserve every protected path and stop if one would be changed;
+- preserve every protected path and all 24 themes registered in `frontend/src/composables/useAppTheme.ts`, including their stylesheets, CSS imports, switcher, and locale labels; never rely on the obsolete five-theme list;
 - merge database migrations, payment flows, authentication protocols, security boundaries, and public API changes by default; these categories are not independent stop conditions;
 - stop only when a documented protected UI, copy, or automation requirement cannot be preserved, a conflict cannot be resolved, or a low-cost static check fails;
 - follow the production-server validation rules above regardless of `UPSTREAM_SYNC_LOW_MEMORY`; GitHub Actions performs every build and test;
@@ -55,6 +56,14 @@ When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner
 - write `analysis.md` for every non-empty review, including a blocked review. A blocked result must leave `main` unchanged.
 
 The wrapper advances `last-seen-head` only after candidate CI has passed and an applied update has been promoted to `origin/main`, or after a complete review proves that no code change is needed. A failed, interrupted, blocked, or CI-rejected run must leave the upstream state pending.
+
+`candidate.json` is a resumable checkpoint and `ci-status.json` records the exact
+commit, run URL, and last observed state. API/network errors mean the result is
+unknown. The wrapper honors rate-limit headers, retries within its deadline,
+and resumes the same saved candidate on the next invocation. An explicit CI
+failure is archived for repair, not treated as a successful sync. Do not repeat
+the merge or manually promote a candidate merely because its status cannot be
+read. See `docs/upstream-sync.md` for scheduling and recovery.
 
 ## Escalation Rules
 

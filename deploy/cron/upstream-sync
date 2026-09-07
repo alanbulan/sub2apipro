@@ -26,6 +26,7 @@ CANDIDATE_BRANCH="${UPSTREAM_SYNC_CANDIDATE_BRANCH:-sync/upstream-candidate}"
 CANDIDATE_CI_TIMEOUT_SECONDS="${CANDIDATE_CI_TIMEOUT_SECONDS:-2700}"
 CANDIDATE_CI_POLL_SECONDS="${CANDIDATE_CI_POLL_SECONDS:-60}"
 GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
+export GITHUB_API_URL
 CODEX_STARTED=0
 CODEX_UNIT_ACTIVE=0
 REMOTE_PUSHED=0
@@ -39,6 +40,9 @@ REPORT_FILE="$STATE_DIR/report.md"
 ANALYSIS_FILE="$STATE_DIR/analysis.md"
 RESULT_FILE="$STATE_DIR/result.json"
 RESPONSE_FILE="$STATE_DIR/last-response.txt"
+CANDIDATE_FILE="$STATE_DIR/candidate.json"
+CI_STATUS_FILE="$STATE_DIR/ci-status.json"
+CI_HELPER="$REPO_DIR/deploy/cron/upstream-sync-ci.cjs"
 UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-upstream}"
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
 
@@ -193,99 +197,74 @@ github_repository_from_origin() {
   printf '%s\n' "$repository"
 }
 
-github_api() {
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 \
-      --header 'Accept: application/vnd.github+json' \
-      --header "Authorization: Bearer $GITHUB_TOKEN" \
-      "$1"
-  else
-    curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30 \
-      --header 'Accept: application/vnd.github+json' \
-      "$1"
-  fi
-}
-
-candidate_ci_run() {
-  candidate_sha="$1"
-  github_api "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=push&per_page=100" |
-    node -e '
-let body = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => { body += chunk; });
-process.stdin.on("end", () => {
-  let response;
-  try {
-    response = JSON.parse(body);
-  } catch {
-    process.exit(2);
-  }
-  if (!Array.isArray(response.workflow_runs)) process.exit(2);
-  const [sha, branch] = process.argv.slice(1);
-  const run = response.workflow_runs.find((item) =>
-    item.event === "push" && item.head_sha === sha && item.head_branch === branch,
-  );
-  if (run) {
-    process.stdout.write([run.id, run.status, run.conclusion || "", run.html_url].join("\t"));
-  }
-});
-' "$candidate_sha" "$CANDIDATE_BRANCH"
-}
-
 wait_for_candidate_ci() {
-  candidate_sha="$1"
-  deadline=$(( $(date +%s) + CANDIDATE_CI_TIMEOUT_SECONDS ))
-
-  while :; do
-    if candidate_run="$(candidate_ci_run "$candidate_sha")"; then
-      :
-    else
-      # API availability is not a CI result. Retain the candidate and retry
-      # until the existing deadline instead of rolling back an approved merge.
-      candidate_run=""
-      log 'unable to query candidate GitHub CI run; retrying'
-    fi
-    if [ -n "$candidate_run" ]; then
-      IFS="$(printf '\t')" read -r ci_run_id ci_status ci_conclusion ci_url <<EOF
-$candidate_run
-EOF
-      case "$ci_status" in
-        completed)
-          if [ "$ci_conclusion" = 'success' ]; then
-            log "candidate CI passed: $ci_url"
-            return 0
-          fi
-          log "candidate CI did not pass (conclusion=${ci_conclusion:-unknown}): $ci_url"
-          return 1
-          ;;
-        requested|queued|in_progress|waiting|pending)
-          log "waiting for candidate CI (status=$ci_status): $ci_url"
-          ;;
-        *)
-          log "waiting for candidate CI with unrecognized status=$ci_status: $ci_url"
-          ;;
-      esac
-    else
-      log "waiting for candidate CI to start for $candidate_sha"
-    fi
-
-    now="$(date +%s)"
-    if [ "$now" -ge "$deadline" ]; then
-      log "candidate CI timed out after ${CANDIDATE_CI_TIMEOUT_SECONDS}s"
-      return 1
-    fi
-    remaining=$(( deadline - now ))
-    if [ "$remaining" -lt "$CANDIDATE_CI_POLL_SECONDS" ]; then
-      sleep "$remaining"
-    else
-      sleep "$CANDIDATE_CI_POLL_SECONDS"
-    fi
-  done
+  ci_exit=0
+  node "$CI_HELPER" wait "$GITHUB_REPOSITORY" "$CANDIDATE_BRANCH" "$1" \
+    "$CI_STATUS_FILE" "$CANDIDATE_CI_TIMEOUT_SECONDS" "$CANDIDATE_CI_POLL_SECONDS" || ci_exit=$?
+  case "$ci_exit" in
+    0) return 0 ;;
+    1)
+      mv "$CANDIDATE_FILE" "$STATE_DIR/candidate.failed.json"
+      fail "candidate CI did not pass; see $CI_STATUS_FILE and the Action logs; next run must repair the reported failure"
+      ;;
+    *) fail "candidate CI result remains pending; checkpoint retained in $CANDIDATE_FILE for the next invocation" ;;
+  esac
 }
 
 write_state() {
   target_head="$1"
-  printf '%s\n' "$target_head" | install -m 0600 /dev/stdin "$STATE_FILE"
+  printf '%s\n' "$target_head" | install -m 0600 /dev/stdin "$STATE_FILE.tmp" || return 1
+  mv "$STATE_FILE.tmp" "$STATE_FILE"
+}
+
+promote_candidate() {
+  wait_for_candidate_ci "$CANDIDATE_HEAD"
+  check_clean_worktree
+  git fetch --quiet origin main || fail 'unable to refresh origin/main before promotion'
+  promotion_main="$(git rev-parse origin/main)"
+  [ "$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')" = "$CANDIDATE_HEAD" ] || fail 'candidate branch changed while CI ran; refusing promotion'
+  if [ "$promotion_main" != "$CANDIDATE_HEAD" ]; then
+    [ "$promotion_main" = "$BEFORE_HEAD" ] || fail 'origin/main changed while candidate CI ran; refusing promotion'
+    log "promoting approved candidate $CANDIDATE_HEAD to origin/main"
+    git push origin "$CANDIDATE_HEAD:refs/heads/main" || fail 'promotion failed; checkpoint retained'
+  fi
+  REMOTE_PUSHED=1
+  [ "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$CANDIDATE_HEAD" ] || fail 'origin/main does not match the approved candidate'
+  git merge --ff-only "$CANDIDATE_HEAD" || fail 'unable to fast-forward local main to promoted candidate'
+  write_state "$TARGET_HEAD" || fail 'unable to save promoted upstream state; checkpoint retained'
+  rm -f "$CANDIDATE_FILE" || fail 'unable to remove completed candidate checkpoint'
+  log "candidate promoted successfully; state advanced to $TARGET_HEAD; Build and Deploy now handles production"
+  RUN_FINISHED=1
+}
+
+resume_candidate() {
+  [ -s "$CANDIDATE_FILE" ] || return 1
+  checkpoint_values="$(node "$CI_HELPER" checkpoint-read "$CANDIDATE_FILE")" || fail 'invalid candidate checkpoint; refusing to guess its commit'
+  read -r BEFORE_HEAD CANDIDATE_HEAD TARGET_HEAD checkpoint_branch <<EOF
+$checkpoint_values
+EOF
+  git check-ref-format --branch "$checkpoint_branch" >/dev/null || fail 'invalid checkpoint branch'
+  [ "$checkpoint_branch" = "$CANDIDATE_BRANCH" ] || fail 'candidate branch configuration differs from checkpoint'
+  resumed_remote="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
+  resumed_main="$(git rev-parse origin/main)"
+  if [ "$resumed_remote" != "$CANDIDATE_HEAD" ] || { [ "$resumed_main" != "$BEFORE_HEAD" ] && [ "$resumed_main" != "$CANDIDATE_HEAD" ]; }; then
+    mv "$CANDIDATE_FILE" "$STATE_DIR/candidate.superseded.json"
+    log 'saved candidate has been superseded; preparing a new review against current main'
+    BEFORE_HEAD=''
+    return 1
+  fi
+  git fetch --quiet origin "$CANDIDATE_BRANCH" || fail 'unable to fetch saved candidate'
+  git merge-base --is-ancestor "$BEFORE_HEAD" "$CANDIDATE_HEAD" || fail 'saved candidate does not descend from its reviewed base'
+  git cat-file -e "$TARGET_HEAD^{commit}" || fail 'saved upstream target is missing'
+  resumed_local="$(git rev-parse HEAD)"
+  [ "$resumed_local" = "$BEFORE_HEAD" ] || [ "$resumed_local" = "$CANDIDATE_HEAD" ] || fail 'local main differs from saved candidate and base; preserving local work'
+  CHANGED_FILE="$(mktemp "$STATE_DIR/changed.XXXXXX")"
+  git diff --name-only "$BEFORE_HEAD" "$CANDIDATE_HEAD" > "$CHANGED_FILE" || fail 'unable to inspect saved candidate'
+  check_protected_changes "$CHANGED_FILE"
+  git diff --check "$BEFORE_HEAD" "$CANDIDATE_HEAD" || fail 'saved candidate contains whitespace errors'
+  log "resuming candidate $CANDIDATE_HEAD without repeating the merge or pushing another candidate"
+  promote_candidate
+  return 0
 }
 
 cd "$REPO_DIR"
@@ -295,28 +274,28 @@ branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
 [ "$branch" = 'main' ] || fail "current branch must be main; got: ${branch:-detached}"
 check_clean_worktree
 git fetch --quiet origin main || fail 'unable to refresh origin/main'
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail 'local main is not identical to origin/main'
 check_remote_policy
-
-COUNT="$(timeout --kill-after="$CHECK_KILL_AFTER" "$CHECK_TIMEOUT" ./scripts/check-upstream.sh)" || fail 'upstream check failed or timed out'
-case "$COUNT" in
-  ''|*[!0-9]*) fail "upstream checker returned a non-numeric count: $COUNT" ;;
-esac
-
-if [ "$COUNT" -eq 0 ]; then
-  log 'no upstream update'
-  exit 0
-fi
-
 git check-ref-format --branch "$CANDIDATE_BRANCH" >/dev/null || fail "invalid candidate branch: $CANDIDATE_BRANCH"
+[ "$CANDIDATE_BRANCH" != 'main' ] || fail 'candidate branch must differ from production main'
 case "$CANDIDATE_CI_TIMEOUT_SECONDS" in
   ''|*[!0-9]*|0) fail "CANDIDATE_CI_TIMEOUT_SECONDS must be a positive integer; got: $CANDIDATE_CI_TIMEOUT_SECONDS" ;;
 esac
 case "$CANDIDATE_CI_POLL_SECONDS" in
   ''|*[!0-9]*|0) fail "CANDIDATE_CI_POLL_SECONDS must be a positive integer; got: $CANDIDATE_CI_POLL_SECONDS" ;;
 esac
-command -v curl >/dev/null 2>&1 || fail 'curl is required to wait for candidate GitHub CI'
+command -v node >/dev/null 2>&1 || fail 'Node.js 20 or later is required to read candidate GitHub CI status'
 GITHUB_REPOSITORY="$(github_repository_from_origin)" || fail 'origin must be a GitHub repository to wait for candidate CI'
+
+if resume_candidate; then exit 0; fi
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail 'local main is not identical to origin/main'
+COUNT="$(timeout --kill-after="$CHECK_KILL_AFTER" "$CHECK_TIMEOUT" ./scripts/check-upstream.sh)" || fail 'upstream check failed or timed out'
+case "$COUNT" in
+  ''|*[!0-9]*) fail "upstream checker returned a non-numeric count: $COUNT" ;;
+esac
+if [ "$COUNT" -eq 0 ]; then
+  log 'no upstream update'
+  exit 0
+fi
 
 command -v "$CODEX_BIN" >/dev/null 2>&1 || fail "Codex executable not found: $CODEX_BIN"
 command -v systemd-run >/dev/null 2>&1 || fail 'systemd-run is required for bounded unattended Codex execution'
@@ -382,7 +361,7 @@ Read `skills/upstream-sync/SKILL.md` and its referenced playbook, then read `.co
 
 This is a 4GB production server. Do not run a Docker build, frontend production build, backend test command, Go test command, TypeScript compiler, package-manager script, dev server, or any other command that compiles or builds. Use only low-cost text/static checks such as `git diff --check`, `bash -n`, and `sh -n`; GitHub Actions performs CI on the candidate branch and the full build and deployment only after the wrapper promotes it.
 
-Merge every pending upstream change while preserving protected paths, create the required backup branch, and write `.codex-upstream-sync/analysis.md`. If no code changes are needed after reviewing all commits, use the `noop` result. Do not block merely because a change is a database migration, payment flow, authentication protocol, security boundary, or public API change. Stop without changing main and use the `blocked` result only when a protected requirement cannot be preserved, a conflict cannot be resolved, or low-cost checks fail.
+Merge every pending upstream change while preserving protected paths and all 24 registered themes, create the required backup branch, and write `.codex-upstream-sync/analysis.md`. If `.codex-upstream-sync/ci-status.json` records a failed candidate, inspect its linked GitHub run and annotations and repair that failure before submitting another candidate; do not repeat the same merge resolution that failed. Use the playbook recipes for Ent schema/runtime consistency, fork conversation capture with upstream route helpers, and renamed locale keys. If no code changes are needed after reviewing all commits, use the `noop` result. Do not block merely because a change is a database migration, payment flow, authentication protocol, security boundary, or public API change. Stop without changing main and use the `blocked` result only when a protected requirement cannot be preserved, a conflict cannot be resolved, or low-cost checks fail.
 
 Before the final response, write `.codex-upstream-sync/result.json` as a JSON object with exactly these required fields:
 {"status":"applied|noop|blocked","remote_head":"<40-character upstream commit SHA>"}
@@ -454,6 +433,7 @@ case "$RESULT_STATUS" in
     [ "$(git rev-parse HEAD)" != "$BEFORE_HEAD" ] || fail 'applied result produced no commit'
     check_clean_worktree
     CANDIDATE_HEAD="$(git rev-parse HEAD)"
+    node "$CI_HELPER" checkpoint-write "$CANDIDATE_FILE" "$BEFORE_HEAD" "$CANDIDATE_HEAD" "$TARGET_HEAD" "$CANDIDATE_BRANCH" || fail 'unable to save candidate checkpoint'
     EXISTING_CANDIDATE_HEAD="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
     if [ -n "$EXISTING_CANDIDATE_HEAD" ]; then
       log "updating candidate $CANDIDATE_BRANCH at $CANDIDATE_HEAD"
@@ -463,16 +443,7 @@ case "$RESULT_STATUS" in
       git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH" || fail 'unable to push candidate branch'
     fi
     [ "$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')" = "$CANDIDATE_HEAD" ] || fail 'candidate branch does not match local HEAD'
-    wait_for_candidate_ci "$CANDIDATE_HEAD" || fail 'candidate GitHub CI failed or timed out; main and upstream state remain unchanged'
-    git fetch --quiet origin main || fail 'unable to refresh origin/main before promotion'
-    [ "$(git rev-parse origin/main)" = "$BEFORE_HEAD" ] || fail 'origin/main changed while candidate CI ran; refusing promotion'
-    log 'promoting approved candidate to origin/main'
-    git push origin "HEAD:refs/heads/main" || fail 'promotion to origin/main failed; state was not advanced'
-    REMOTE_PUSHED=1
-    [ "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$(git rev-parse HEAD)" ] || fail 'origin/main does not match pushed HEAD'
-    write_state "$TARGET_HEAD"
-    log "candidate promoted successfully; state advanced to $TARGET_HEAD"
-    RUN_FINISHED=1
+    promote_candidate
     ;;
   *)
     fail "unsupported Codex result status: $RESULT_STATUS"

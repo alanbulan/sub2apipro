@@ -2,17 +2,24 @@
 
 ## Protected Themes
 
-`frontend/src/styles/themes/*.css` are independent skins. If upstream edits Tailwind palette values, do not restore hardcoded teal colors. Keep Tailwind mapped to CSS variables and add or adjust variables in each affected theme file. Preserve the five IDs: `minimalism`, `neoBrutalism`, `apple`, `notion`, and `wabiSabi`.
+`frontend/src/styles/themes/*.css` contains 24 independent skins. Use the full
+`appThemes` registry in `frontend/src/composables/useAppTheme.ts` as the source
+of theme IDs and stylesheet names. Preserve all 24, their imports in
+`frontend/src/style.css`, switcher/preview controls, locale labels, and saved
+preferences. The old five-theme list is obsolete. Keep Tailwind mapped to CSS
+variables rather than restoring upstream hardcoded palette values.
 
 If upstream introduces a new global color role:
 
-1. add the semantic variable to all five theme files;
+1. account for the semantic variable across all 24 theme files;
 2. map it in `frontend/tailwind.config.js`;
 3. replace only the specific upstream UI usage with the semantic class or variable;
 4. in a development worktree, run `pnpm build` and visually verify light and dark mode.
 
-On the production sync server, do not run that build or any other local test.
-GitHub Actions is the validation authority there.
+On the production sync server, including any worktree on that machine, use
+static text checks only. GitHub Actions validates the theme registry, each CSS
+file's existence and selector, and the global imports via the critical frontend
+test suite. Production build/test commands never belong in a sync-host step.
 
 ## Branding
 
@@ -28,11 +35,45 @@ Upstream release/update logic points at the original project. Preserve the mecha
 
 `skills/upstream-sync/**`, `scripts/check-upstream.sh`, and `custom/protected-paths.txt` define this fork's workflow. Prefer rebasing local improvements over accepting an upstream version of these files. Deployment manifests and helpers are upstream-owned unless they are explicitly listed in `custom/protected-paths.txt`.
 
-The candidate branch is a durable CI checkpoint. A GitHub API timeout, network
-error, or rate limit means the CI result is unknown, not that it failed. The
-wrapper must retain the candidate and retry status queries through its deadline;
-only an explicit non-success CI conclusion or the configured deadline may stop
-promotion.
+The wrapper saves the candidate/base/upstream SHAs in `candidate.json` before
+push, and the exact CI run URL/state in `ci-status.json`. A GitHub API timeout,
+network error, or rate limit means the CI result is unknown. Honor `Retry-After`
+and `X-RateLimit-Reset`, then retry within the deadline. On expiry retain the
+checkpoint and resume it on the next invocation. Never advance the upstream
+baseline without a confirmed CI success and verified promotion. If main or the
+candidate changed, prepare a fresh review instead of promoting the stale result.
+
+Protected files are source-control requirements, not filesystem `chattr +i`
+flags. Deployment pulls the image built by Actions; compiled/minified assets
+need not have the same bytes as their source. Preserve source customizations
+and runtime behavior; do not compare generated bundles with source-file hashes.
+
+## Ent Schema and Custom Backend Modules
+
+An Ent runtime panic such as `interface {} is int, not string` can result from
+generated descriptor indexes lagging behind schema changes. Review
+`backend/ent/schema/`, generated entities, `ent/runtime/runtime.go`, and
+`ent/migrate/schema.go` together. Preserve fork schema additions and check each
+affected runtime index against the field name, type, default, and validator in
+the merged schema. Do not resolve a generated-file conflict by blindly taking
+all upstream output when the fork has extra fields.
+
+Run code generation only on a GitHub runner when needed, using the repository's
+`go generate ./ent` and `go generate ./cmd/server` commands. Review the generated
+diff before committing it; never paper over the panic with a type assertion
+change. CI first exercises gateway initialization and capture regression, then
+runs the full unit/integration suites. Adding a custom module also requires
+retaining its DI wiring, routes, schema/migration, and handler tests as upstream
+interfaces evolve. The presence of a migration is not itself a blocker.
+
+## Renamed Locale Keys
+
+Follow upstream locale key moves at every call site while preserving our visible
+wording. For example, `admin.settings.siteNamePlaceholder` moved to
+`admin.settings.site.siteNamePlaceholder`; stale references fail the locale-key
+CI test even if the translation text still exists. Keep both language trees
+consistent. Do not restore upstream branding to satisfy the test or remove the
+locale completeness check. Read the frontend log artifact for the exact key.
 
 ## Gateway Model-Allowlist Conflict
 

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { appThemes, initAppTheme, setAppTheme, useAppTheme } from '@/composables/useAppTheme'
 
 describe('app theme runtime', () => {
@@ -30,5 +32,11 @@ describe('app theme runtime', () => {
     expect(new Set(appThemes.map((theme) => theme.id)).size).toBe(24)
     expect(new Set(appThemes.map((theme) => theme.stylesheet)).size).toBe(24)
     expect(appThemes.every((theme) => theme.stylesheet.endsWith('.css'))).toBe(true)
+    const globalCSS = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8')
+    for (const theme of appThemes) {
+      const css = readFileSync(resolve(process.cwd(), 'src/styles/themes', theme.stylesheet), 'utf8')
+      expect(css).toContain(`[data-app-theme='${theme.id}']`)
+      expect(globalCSS).toContain(`./styles/themes/${theme.stylesheet}`)
+    }
   })
 })
