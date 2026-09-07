@@ -35,7 +35,22 @@ jobs:
           go version | grep -q 'go1.27.0'
       - name: Unit tests
         working-directory: backend
-        run: make test-unit
+        shell: bash
+        run: |
+          set -o pipefail
+          make test-unit 2>&1 | tee unit-test.log
+      - name: Report unit test failure
+        if: failure()
+        working-directory: backend
+        shell: bash
+        run: |
+          excerpt="$(grep -E -C 5 '(^--- FAIL:|^FAIL[[:space:]]|^panic:|^.*Error Trace:|^.*Expected:|^.*Not equal:)' unit-test.log | tail -n 120 || true)"
+          if [ -z "$excerpt" ]; then
+            excerpt="$(tail -n 120 unit-test.log)"
+          fi
+          excerpt="$(printf '%s' "$excerpt" | tr '\r\n' '  ' | cut -c1-6000)"
+          excerpt="${excerpt//%/%25}"
+          printf '::error title=Unit test failure excerpt::%s\n' "$excerpt"
       - name: Integration tests
         working-directory: backend
         run: make test-integration
