@@ -9,7 +9,10 @@ If upstream introduces a new global color role:
 1. add the semantic variable to all five theme files;
 2. map it in `frontend/tailwind.config.js`;
 3. replace only the specific upstream UI usage with the semantic class or variable;
-4. run `pnpm build` and visually verify light and dark mode.
+4. in a development worktree, run `pnpm build` and visually verify light and dark mode.
+
+On the production sync server, do not run that build or any other local test.
+GitHub Actions is the validation authority there.
 
 ## Branding
 
@@ -24,6 +27,12 @@ Upstream release/update logic points at the original project. Preserve the mecha
 ## Automation Files
 
 `skills/upstream-sync/**`, `scripts/check-upstream.sh`, and `custom/protected-paths.txt` define this fork's workflow. Prefer rebasing local improvements over accepting an upstream version of these files. Deployment manifests and helpers are upstream-owned unless they are explicitly listed in `custom/protected-paths.txt`.
+
+The candidate branch is a durable CI checkpoint. A GitHub API timeout, network
+error, or rate limit means the CI result is unknown, not that it failed. The
+wrapper must retain the candidate and retry status queries through its deadline;
+only an explicit non-success CI conclusion or the configured deadline may stop
+promotion.
 
 ## Gateway Model-Allowlist Conflict
 

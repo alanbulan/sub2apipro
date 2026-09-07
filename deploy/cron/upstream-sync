@@ -237,7 +237,14 @@ wait_for_candidate_ci() {
   deadline=$(( $(date +%s) + CANDIDATE_CI_TIMEOUT_SECONDS ))
 
   while :; do
-    candidate_run="$(candidate_ci_run "$candidate_sha")" || fail 'unable to query candidate GitHub CI run'
+    if candidate_run="$(candidate_ci_run "$candidate_sha")"; then
+      :
+    else
+      # API availability is not a CI result. Retain the candidate and retry
+      # until the existing deadline instead of rolling back an approved merge.
+      candidate_run=""
+      log 'unable to query candidate GitHub CI run; retrying'
+    fi
     if [ -n "$candidate_run" ]; then
       IFS="$(printf '\t')" read -r ci_run_id ci_status ci_conclusion ci_url <<EOF
 $candidate_run
