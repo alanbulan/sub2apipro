@@ -24,3 +24,22 @@ Upstream release/update logic points at the original project. Preserve the mecha
 ## Automation Files
 
 `skills/upstream-sync/**`, `scripts/check-upstream.sh`, and `custom/protected-paths.txt` define this fork's workflow. Prefer rebasing local improvements over accepting an upstream version of these files. Deployment manifests and helpers are upstream-owned unless they are explicitly listed in `custom/protected-paths.txt`.
+
+## Gateway Model-Allowlist Conflict
+
+When upstream introduces `groupModelAllowlist` on gateway routes, preserve the
+single-handler `rootRoute` helper. The upstream route-coverage test requires
+this exact middleware order and a `handler gin.HandlerFunc` parameter:
+
+```go
+rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc) {
+	r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)
+}
+```
+
+Do not change `rootRoute` to accept a variadic handler chain. To retain fork
+conversation capture on root Responses and Chat Completions routes, pass a
+single handler created with `h.Gateway.ConversationCaptureWithHandler(protocol,
+handler)`. This keeps capture around the endpoint execution while retaining
+the allowlist between authentication and composite routing. Keep the same
+capture middleware on Codex Responses and Gemini generation routes.

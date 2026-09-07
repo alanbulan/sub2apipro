@@ -140,15 +140,30 @@ func populateConversationRequestMetadata(c *gin.Context, item *service.Conversat
 // ConversationCapture persists one row for a client-visible conversational HTTP exchange.
 // It must run after API-key authentication and before the endpoint handler.
 func (h *GatewayHandler) ConversationCapture(protocol string) gin.HandlerFunc {
+	return h.conversationCapture(protocol, func(c *gin.Context) {
+		c.Next()
+	})
+}
+
+// ConversationCaptureWithHandler keeps conversation capture within a single
+// route handler when a route-level middleware chain cannot accept two handlers.
+func (h *GatewayHandler) ConversationCaptureWithHandler(protocol string, next gin.HandlerFunc) gin.HandlerFunc {
+	if next == nil {
+		next = func(*gin.Context) {}
+	}
+	return h.conversationCapture(protocol, next)
+}
+
+func (h *GatewayHandler) conversationCapture(protocol string, next gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if h == nil || h.conversationLogService == nil || c.Request == nil || c.Request.Body == nil ||
 			!shouldCaptureConversation(c, protocol) {
-			c.Next()
+			next(c)
 			return
 		}
 		apiKey, ok := servermiddleware.GetAPIKeyFromContext(c)
 		if !ok || apiKey == nil {
-			c.Next()
+			next(c)
 			return
 		}
 		requestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
@@ -157,7 +172,7 @@ func (h *GatewayHandler) ConversationCapture(protocol string) gin.HandlerFunc {
 			requestID = c.GetHeader("X-Request-ID")
 		}
 		if requestID == "" {
-			c.Next()
+			next(c)
 			return
 		}
 		sessionID := service.ExtractClientSessionID(c)
@@ -178,7 +193,7 @@ func (h *GatewayHandler) ConversationCapture(protocol string) gin.HandlerFunc {
 		cancel()
 		if err != nil {
 			logger.L().Warn("conversation_log.begin_failed", zap.String("request_id", requestID), zap.Error(err))
-			c.Next()
+			next(c)
 			return
 		}
 
@@ -223,6 +238,6 @@ func (h *GatewayHandler) ConversationCapture(protocol string) gin.HandlerFunc {
 				panic(panicValue)
 			}
 		}()
-		c.Next()
+		next(c)
 	}
 }
