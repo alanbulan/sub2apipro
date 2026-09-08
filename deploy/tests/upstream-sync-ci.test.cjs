@@ -127,9 +127,12 @@ async function fixture(t) {
   git(repo, ['remote', 'add', 'upstream', remote]);
   git(repo, ['remote', 'set-url', '--push', 'upstream', 'DISABLED']);
   const ssh = path.join(directory, 'ssh.cjs');
-  fs.writeFileSync(ssh, `const {spawnSync}=require('node:child_process');
+  fs.writeFileSync(ssh, `const {spawnSync}=require('node:child_process');const fs=require('node:fs');
 const command=process.argv.at(-1);const match=/^git-(upload|receive)-pack /.exec(command);
-if(match){const r=spawnSync('git-'+match[1]+'-pack',[process.env.SYNC_TEST_REMOTE],{stdio:'inherit'});process.exit(r.status ?? 1);}
+if(match){
+const counter=process.env.SYNC_TEST_COUNTER;const count=fs.existsSync(counter)?Number(fs.readFileSync(counter,'utf8'))+1:1;fs.writeFileSync(counter,String(count));
+if(process.env.SYNC_TEST_FAIL_REQUEST===String(count))process.exit(1);
+const r=spawnSync('git-'+match[1]+'-pack',[process.env.SYNC_TEST_REMOTE],{stdio:'inherit'});process.exit(r.status ?? 1);}
 process.exit(0);\n`);
   const stateDir = path.join(repo, '.codex-upstream-sync');
   fs.mkdirSync(stateDir);
@@ -147,6 +150,7 @@ process.exit(0);\n`);
   const quote = value => "'" + value.replace(/'/g, "'\\''") + "'";
   const env = { ...process.env, REPO_DIR: repo, GITHUB_API_URL: `http://127.0.0.1:${server.address().port}`,
     GITHUB_TOKEN: '', GH_TOKEN: '', GITHUB_TOKEN_FILE: '', SYNC_TEST_REMOTE: remote,
+    SYNC_TEST_COUNTER: path.join(directory, 'ssh-count'),
     GIT_SSH_COMMAND: `${quote(process.execPath)} ${quote(ssh)}`, CANDIDATE_CI_TIMEOUT_SECONDS: '1', CANDIDATE_CI_POLL_SECONDS: '1' };
   const invoke = () => new Promise((resolve, reject) => {
     const child = spawn('/bin/sh', ['deploy/cron/upstream-sync'], { cwd: repo, env, stdio: 'ignore' });
@@ -157,7 +161,7 @@ process.exit(0);\n`);
       resolve(code);
     });
   });
-  return { repo, remote, stateDir, checkpointFile, before, candidate, state, invoke };
+  return { repo, remote, stateDir, checkpointFile, before, candidate, state, env, invoke };
 }
 
 test('wrapper resumes an unknown CI result and promotes the same saved candidate on retry', async t => {
@@ -178,11 +182,24 @@ test('wrapper resumes an unknown CI result and promotes the same saved candidate
 
 test('wrapper archives an explicit failed CI without promoting or advancing state', async t => {
   const f = await fixture(t);
+  git(f.repo, ['merge', '--ff-only', f.candidate]);
   f.state.conclusion = 'failure';
   assert.notEqual(await f.invoke(), 0);
   assert.ok(fs.existsSync(path.join(f.stateDir, 'candidate.failed.json')), f.state.log);
   assert.equal(git(f.remote, ['rev-parse', 'main']), f.before);
+  assert.equal(git(f.repo, ['rev-parse', 'HEAD']), f.before);
   assert.equal(fs.readFileSync(path.join(f.stateDir, 'last-seen-head'), 'utf8').trim(), f.before);
+});
+
+test('wrapper retains the checkpoint when reading the remote candidate fails over SSH', async t => {
+  const f = await fixture(t);
+  // First upload-pack refreshes main; second reads the candidate ref.
+  f.env.SYNC_TEST_FAIL_REQUEST = '2';
+  assert.notEqual(await f.invoke(), 0);
+  assert.ok(fs.existsSync(f.checkpointFile), f.state.log);
+  assert.ok(!fs.existsSync(path.join(f.stateDir, 'candidate.superseded.json')));
+  assert.equal(f.state.requests, 0);
+  assert.equal(git(f.remote, ['rev-parse', 'main']), f.before);
 });
 
 test('wrapper refuses a replaced remote candidate', async t => {

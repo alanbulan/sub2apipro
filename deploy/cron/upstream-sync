@@ -27,7 +27,7 @@ CANDIDATE_CI_TIMEOUT_SECONDS="${CANDIDATE_CI_TIMEOUT_SECONDS:-2700}"
 CANDIDATE_CI_POLL_SECONDS="${CANDIDATE_CI_POLL_SECONDS:-60}"
 GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
 export GITHUB_API_URL
-CODEX_STARTED=0
+RESTORE_LOCAL_MAIN=0
 CODEX_UNIT_ACTIVE=0
 REMOTE_PUSHED=0
 RUN_FINISHED=0
@@ -96,7 +96,7 @@ cleanup_on_exit() {
 
   stop_codex_unit
 
-  if [ "$CODEX_STARTED" -eq 1 ] && [ "$RUN_FINISHED" -eq 0 ] && [ "$REMOTE_PUSHED" -eq 0 ]; then
+  if [ "$RESTORE_LOCAL_MAIN" -eq 1 ] && [ "$RUN_FINISHED" -eq 0 ] && [ "$REMOTE_PUSHED" -eq 0 ]; then
     current_branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
     if [ "$current_branch" = 'main' ] && [ -n "$BEFORE_HEAD" ]; then
       recovery_head="$BEFORE_HEAD"
@@ -106,14 +106,14 @@ cleanup_on_exit() {
       fi
       current_status="$(git status --porcelain=v1 --untracked-files=all)"
       if [ "$(git rev-parse HEAD 2>/dev/null || true)" != "$recovery_head" ] || [ -n "$current_status" ]; then
-        log "restoring main to $recovery_head after incomplete Codex run"
+        log "restoring local main to $recovery_head after incomplete sync; remote candidate records remain available"
         git reset --hard "$recovery_head" >/dev/null 2>&1 || log 'ERROR: unable to restore main automatically'
         if [ -n "$(git status --porcelain=v1 --untracked-files=all)" ]; then
           log 'WARNING: untracked changes remain after rollback; manual review is required'
         fi
       fi
     else
-      log 'WARNING: incomplete Codex run did not leave main checked out; manual review is required'
+      log 'WARNING: incomplete sync did not leave main checked out; manual review is required'
     fi
   fi
 
@@ -211,6 +211,12 @@ wait_for_candidate_ci() {
   esac
 }
 
+remote_ref_head() {
+  # Capture Git's exit status before parsing: an SSH failure is not a deleted ref.
+  remote_ref_output="$(git ls-remote --heads origin "$1")" || return 1
+  printf '%s\n' "$remote_ref_output" | awk 'NR == 1 {print $1}'
+}
+
 write_state() {
   target_head="$1"
   printf '%s\n' "$target_head" | install -m 0600 /dev/stdin "$STATE_FILE.tmp" || return 1
@@ -222,14 +228,16 @@ promote_candidate() {
   check_clean_worktree
   git fetch --quiet origin main || fail 'unable to refresh origin/main before promotion'
   promotion_main="$(git rev-parse origin/main)"
-  [ "$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')" = "$CANDIDATE_HEAD" ] || fail 'candidate branch changed while CI ran; refusing promotion'
+  promotion_candidate="$(remote_ref_head "refs/heads/$CANDIDATE_BRANCH")" || fail 'unable to read remote candidate before promotion; checkpoint retained'
+  [ "$promotion_candidate" = "$CANDIDATE_HEAD" ] || fail 'candidate branch changed while CI ran; refusing promotion'
   if [ "$promotion_main" != "$CANDIDATE_HEAD" ]; then
     [ "$promotion_main" = "$BEFORE_HEAD" ] || fail 'origin/main changed while candidate CI ran; refusing promotion'
     log "promoting approved candidate $CANDIDATE_HEAD to origin/main"
     git push origin "$CANDIDATE_HEAD:refs/heads/main" || fail 'promotion failed; checkpoint retained'
   fi
   REMOTE_PUSHED=1
-  [ "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$CANDIDATE_HEAD" ] || fail 'origin/main does not match the approved candidate'
+  promoted_main="$(remote_ref_head refs/heads/main)" || fail 'unable to verify promoted main; checkpoint retained'
+  [ "$promoted_main" = "$CANDIDATE_HEAD" ] || fail 'origin/main does not match the approved candidate'
   git merge --ff-only "$CANDIDATE_HEAD" || fail 'unable to fast-forward local main to promoted candidate'
   write_state "$TARGET_HEAD" || fail 'unable to save promoted upstream state; checkpoint retained'
   rm -f "$CANDIDATE_FILE" || fail 'unable to remove completed candidate checkpoint'
@@ -245,7 +253,7 @@ $checkpoint_values
 EOF
   git check-ref-format --branch "$checkpoint_branch" >/dev/null || fail 'invalid checkpoint branch'
   [ "$checkpoint_branch" = "$CANDIDATE_BRANCH" ] || fail 'candidate branch configuration differs from checkpoint'
-  resumed_remote="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
+  resumed_remote="$(remote_ref_head "refs/heads/$CANDIDATE_BRANCH")" || fail 'unable to read saved candidate branch; checkpoint retained'
   resumed_main="$(git rev-parse origin/main)"
   if [ "$resumed_remote" != "$CANDIDATE_HEAD" ] || { [ "$resumed_main" != "$BEFORE_HEAD" ] && [ "$resumed_main" != "$CANDIDATE_HEAD" ]; }; then
     mv "$CANDIDATE_FILE" "$STATE_DIR/candidate.superseded.json"
@@ -262,6 +270,9 @@ EOF
   git diff --name-only "$BEFORE_HEAD" "$CANDIDATE_HEAD" > "$CHANGED_FILE" || fail 'unable to inspect saved candidate'
   check_protected_changes "$CHANGED_FILE"
   git diff --check "$BEFORE_HEAD" "$CANDIDATE_HEAD" || fail 'saved candidate contains whitespace errors'
+  # A previous hard interruption may have left our own candidate checked out.
+  # Recover it on failure so the next review can start from production main.
+  if [ "$resumed_local" = "$CANDIDATE_HEAD" ]; then RESTORE_LOCAL_MAIN=1; fi
   log "resuming candidate $CANDIDATE_HEAD without repeating the merge or pushing another candidate"
   promote_candidate
   return 0
@@ -326,7 +337,7 @@ export UPSTREAM_SYNC_BASE_HEAD="$BASE_HEAD"
 export UPSTREAM_SYNC_LOW_MEMORY=1
 
 log "found $COUNT upstream commits; invoking Codex in $CODEX_UNIT (memory=$CODEX_MEMORY_MAX swap=$CODEX_SWAP_MAX tasks=$CODEX_TASKS_MAX runtime=$CODEX_TIMEOUT)"
-CODEX_STARTED=1
+RESTORE_LOCAL_MAIN=1
 CODEX_UNIT_ACTIVE=1
 CODEX_EXIT=0
 if systemd-run \
@@ -434,7 +445,7 @@ case "$RESULT_STATUS" in
     check_clean_worktree
     CANDIDATE_HEAD="$(git rev-parse HEAD)"
     node "$CI_HELPER" checkpoint-write "$CANDIDATE_FILE" "$BEFORE_HEAD" "$CANDIDATE_HEAD" "$TARGET_HEAD" "$CANDIDATE_BRANCH" || fail 'unable to save candidate checkpoint'
-    EXISTING_CANDIDATE_HEAD="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
+    EXISTING_CANDIDATE_HEAD="$(remote_ref_head "refs/heads/$CANDIDATE_BRANCH")" || fail 'unable to read candidate branch before push; checkpoint retained'
     if [ -n "$EXISTING_CANDIDATE_HEAD" ]; then
       log "updating candidate $CANDIDATE_BRANCH at $CANDIDATE_HEAD"
       git push --force-with-lease="refs/heads/$CANDIDATE_BRANCH:$EXISTING_CANDIDATE_HEAD" origin "HEAD:refs/heads/$CANDIDATE_BRANCH" || fail 'unable to update candidate branch'
@@ -442,7 +453,8 @@ case "$RESULT_STATUS" in
       log "pushing candidate $CANDIDATE_BRANCH at $CANDIDATE_HEAD"
       git push origin "HEAD:refs/heads/$CANDIDATE_BRANCH" || fail 'unable to push candidate branch'
     fi
-    [ "$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')" = "$CANDIDATE_HEAD" ] || fail 'candidate branch does not match local HEAD'
+    PUSHED_CANDIDATE_HEAD="$(remote_ref_head "refs/heads/$CANDIDATE_BRANCH")" || fail 'unable to verify pushed candidate; checkpoint retained'
+    [ "$PUSHED_CANDIDATE_HEAD" = "$CANDIDATE_HEAD" ] || fail 'candidate branch does not match local HEAD'
     promote_candidate
     ;;
   *)
