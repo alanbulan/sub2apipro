@@ -109,6 +109,8 @@ async function fixture(t) {
     fs.mkdirSync(path.join(repo, 'deploy/cron'), { recursive: true });
     fs.copyFileSync(path.join(__dirname, '../cron', name), path.join(repo, 'deploy/cron', name));
   }
+  fs.mkdirSync(path.join(repo, 'scripts'));
+  fs.writeFileSync(path.join(repo, 'scripts/check-upstream.sh'), '#!/bin/sh\nprintf "0\\n"\n', { mode: 0o755 });
   fs.mkdirSync(path.join(repo, 'custom'));
   fs.writeFileSync(path.join(repo, 'custom/protected-paths.txt'), 'custom/\ndeploy/cron/\n');
   fs.writeFileSync(path.join(repo, '.gitignore'), '.codex-upstream-sync/\n');
@@ -217,4 +219,32 @@ test('wrapper repairs state after a crash between remote promotion and state wri
   assert.equal(await f.invoke(), 0, f.state.log);
   assert.equal(fs.readFileSync(path.join(f.stateDir, 'last-seen-head'), 'utf8').trim(), f.candidate);
   assert.ok(!fs.existsSync(f.checkpointFile));
+});
+
+test('wrapper quarantines a stale index lock and recovers an interrupted merge', async t => {
+  const f = await fixture(t);
+  fs.rmSync(f.checkpointFile);
+  fs.writeFileSync(path.join(f.stateDir, 'in-progress-head'), `${f.before}\n`);
+  fs.writeFileSync(path.join(f.repo, 'feature.txt'), 'interrupted merge content\n');
+  git(f.repo, ['add', 'feature.txt']);
+  const indexLock = path.join(f.repo, '.git/index.lock');
+  fs.writeFileSync(indexLock, '');
+  const old = new Date(Date.now() - 600000);
+  fs.utimesSync(indexLock, old, old);
+
+  assert.equal(await f.invoke(), 0, f.state.log);
+  assert.equal(git(f.repo, ['rev-parse', 'HEAD']), f.before);
+  assert.equal(git(f.repo, ['status', '--porcelain']), '');
+  assert.ok(!fs.existsSync(path.join(f.stateDir, 'in-progress-head')));
+  assert.ok(fs.readdirSync(f.stateDir).some(name => name.startsWith('stale-index-lock.')));
+});
+
+test('wrapper preserves a recent unowned index lock instead of guessing', async t => {
+  const f = await fixture(t);
+  const indexLock = path.join(f.repo, '.git/index.lock');
+  fs.writeFileSync(indexLock, '');
+
+  assert.notEqual(await f.invoke(), 0);
+  assert.ok(fs.existsSync(indexLock));
+  assert.match(f.state.log, /Git index lock is too recent to recover safely/);
 });

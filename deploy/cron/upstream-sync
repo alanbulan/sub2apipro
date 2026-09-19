@@ -22,6 +22,7 @@ CODEX_SWAP_MAX="${CODEX_SWAP_MAX:-256M}"
 CODEX_TASKS_MAX="${CODEX_TASKS_MAX:-256}"
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_UNIT="${CODEX_UNIT:-sub2api-upstream-sync-$$.service}"
+GIT_INDEX_LOCK_STALE_AFTER_SECONDS="${GIT_INDEX_LOCK_STALE_AFTER_SECONDS:-300}"
 CANDIDATE_BRANCH="${UPSTREAM_SYNC_CANDIDATE_BRANCH:-sync/upstream-candidate}"
 CANDIDATE_CI_TIMEOUT_SECONDS="${CANDIDATE_CI_TIMEOUT_SECONDS:-2700}"
 CANDIDATE_CI_POLL_SECONDS="${CANDIDATE_CI_POLL_SECONDS:-60}"
@@ -42,6 +43,7 @@ RESULT_FILE="$STATE_DIR/result.json"
 RESPONSE_FILE="$STATE_DIR/last-response.txt"
 CANDIDATE_FILE="$STATE_DIR/candidate.json"
 CI_STATUS_FILE="$STATE_DIR/ci-status.json"
+RUN_STATE_FILE="$STATE_DIR/in-progress-head"
 CI_HELPER="$REPO_DIR/deploy/cron/upstream-sync-ci.cjs"
 UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-upstream}"
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
@@ -67,6 +69,87 @@ fail() {
     logger -t sub2api-upstream-sync -- "$*" || true
   fi
   exit 1
+}
+
+git_lock_is_open() {
+  lock_path="$1"
+  if command -v fuser >/dev/null 2>&1 && fuser "$lock_path" >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v lsof >/dev/null 2>&1 && lsof "$lock_path" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
+quarantine_stale_git_lock() {
+  lock_context="$1"
+  git_lock="$(git rev-parse --git-path index.lock 2>/dev/null || true)"
+  [ -n "$git_lock" ] || return 0
+  [ -e "$git_lock" ] || return 0
+
+  if git_lock_is_open "$git_lock"; then
+    log "ERROR: Git index lock is held by a running process: $git_lock"
+    return 1
+  fi
+
+  lock_mtime="$(stat -c '%Y' "$git_lock" 2>/dev/null || true)"
+  case "$lock_mtime" in
+    ''|*[!0-9]*)
+      log "ERROR: unable to determine Git index lock age: $git_lock"
+      return 1
+      ;;
+  esac
+  lock_age=$(( $(date +%s) - lock_mtime ))
+  if [ "$lock_context" != 'cleanup' ] && [ "$lock_age" -lt "$GIT_INDEX_LOCK_STALE_AFTER_SECONDS" ]; then
+    log "ERROR: Git index lock is too recent to recover safely (${lock_age}s): $git_lock"
+    return 1
+  fi
+
+  quarantined_lock="$STATE_DIR/stale-index-lock.$(date +%Y%m%dT%H%M%S).$$"
+  mv "$git_lock" "$quarantined_lock" || {
+    log "ERROR: unable to quarantine stale Git index lock: $git_lock"
+    return 1
+  }
+  log "quarantined stale Git index lock (${lock_age}s old) at $quarantined_lock"
+}
+
+write_run_state() {
+  run_head="$1"
+  printf '%s\n' "$run_head" | install -m 0600 /dev/stdin "$RUN_STATE_FILE.tmp" || return 1
+  mv "$RUN_STATE_FILE.tmp" "$RUN_STATE_FILE"
+}
+
+clear_run_state() {
+  rm -f "$RUN_STATE_FILE" "$RUN_STATE_FILE.tmp"
+}
+
+recover_interrupted_run() {
+  [ -s "$RUN_STATE_FILE" ] || return 0
+
+  if [ -s "$CANDIDATE_FILE" ]; then
+    log 'interrupted run has a candidate checkpoint; deferring to candidate resume'
+    return 0
+  fi
+
+  interrupted_head="$(sed -n '1p' "$RUN_STATE_FILE")"
+  is_sha "$interrupted_head" || fail 'invalid interrupted-run state; refusing automatic recovery'
+  git cat-file -e "$interrupted_head^{commit}" || fail 'interrupted-run base commit is missing'
+  interrupted_branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+  [ "$interrupted_branch" = 'main' ] || fail "cannot recover interrupted sync outside main; got: ${interrupted_branch:-detached}"
+  current_head="$(git rev-parse HEAD)"
+  git merge-base --is-ancestor "$interrupted_head" "$current_head" || fail 'current HEAD does not descend from interrupted-run base; preserving repository state'
+
+  recovery_head="$interrupted_head"
+  origin_main_head="$(git rev-parse origin/main 2>/dev/null || true)"
+  if [ -n "$origin_main_head" ] && git merge-base --is-ancestor "$interrupted_head" "$origin_main_head"; then
+    recovery_head="$origin_main_head"
+  fi
+  log "recovering interrupted upstream sync to $recovery_head"
+  git reset --hard "$recovery_head" >/dev/null 2>&1 || fail 'unable to recover interrupted upstream sync'
+  [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || fail 'interrupted sync recovery left untracked changes; manual review is required'
+  clear_run_state
+  log 'interrupted upstream sync recovered successfully'
 }
 
 stop_codex_unit() {
@@ -97,6 +180,7 @@ cleanup_on_exit() {
   stop_codex_unit
 
   if [ "$RESTORE_LOCAL_MAIN" -eq 1 ] && [ "$RUN_FINISHED" -eq 0 ] && [ "$REMOTE_PUSHED" -eq 0 ]; then
+    quarantine_stale_git_lock cleanup || log 'WARNING: unable to clear Git index lock before rollback'
     current_branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
     if [ "$current_branch" = 'main' ] && [ -n "$BEFORE_HEAD" ]; then
       recovery_head="$BEFORE_HEAD"
@@ -107,10 +191,17 @@ cleanup_on_exit() {
       current_status="$(git status --porcelain=v1 --untracked-files=all)"
       if [ "$(git rev-parse HEAD 2>/dev/null || true)" != "$recovery_head" ] || [ -n "$current_status" ]; then
         log "restoring local main to $recovery_head after incomplete sync; remote candidate records remain available"
-        git reset --hard "$recovery_head" >/dev/null 2>&1 || log 'ERROR: unable to restore main automatically'
-        if [ -n "$(git status --porcelain=v1 --untracked-files=all)" ]; then
-          log 'WARNING: untracked changes remain after rollback; manual review is required'
+        if git reset --hard "$recovery_head" >/dev/null 2>&1; then
+          if [ -z "$(git status --porcelain=v1 --untracked-files=all)" ]; then
+            clear_run_state
+          else
+            log 'WARNING: untracked changes remain after rollback; manual review is required'
+          fi
+        else
+          log 'ERROR: unable to restore main automatically'
         fi
+      else
+        clear_run_state
       fi
     else
       log 'WARNING: incomplete sync did not leave main checked out; manual review is required'
@@ -242,6 +333,7 @@ promote_candidate() {
   write_state "$TARGET_HEAD" || fail 'unable to save promoted upstream state; checkpoint retained'
   rm -f "$CANDIDATE_FILE" || fail 'unable to remove completed candidate checkpoint'
   log "candidate promoted successfully; state advanced to $TARGET_HEAD; Build and Deploy now handles production"
+  clear_run_state
   RUN_FINISHED=1
 }
 
@@ -280,6 +372,12 @@ EOF
 
 cd "$REPO_DIR"
 log 'starting upstream sync'
+
+case "$GIT_INDEX_LOCK_STALE_AFTER_SECONDS" in
+  ''|*[!0-9]*) fail "GIT_INDEX_LOCK_STALE_AFTER_SECONDS must be a non-negative integer; got: $GIT_INDEX_LOCK_STALE_AFTER_SECONDS" ;;
+esac
+quarantine_stale_git_lock startup || fail 'Git index lock requires manual review'
+recover_interrupted_run
 
 branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
 [ "$branch" = 'main' ] || fail "current branch must be main; got: ${branch:-detached}"
@@ -337,6 +435,7 @@ export UPSTREAM_SYNC_BASE_HEAD="$BASE_HEAD"
 export UPSTREAM_SYNC_LOW_MEMORY=1
 
 log "found $COUNT upstream commits; invoking Codex in $CODEX_UNIT (memory=$CODEX_MEMORY_MAX swap=$CODEX_SWAP_MAX tasks=$CODEX_TASKS_MAX runtime=$CODEX_TIMEOUT)"
+write_run_state "$BEFORE_HEAD" || fail 'unable to save interrupted-run recovery state'
 RESTORE_LOCAL_MAIN=1
 CODEX_UNIT_ACTIVE=1
 CODEX_EXIT=0
@@ -425,6 +524,7 @@ case "$RESULT_STATUS" in
     [ "$(git rev-parse HEAD)" = "$BEFORE_HEAD" ] || fail 'blocked result changed repository history'
     [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || fail 'blocked result left uncommitted changes'
     log 'Codex blocked this update; state remains pending'
+    clear_run_state
     RUN_FINISHED=1
     exit 2
     ;;
@@ -433,12 +533,13 @@ case "$RESULT_STATUS" in
     [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || fail 'noop result left uncommitted changes'
     write_state "$TARGET_HEAD"
     log "upstream review complete with no code changes; state advanced to $TARGET_HEAD"
+    clear_run_state
     RUN_FINISHED=1
     ;;
   applied)
     git diff --check "$BEFORE_HEAD" || fail 'upstream sync contains whitespace errors'
     if [ -n "$(git status --porcelain=v1 --untracked-files=all)" ]; then
-      git add -A
+      git add -A || fail 'unable to stage Codex changes'
       git commit -m 'chore: sync upstream updates' || fail 'unable to commit Codex changes'
     fi
     [ "$(git rev-parse HEAD)" != "$BEFORE_HEAD" ] || fail 'applied result produced no commit'
