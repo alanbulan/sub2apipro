@@ -96,7 +96,7 @@ function git(cwd, args, env) {
   return result.stdout.trim();
 }
 
-async function fixture(t) {
+async function fixture(t, { withChecker = false } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'upstream-sync-ci-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const repo = path.join(directory, 'repo');
@@ -109,8 +109,10 @@ async function fixture(t) {
     fs.mkdirSync(path.join(repo, 'deploy/cron'), { recursive: true });
     fs.copyFileSync(path.join(__dirname, '../cron', name), path.join(repo, 'deploy/cron', name));
   }
-  fs.mkdirSync(path.join(repo, 'scripts'));
-  fs.writeFileSync(path.join(repo, 'scripts/check-upstream.sh'), '#!/bin/sh\nprintf "0\\n"\n', { mode: 0o755 });
+  if (withChecker) {
+    fs.mkdirSync(path.join(repo, 'scripts'));
+    fs.writeFileSync(path.join(repo, 'scripts/check-upstream.sh'), '#!/bin/sh\nprintf "0\\n"\n', { mode: 0o755 });
+  }
   fs.mkdirSync(path.join(repo, 'custom'));
   fs.writeFileSync(path.join(repo, 'custom/protected-paths.txt'), 'custom/\ndeploy/cron/\n');
   fs.writeFileSync(path.join(repo, '.gitignore'), '.codex-upstream-sync/\n');
@@ -222,7 +224,7 @@ test('wrapper repairs state after a crash between remote promotion and state wri
 });
 
 test('wrapper quarantines a stale index lock and recovers an interrupted merge', async t => {
-  const f = await fixture(t);
+  const f = await fixture(t, { withChecker: true });
   fs.rmSync(f.checkpointFile);
   fs.writeFileSync(path.join(f.stateDir, 'in-progress-head'), `${f.before}\n`);
   fs.writeFileSync(path.join(f.repo, 'feature.txt'), 'interrupted merge content\n');
