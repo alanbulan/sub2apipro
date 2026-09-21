@@ -24,10 +24,11 @@
             <input
               id="email"
               v-model="formData.email"
+              name="username"
               type="email"
               required
               autofocus
-              autocomplete="email"
+              :autocomplete="rememberMe ? 'username' : 'off'"
               :disabled="authActionDisabled"
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
@@ -48,9 +49,10 @@
             <input
               id="password"
               v-model="formData.password"
+              name="password"
               :type="showPassword ? 'text' : 'password'"
               required
-              autocomplete="current-password"
+              :autocomplete="rememberMe ? 'current-password' : 'off'"
               :disabled="authActionDisabled"
               class="input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
@@ -67,7 +69,17 @@
             </button>
           </div>
           <div class="mt-1 flex items-center justify-between">
-            <span></span>
+            <label class="flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-dark-300">
+              <input
+                id="remember-me"
+                v-model="rememberMe"
+                name="remember"
+                type="checkbox"
+                :disabled="authActionDisabled"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+              />
+              <span>{{ t('auth.rememberMe') }}</span>
+            </label>
             <router-link
               v-if="passwordResetEnabled && !backendModeEnabled"
               to="/forgot-password"
@@ -254,6 +266,8 @@ import { clearAllAffiliateReferralCodes } from '@/utils/oauthAffiliate'
 
 const { t } = useI18n()
 const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
+const REMEMBER_ME_STORAGE_KEY = 'sub2api_remember_me'
+const REMEMBERED_EMAIL_STORAGE_KEY = 'sub2api_remembered_email'
 
 // ==================== Router & Stores ====================
 
@@ -267,6 +281,7 @@ const isLoading = ref<boolean>(false)
 const passkeyLoading = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
+const rememberMe = ref<boolean>(localStorage.getItem(REMEMBER_ME_STORAGE_KEY) === 'true')
 const publicSettingsLoaded = ref<boolean>(false)
 
 // Public settings
@@ -326,7 +341,7 @@ const totpUserEmailMasked = ref<string>('')
 const totpModalRef = ref<InstanceType<typeof TotpLoginModal> | null>(null)
 
 const formData = reactive({
-  email: '',
+  email: rememberMe.value ? localStorage.getItem(REMEMBERED_EMAIL_STORAGE_KEY) || '' : '',
   password: ''
 })
 
@@ -372,6 +387,8 @@ watch(validationToastMessage, (value, previousValue) => {
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  void restoreRememberedCredential()
+
   const expiredFlag = sessionStorage.getItem('auth_expired')
   if (expiredFlag) {
     sessionStorage.removeItem('auth_expired')
@@ -412,6 +429,63 @@ onMounted(async () => {
     publicSettingsLoaded.value = true
   }
 })
+
+type BrowserPasswordCredential = Credential & {
+  id: string
+  password?: string
+}
+
+type BrowserPasswordCredentialConstructor = new (data: {
+  id: string
+  name?: string
+  password: string
+}) => Credential
+
+async function restoreRememberedCredential(): Promise<void> {
+  if (!rememberMe.value || !navigator.credentials?.get) return
+
+  try {
+    const getPasswordCredential = navigator.credentials.get.bind(navigator.credentials) as (
+      options: { password: boolean; mediation: 'optional' }
+    ) => Promise<Credential | null>
+    const credential = (await getPasswordCredential({
+      password: true,
+      mediation: 'optional'
+    })) as BrowserPasswordCredential | null
+    if (!credential?.password) return
+    formData.email = credential.id || formData.email
+    formData.password = credential.password
+  } catch {
+    // Browsers without password credential support still restore the remembered email.
+  }
+}
+
+async function persistRememberedCredential(): Promise<void> {
+  if (!rememberMe.value) {
+    localStorage.removeItem(REMEMBER_ME_STORAGE_KEY)
+    localStorage.removeItem(REMEMBERED_EMAIL_STORAGE_KEY)
+    return
+  }
+
+  const email = formData.email.trim()
+  localStorage.setItem(REMEMBER_ME_STORAGE_KEY, 'true')
+  localStorage.setItem(REMEMBERED_EMAIL_STORAGE_KEY, email)
+
+  const PasswordCredentialClass = (window as typeof window & {
+    PasswordCredential?: BrowserPasswordCredentialConstructor
+  }).PasswordCredential
+  if (!PasswordCredentialClass || !navigator.credentials?.store || !formData.password) return
+
+  try {
+    await navigator.credentials.store(new PasswordCredentialClass({
+      id: email,
+      name: email,
+      password: formData.password
+    }))
+  } catch {
+    // Password manager availability or user choice must not make login fail.
+  }
+}
 
 // ==================== Login Agreement ====================
 
@@ -577,16 +651,19 @@ async function handleLogin(): Promise<void> {
 
   try {
     // Call auth store login（阿里云 captchaVerifyParam 复用 turnstile_token 字段）
-    const response = await authStore.login({
-      email: formData.email,
-      password: formData.password,
-      turnstile_token:
-        turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
-      tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
-      tencent_captcha_randstr: tencentCaptchaEnabled.value
-        ? tencentCaptchaRandstr.value
-        : undefined
-    })
+    const response = await authStore.login(
+      {
+        email: formData.email,
+        password: formData.password,
+        turnstile_token:
+          turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
+        tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+        tencent_captcha_randstr: tencentCaptchaEnabled.value
+          ? tencentCaptchaRandstr.value
+          : undefined
+      },
+      rememberMe.value
+    )
 
     // Check if 2FA is required
     if (isTotp2FARequired(response)) {
@@ -599,6 +676,7 @@ async function handleLogin(): Promise<void> {
     }
 
     // Show success toast
+    await persistRememberedCredential()
     clearAllAffiliateReferralCodes()
     appStore.showSuccess(t('auth.loginSuccess'))
 
@@ -641,7 +719,7 @@ async function handlePasskeyLogin(): Promise<void> {
         : { turnstile_token: result.token }
     }
 
-    await authStore.loginWithPasskey(proof)
+    await authStore.loginWithPasskey(proof, rememberMe.value)
     clearAllAffiliateReferralCodes()
     appStore.showSuccess(t('auth.loginSuccess'))
     const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
@@ -662,6 +740,7 @@ async function handlePasskeyLogin(): Promise<void> {
 
 async function handleOAuthStart(request: OAuthLoginStart): Promise<void> {
   if (authActionDisabled.value) return
+  authStore.setLoginPersistence(rememberMe.value)
 
   if (!actionCaptchaEnabled.value) {
     window.location.href = buildOAuthLoginStartURL(request)
@@ -708,6 +787,7 @@ async function handle2FAVerify(code: string): Promise<void> {
     await authStore.login2FA(totpTempToken.value, code)
 
     // Close modal and show success
+    await persistRememberedCredential()
     show2FAModal.value = false
     clearAllAffiliateReferralCodes()
     appStore.showSuccess(t('auth.loginSuccess'))

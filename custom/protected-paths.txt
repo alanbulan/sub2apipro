@@ -12,4 +12,5 @@ frontend/src/styles/themes/
 frontend/src/composables/useAppTheme.ts
 frontend/src/components/common/ThemeSwitcher.vue
 frontend/src/components/common/ThemePreview.vue
+frontend/src/__tests__/rememberMePro.spec.ts
 frontend/public/logo.svg

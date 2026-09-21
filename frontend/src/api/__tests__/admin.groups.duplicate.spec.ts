@@ -36,6 +36,19 @@ describe('admin group duplicate API', () => {
     expect(sessionStorage.length).toBe(0)
   })
 
+  it('reads the administrator from session storage for a non-remembered login', async () => {
+    sessionStorage.setItem('auth_storage_mode', 'session')
+    sessionStorage.setItem('auth_user', JSON.stringify({ id: 9 }))
+
+    await duplicate(42)
+
+    expect(post).toHaveBeenCalledWith('/admin/groups/42/duplicate', undefined, {
+      headers: {
+        'Idempotency-Key': 'group-duplicate-9-42-11111111-1111-4111-8111-111111111111'
+      }
+    })
+  })
+
   it('reuses the operation key after an ambiguous failed request', async () => {
     post.mockRejectedValueOnce(new Error('network timeout'))
     await expect(duplicate(99)).rejects.toThrow('network timeout')

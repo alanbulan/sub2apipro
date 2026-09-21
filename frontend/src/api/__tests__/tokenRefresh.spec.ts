@@ -34,6 +34,7 @@ function refreshedResponse() {
 describe('refreshAuthTokens', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     mockedPost.mockReset()
     vi.resetModules()
     Object.defineProperty(navigator, 'locks', {
@@ -65,6 +66,23 @@ describe('refreshAuthTokens', () => {
     await expect(first).resolves.toMatchObject({ access_token: 'new-access' })
     await expect(second).resolves.toMatchObject({ refresh_token: 'new-refresh' })
     expect(localStorage.getItem('refresh_token')).toBe('new-refresh')
+  })
+
+  it('keeps refreshed tokens in sessionStorage for a non-remembered login', async () => {
+    sessionStorage.setItem('auth_storage_mode', 'session')
+    sessionStorage.setItem('auth_token', 'old-session-access')
+    sessionStorage.setItem('refresh_token', 'old-session-refresh')
+    sessionStorage.setItem('token_expires_at', String(Date.now() - 1))
+    sessionStorage.setItem('auth_user', JSON.stringify({ id: 7, email: 'admin@example.com' }))
+    mockedPost.mockResolvedValueOnce(refreshedResponse())
+    const { refreshAuthTokens } = await import('@/api/tokenRefresh')
+
+    await expect(refreshAuthTokens()).resolves.toMatchObject({ access_token: 'new-access' })
+
+    expect(sessionStorage.getItem('auth_token')).toBe('new-access')
+    expect(sessionStorage.getItem('refresh_token')).toBe('new-refresh')
+    expect(localStorage.getItem('auth_token')).toBeNull()
+    expect(localStorage.getItem('refresh_token')).toBeNull()
   })
 
   it('adopts tokens refreshed by another tab after acquiring the Web Lock', async () => {

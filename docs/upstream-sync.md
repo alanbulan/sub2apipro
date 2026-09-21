@@ -95,6 +95,10 @@
 - 主题：以 `frontend/src/composables/useAppTheme.ts` 注册的全部 24 个主题为准。
   CSS、加载入口、切换/预览组件、存储键及多语言名称必须保留；旧文档中的
   “五个主题”不能作为更新清单。Actions 检查数量、实际文件和导入是否完整。
+- 登录：保留 Pro 的“记住我”语义。未勾选时认证信息仅保存在当前浏览器会话，
+  勾选后才持久化登录并记住账号；密码只交给浏览器密码管理器保存和自动填充，
+  不得写入 localStorage、sessionStorage、日志或 URL。同步涉及登录、2FA、OAuth、
+  Passkey、令牌刷新或请求拦截器时，必须运行对应前端回归测试。
 
 `custom/protected-paths.txt` 是源码合并保护清单，不是操作系统的不可变文件
 标志。部署拉取 GitHub 构建的镜像，压缩后的 JS/CSS 与源码不同属于正常构建

@@ -59,6 +59,24 @@ describe('API Client', () => {
       expect(config.headers.get('Authorization')).toBe('Bearer my-jwt-token')
     })
 
+    it('当前会话模式从 sessionStorage 附加 Authorization 头', async () => {
+      sessionStorage.setItem('auth_storage_mode', 'session')
+      sessionStorage.setItem('auth_token', 'session-jwt-token')
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/test')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('Authorization')).toBe('Bearer session-jwt-token')
+    })
+
     it('无 token 时不附加 Authorization 头', async () => {
       const adapter = vi.fn().mockResolvedValue({
         status: 200,

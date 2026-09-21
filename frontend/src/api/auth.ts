@@ -6,6 +6,16 @@
 import { apiClient } from './client'
 import { refreshAuthTokens, type RefreshTokenResponse } from './tokenRefresh'
 export type { RefreshTokenResponse } from './tokenRefresh'
+import {
+  AUTH_TOKEN_KEY,
+  AUTH_USER_KEY,
+  REFRESH_TOKEN_KEY,
+  TOKEN_EXPIRES_AT_KEY,
+  clearAuthStorage,
+  getAuthItem,
+  setAuthItem,
+  setAuthStorageMode
+} from '@/utils/authStorage'
 import type {
   LoginRequest,
   RegisterRequest,
@@ -69,58 +79,55 @@ export function isTotp2FARequired(response: LoginResponse): response is TotpLogi
 }
 
 /**
- * Store authentication token in localStorage
+ * Store the authentication token in the selected auth storage
  */
 export function setAuthToken(token: string): void {
-  localStorage.setItem('auth_token', token)
+  setAuthItem(AUTH_TOKEN_KEY, token)
 }
 
 /**
- * Store refresh token in localStorage
+ * Store the refresh token in the selected auth storage
  */
 export function setRefreshToken(token: string): void {
-  localStorage.setItem('refresh_token', token)
+  setAuthItem(REFRESH_TOKEN_KEY, token)
 }
 
 /**
- * Store token expiration timestamp in localStorage
+ * Store the token expiration timestamp in the selected auth storage
  * Converts expires_in (seconds) to absolute timestamp (milliseconds)
  */
 export function setTokenExpiresAt(expiresIn: number): void {
   const expiresAt = Date.now() + expiresIn * 1000
-  localStorage.setItem('token_expires_at', String(expiresAt))
+  setAuthItem(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
 }
 
 /**
- * Get authentication token from localStorage
+ * Get the authentication token from the selected auth storage
  */
 export function getAuthToken(): string | null {
-  return localStorage.getItem('auth_token')
+  return getAuthItem(AUTH_TOKEN_KEY)
 }
 
 /**
- * Get refresh token from localStorage
+ * Get the refresh token from the selected auth storage
  */
 export function getRefreshToken(): string | null {
-  return localStorage.getItem('refresh_token')
+  return getAuthItem(REFRESH_TOKEN_KEY)
 }
 
 /**
- * Get token expiration timestamp from localStorage
+ * Get the token expiration timestamp from the selected auth storage
  */
 export function getTokenExpiresAt(): number | null {
-  const value = localStorage.getItem('token_expires_at')
+  const value = getAuthItem(TOKEN_EXPIRES_AT_KEY)
   return value ? parseInt(value, 10) : null
 }
 
 /**
- * Clear authentication token from localStorage
+ * Clear authentication state from both browser storage scopes
  */
 export function clearAuthToken(): void {
-  localStorage.removeItem('auth_token')
-  localStorage.removeItem('refresh_token')
-  localStorage.removeItem('auth_user')
-  localStorage.removeItem('token_expires_at')
+  clearAuthStorage()
 }
 
 /**
@@ -128,11 +135,12 @@ export function clearAuthToken(): void {
  * @param credentials - Email and password
  * @returns Authentication response with token and user data, or 2FA required response
  */
-export async function login(credentials: LoginRequest): Promise<LoginResponse> {
+export async function login(credentials: LoginRequest, rememberMe = true): Promise<LoginResponse> {
   const { data } = await apiClient.post<LoginResponse>('/auth/login', credentials)
 
   // Only store token if 2FA is not required
   if (!isTotp2FARequired(data)) {
+    setAuthStorageMode(rememberMe)
     setAuthToken(data.access_token)
     if (data.refresh_token) {
       setRefreshToken(data.refresh_token)
@@ -140,7 +148,7 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
     if (data.expires_in) {
       setTokenExpiresAt(data.expires_in)
     }
-    localStorage.setItem('auth_user', JSON.stringify(data.user))
+    setAuthItem(AUTH_USER_KEY, JSON.stringify(data.user))
   }
 
   return data
@@ -151,10 +159,16 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
  * @param request - Temp token and TOTP code
  * @returns Authentication response with token and user data
  */
-export async function login2FA(request: TotpLogin2FARequest): Promise<AuthResponse> {
+export async function login2FA(
+  request: TotpLogin2FARequest,
+  rememberMe?: boolean
+): Promise<AuthResponse> {
   const { data } = await apiClient.post<AuthResponse>('/auth/login/2fa', request)
 
   // Store token and user data
+  if (typeof rememberMe === 'boolean') {
+    setAuthStorageMode(rememberMe)
+  }
   setAuthToken(data.access_token)
   if (data.refresh_token) {
     setRefreshToken(data.refresh_token)
@@ -162,7 +176,7 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
   if (data.expires_in) {
     setTokenExpiresAt(data.expires_in)
   }
-  localStorage.setItem('auth_user', JSON.stringify(data.user))
+  setAuthItem(AUTH_USER_KEY, JSON.stringify(data.user))
 
   return data
 }
@@ -176,6 +190,7 @@ export async function register(userData: RegisterRequest): Promise<AuthResponse>
   const { data } = await apiClient.post<AuthResponse>('/auth/register', userData)
 
   // Store token and user data
+  setAuthStorageMode(true)
   setAuthToken(data.access_token)
   if (data.refresh_token) {
     setRefreshToken(data.refresh_token)
@@ -183,7 +198,7 @@ export async function register(userData: RegisterRequest): Promise<AuthResponse>
   if (data.expires_in) {
     setTokenExpiresAt(data.expires_in)
   }
-  localStorage.setItem('auth_user', JSON.stringify(data.user))
+  setAuthItem(AUTH_USER_KEY, JSON.stringify(data.user))
 
   return data
 }
@@ -198,7 +213,7 @@ export async function getCurrentUser() {
 
 /**
  * User logout
- * Clears authentication token and user data from localStorage
+ * Clears authentication token and user data from browser storage
  * Optionally revokes the refresh token on the server
  */
 export async function logout(): Promise<void> {

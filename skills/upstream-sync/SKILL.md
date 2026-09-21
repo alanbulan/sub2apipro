@@ -18,7 +18,7 @@ Use this skill after `scripts/check-upstream.sh` reports new upstream commits. T
 
 1. Read `.codex-upstream-sync/report.md`, then run `git log --oneline <local>..<remote>/<branch>` and inspect each commit's changed files with `git show --stat`.
 2. Classify every changed file as `protected`, `mergeable`, or `conflict-risk` using `custom/protected-paths.txt`.
-3. Never overwrite protected paths. For upstream changes that overlap them, port only the upstream behavior into the custom implementation; keep theme IDs, token names, branding removals, and local sync/CI behavior stable. Deployment manifests and helpers are not protected and follow upstream by default.
+3. Never overwrite protected paths. For upstream changes that overlap them, port only the upstream behavior into the custom implementation; keep theme IDs, token names, branding removals, the Pro remember-me contract, and local sync/CI behavior stable. Deployment manifests and helpers are not protected and follow upstream by default.
 4. Before merging, create a backup branch named `backup/pre-upstream-<timestamp>`.
 5. Merge the reviewed upstream target, adapting overlapping fork features to the upstream interfaces. Read the playbook's Ent, gateway capture, and locale-key recipes when those files change. If `ci-status.json` records a failed candidate, inspect that run's annotations/artifacts and fix its cause before submitting the next candidate.
 6. In a development worktree, run focused checks for touched code. On the production server, do not run local builds, package-manager scripts, type checks, or tests; record the GitHub Actions run that validates the pushed commit instead.
@@ -48,6 +48,7 @@ When `CODEX_UPSTREAM_SYNC_AUTOMATION=1` is present, this is the repository owner
 - ordinary upstream updates may be merged into local `main`; the wrapper, not Codex, pushes a GitHub CI candidate and promotes only a passing candidate to `origin/main`;
 - never enable or use a push URL for `upstream`;
 - preserve every protected path and all 24 themes registered in `frontend/src/composables/useAppTheme.ts`, including their stylesheets, CSS imports, switcher, and locale labels; never rely on the obsolete five-theme list;
+- preserve the Pro login page's `记住我` / `Remember me` control: unchecked sessions stay in `sessionStorage`, checked sessions use `localStorage`, account/password autofill delegates password material to the browser credential manager, and application code never writes the plaintext password to Web Storage;
 - merge database migrations, payment flows, authentication protocols, security boundaries, and public API changes by default; these categories are not independent stop conditions;
 - stop only when a documented protected UI, copy, or automation requirement cannot be preserved, a conflict cannot be resolved, or a low-cost static check fails;
 - follow the production-server validation rules above regardless of `UPSTREAM_SYNC_LOW_MEMORY`; GitHub Actions performs every build and test;

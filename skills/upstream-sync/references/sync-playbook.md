@@ -31,6 +31,27 @@ If upstream changes a user-visible string containing the upstream name, translat
 
 Upstream release/update logic points at the original project. Preserve the mechanism but treat repository/image URLs as deployment configuration if upstream adds configuration support. Do not hardcode the old official links back into UI copy.
 
+## Pro Remember Me
+
+The fork's login form has a `记住我` / `Remember me` option. Preserve its
+behavior when upstream changes authentication, token refresh, login, 2FA,
+passkeys, or OAuth callbacks:
+
+- unchecked logins store access tokens, refresh tokens, expiry, and user data
+  in `sessionStorage` only;
+- checked logins store the same session state in `localStorage`, remember the
+  account email, and use the browser Credential Management/password manager
+  API for password save and autofill;
+- never place a plaintext password in `localStorage`, `sessionStorage`, Pinia
+  persistence, URLs, logs, or repository files;
+- request interceptors, token rotation, WebSockets, popups, logout, and 2FA must
+  all use the selected authentication storage consistently;
+- retain compatibility with legacy sessions that predate the storage-mode
+  marker and therefore exist only in `localStorage`.
+
+`frontend/src/__tests__/rememberMePro.spec.ts` is the protected fork invariant.
+Keep it unchanged and adapt mergeable authentication code around it.
+
 ## Automation Files
 
 `skills/upstream-sync/**`, `scripts/check-upstream.sh`, and `custom/protected-paths.txt` define this fork's workflow. Prefer rebasing local improvements over accepting an upstream version of these files. Deployment manifests and helpers are upstream-owned unless they are explicitly listed in `custom/protected-paths.txt`.
