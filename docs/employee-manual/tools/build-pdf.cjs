@@ -22,7 +22,8 @@ const { chromium } = require('playwright-core')
 const ROOT = path.resolve(__dirname, '..')
 const SRC = path.join(ROOT, 'README.md')
 const OUT = path.join(ROOT, 'BeaconChip-员工使用手册.pdf')
-const LOGO = path.resolve(ROOT, '../../frontend/public/logo.svg')
+const LOGO = path.join(ROOT, 'assets/logo.png')
+const logoDataUrl = () => `data:image/png;base64,${fs.readFileSync(LOGO).toString('base64')}`
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const VERSION = process.env.MANUAL_VERSION || 'v1.1'
 const EDITION = process.env.MANUAL_EDITION || '2026 年 9 月'
@@ -56,7 +57,7 @@ function renderBody(md) {
       const m = slug(text).match(/^(\d+)\.\s*(.+)$/)
       const num = m ? m[1].padStart(2, '0') : ''
       const title = m ? m[2] : slug(text)
-      current = { id: `ch-${num}`, num, title, subs: [] }
+      current = { id: `ch-${num}`, num, title, subs: [], figs: 0 }
       chapters.push(current)
       return `<section class="chapter-head" id="${current.id}">
         <div class="chapter-kicker">CHAPTER ${num}</div>
@@ -70,8 +71,10 @@ function renderBody(md) {
     }
     return `<h${depth}>${text}</h${depth}>`
   }
-  renderer.image = ({ href, text }) =>
-    `<figure><img src="${pathToFileURL(path.join(ROOT, href)).href}" alt="${text}"/><figcaption>图 · ${text}</figcaption></figure>`
+  renderer.image = ({ href, text }) => {
+    const no = current ? `${Number(current.num)}-${++current.figs}` : ''
+    return `<figure><img src="${pathToFileURL(path.join(ROOT, href)).href}" alt="${text}"/><figcaption><span class="fig-no">图 ${no}</span>${text}</figcaption></figure>`
+  }
   renderer.blockquote = function ({ tokens }) {
     const inner = this.parser.parse(tokens)
     const plain = inner.replace(/<[^>]+>/g, '')
@@ -92,7 +95,7 @@ function renderBody(md) {
 }
 
 function buildHtml({ body, chapters, pages, introQuote, noteQuote, infoTable }, part) {
-  const logo = fs.readFileSync(LOGO, 'utf8')
+  const logo = `<img src="${logoDataUrl()}" alt="BeaconChip"/>`
   const pg = (id) => (pages && pages[id] ? String(pages[id]) : '00')
   const toc = chapters.map((c) => `
     <li class="toc-ch"><a href="#${c.id}"><span class="toc-num">${c.num}</span><span class="toc-title">${c.title}</span><span class="toc-dots"></span><span class="toc-pg">${pg(c.id)}</span></a>
@@ -122,9 +125,9 @@ li{margin:.18em 0}
   background:radial-gradient(1200px 700px at 85% -10%,rgba(6,182,212,.35),transparent 60%),radial-gradient(900px 600px at -10% 110%,rgba(79,70,229,.45),transparent 60%),linear-gradient(160deg,#142b56 0%,#0a1a39 55%,#061127 100%);page-break-after:always}
 .cover .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:14mm 14mm}
 .cover .inner{position:absolute;left:22mm;right:22mm;top:30mm;bottom:24mm;display:flex;flex-direction:column}
-.cover .logo{width:30mm;height:30mm;border-radius:7mm;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.45)}
-.cover .logo svg{width:100%;height:100%;display:block}
-.cover .brand{margin-top:14mm;font-size:46pt;font-weight:900;letter-spacing:-.5pt;line-height:1.05}
+.cover .logo{width:78mm;margin-left:-2mm}
+.cover .logo img{width:100%;display:block;filter:drop-shadow(0 0 18px rgba(56,189,248,.35)) drop-shadow(0 10px 30px rgba(0,0,0,.45))}
+.cover .brand{margin-top:10mm;font-size:46pt;font-weight:900;letter-spacing:-.5pt;line-height:1.05}
 .cover .tag{font-size:14pt;color:#a5b4fc;letter-spacing:3pt;margin-top:3mm;font-weight:500}
 .cover .title{margin-top:22mm;font-family:'Noto Serif SC',serif;font-size:34pt;font-weight:700;line-height:1.25}
 .cover .title small{display:block;font-family:'Noto Sans SC';font-size:12pt;font-weight:400;color:#cbd5e1;margin-top:5mm;letter-spacing:.5pt;max-width:140mm;line-height:1.7}
@@ -142,13 +145,13 @@ li{margin:.18em 0}
 .front table{margin-top:6mm}
 .toc{list-style:none;padding:0;margin:4mm 0 0}
 .toc a{display:flex;align-items:baseline;color:var(--ink)}
-.toc-ch{margin:0 0 2.2mm}
-.toc-ch>a{font-weight:700;font-size:11pt;padding:2mm 0;border-bottom:1px solid var(--line)}
+.toc-ch{margin:0 0 1.2mm}
+.toc-ch>a{font-weight:700;font-size:10.5pt;padding:1.4mm 0;border-bottom:1px solid var(--line)}
 .toc-num{font-family:'JetBrains Mono';color:var(--brand);width:11mm;flex:none;font-weight:600}
 .toc-dots{flex:1;border-bottom:1px dotted #cbd5e1;margin:0 3mm;transform:translateY(-1.2mm)}
 .toc-pg{font-family:'JetBrains Mono';font-size:9.5pt;color:var(--muted)}
 .toc-ch ol{list-style:none;padding:0 0 0 11mm;margin:1mm 0 0}
-.toc-ch ol a{font-size:9.5pt;padding:.6mm 0;color:#334155}
+.toc-ch ol a{font-size:9pt;padding:.2mm 0;line-height:1.6;color:#334155}
 
 /* ---------- chapters ---------- */
 .chapter-head{page-break-before:always;margin:0 0 7mm;padding:0 0 5mm;border-bottom:2px solid var(--ink);position:relative}
@@ -180,7 +183,8 @@ code{font-family:'JetBrains Mono','Noto Sans SC',monospace;font-size:.86em;backg
 
 figure{margin:4mm 0 6mm;break-inside:avoid;text-align:center}
 figure img{max-width:100%;max-height:118mm;border:1px solid var(--line);border-radius:2.5mm;box-shadow:0 6px 18px rgba(15,23,42,.10)}
-figcaption{font-size:8.5pt;color:#64748b;margin-top:2mm}
+figcaption{font-size:8.5pt;color:#64748b;margin-top:2.5mm}
+.fig-no{display:inline-block;font-weight:700;color:var(--brand);margin-right:2mm;padding-right:2mm;border-right:1px solid #cbd5e1}
 li figure{margin-left:-1.4em}
 
 .callout{margin:4mm 0 5mm;padding:3.5mm 4.5mm;border-radius:2.5mm;border:1px solid;break-inside:avoid;font-size:9.8pt}
@@ -228,7 +232,8 @@ ${part === 'cover' ? `<section class="cover"><div class="grid"></div>
 
 const footer = `<div style="width:100%;font-size:7.5pt;color:#94a3b8;padding:0 18mm;display:flex;justify-content:space-between;font-family:'WenQuanYi Zen Hei',sans-serif">
   <span>BeaconChip 员工使用手册 · 内部资料</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`
-const header = `<div style="width:100%;font-size:7pt;color:#cbd5e1;padding:0 18mm;text-align:right;letter-spacing:2px;font-family:'WenQuanYi Zen Hei',sans-serif">BEACONCHIP · API GATEWAY PLATFORM</div>`
+const header = `<div style="width:100%;padding:0 18mm;display:flex;align-items:center;justify-content:space-between;font-size:7pt;color:#94a3b8;letter-spacing:2px;font-family:'WenQuanYi Zen Hei',sans-serif">
+  <img style="height:5.5mm" src="data:image/png;base64,${fs.readFileSync(path.join(ROOT, 'assets/logo-small.png')).toString('base64')}"/><span>BEACONCHIP · API GATEWAY PLATFORM</span></div>`
 
 async function render(browser, html, file, chrome = true) {
   const tmp = path.join(ROOT, '.manual-print.html')
