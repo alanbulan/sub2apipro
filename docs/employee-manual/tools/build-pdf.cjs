@@ -22,8 +22,7 @@ const { chromium } = require('playwright-core')
 const ROOT = path.resolve(__dirname, '..')
 const SRC = path.join(ROOT, 'README.md')
 const OUT = path.join(ROOT, 'BeaconChip-员工使用手册.pdf')
-const LOGO = path.join(ROOT, 'assets/logo.png')
-const logoDataUrl = () => `data:image/png;base64,${fs.readFileSync(LOGO).toString('base64')}`
+const asset = (f) => `data:image/png;base64,${fs.readFileSync(path.join(ROOT, 'assets', f)).toString('base64')}`
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const VERSION = process.env.MANUAL_VERSION || 'v1.1'
 const EDITION = process.env.MANUAL_EDITION || '2026 年 9 月'
@@ -90,12 +89,22 @@ function renderBody(md) {
     return `<div class="code"><div class="code-bar"><i></i><i></i><i></i><span>${label}</span></div><pre><code>${esc}</code></pre></div>`
   }
   renderer.hr = () => ''
-  const html = marked.parse(md, { renderer, gfm: true })
+
+  // Group a heading or lead-in line with the block it introduces so the pair never splits across pages.
+  const tokens = marked.lexer(md, { gfm: true }).filter((t) => t.type !== 'space' && t.type !== 'hr')
+  const isLeadIn = (t) => (t.type === 'heading' && t.depth >= 3) ||
+    (t.type === 'paragraph' && (/[：:]$/.test(t.text.trim()) || /^\*\*[^*]+\*\*$/.test(t.text.trim())))
+  const parse = (list) => { list.links = tokens.links; return marked.parser(list, { renderer, gfm: true }) }
+  let html = ''
+  for (let i = 0; i < tokens.length; i++) {
+    const group = [tokens[i]]
+    while (isLeadIn(group[group.length - 1]) && i + 1 < tokens.length && !(tokens[i + 1].type === 'heading' && tokens[i + 1].depth <= 2)) group.push(tokens[++i])
+    html += group.length > 1 ? `<div class="keep">${parse(group)}</div>` : parse(group)
+  }
   return { html, chapters }
 }
 
 function buildHtml({ body, chapters, pages, introQuote, noteQuote, infoTable }, part) {
-  const logo = `<img src="${logoDataUrl()}" alt="BeaconChip"/>`
   const pg = (id) => (pages && pages[id] ? String(pages[id]) : '00')
   const toc = chapters.map((c) => `
     <li class="toc-ch"><a href="#${c.id}"><span class="toc-num">${c.num}</span><span class="toc-title">${c.title}</span><span class="toc-dots"></span><span class="toc-pg">${pg(c.id)}</span></a>
@@ -108,7 +117,7 @@ function buildHtml({ body, chapters, pages, introQuote, noteQuote, infoTable }, 
 ${fontCss('noto-sans-sc', ['400', '500', '700', '900'])}
 ${fontCss('noto-serif-sc', ['700'])}
 ${fontCss('jetbrains-mono', ['400', '600'])}
-:root{--ink:#0f172a;--muted:#475569;--line:#e2e8f0;--brand:#4f46e5;--brand2:#06b6d4;--navy:#0a1a39;--soft:#f5f7fb}
+:root{--ink:#1f2933;--muted:#52606d;--line:#e3e8ee;--brand:#1f6fc5;--brand-mid:#2ea3d9;--brand2:#3fb56f;--grad:linear-gradient(90deg,#1f6fc5,#2ea3d9 50%,#3fb56f);--soft:#f5f8fb}
 @page{size:A4;margin:22mm 18mm 20mm 18mm}
 @page cover{margin:0}
 *{box-sizing:border-box}
@@ -121,21 +130,22 @@ ul,ol{padding-left:1.4em;margin:.4em 0 .8em}
 li{margin:.18em 0}
 
 /* ---------- cover ---------- */
-.cover{page:cover;height:297mm;width:210mm;position:relative;overflow:hidden;color:#fff;
-  background:radial-gradient(1200px 700px at 85% -10%,rgba(6,182,212,.35),transparent 60%),radial-gradient(900px 600px at -10% 110%,rgba(79,70,229,.45),transparent 60%),linear-gradient(160deg,#142b56 0%,#0a1a39 55%,#061127 100%);page-break-after:always}
-.cover .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:14mm 14mm}
-.cover .inner{position:absolute;left:22mm;right:22mm;top:30mm;bottom:24mm;display:flex;flex-direction:column}
-.cover .logo{width:78mm;margin-left:-2mm}
-.cover .logo img{width:100%;display:block;filter:drop-shadow(0 0 18px rgba(56,189,248,.35)) drop-shadow(0 10px 30px rgba(0,0,0,.45))}
-.cover .brand{margin-top:10mm;font-size:46pt;font-weight:900;letter-spacing:-.5pt;line-height:1.05}
-.cover .tag{font-size:14pt;color:#a5b4fc;letter-spacing:3pt;margin-top:3mm;font-weight:500}
-.cover .title{margin-top:22mm;font-family:'Noto Serif SC',serif;font-size:34pt;font-weight:700;line-height:1.25}
-.cover .title small{display:block;font-family:'Noto Sans SC';font-size:12pt;font-weight:400;color:#cbd5e1;margin-top:5mm;letter-spacing:.5pt;max-width:140mm;line-height:1.7}
-.cover .bar{width:24mm;height:1.6mm;border-radius:1mm;background:linear-gradient(90deg,var(--brand2),var(--brand));margin-top:12mm}
-.cover .meta{margin-top:auto;display:grid;grid-template-columns:1.7fr 1fr 1fr;gap:6mm;border-top:1px solid rgba(255,255,255,.18);padding-top:7mm}
-.cover .meta div{font-size:8.5pt;color:#94a3b8;letter-spacing:1pt}
-.cover .meta b{display:block;font-size:11pt;color:#fff;font-weight:500;letter-spacing:0;margin-top:1.5mm;font-family:'JetBrains Mono','Noto Sans SC';white-space:nowrap}
-.cover .stamp{position:absolute;right:22mm;top:30mm;border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:1.5mm 5mm;font-size:9pt;letter-spacing:2pt;color:#e2e8f0}
+.cover{page:cover;height:297mm;width:210mm;position:relative;overflow:hidden;background:#fff;color:var(--ink);page-break-after:always}
+.cover .arcs{position:absolute;right:-92mm;top:-92mm;width:184mm;height:184mm;opacity:.85}
+.cover .topbar{position:absolute;left:0;right:0;top:0;height:3mm;background:var(--grad)}
+.cover .inner{position:absolute;left:24mm;right:24mm;top:34mm;bottom:26mm;display:flex;flex-direction:column}
+.cover .lockup{width:92mm}
+.cover .lockup img{width:100%;display:block}
+.cover .stamp{position:absolute;right:24mm;top:36mm;border:1px solid #c9d6e3;border-radius:99px;padding:1.5mm 5mm;font-size:8.5pt;letter-spacing:2pt;color:var(--muted)}
+.cover .kicker{margin-top:62mm;font-family:'JetBrains Mono';font-size:9pt;letter-spacing:4pt;color:var(--brand);font-weight:600}
+.cover .title{margin-top:4mm;font-family:'Noto Serif SC',serif;font-size:40pt;font-weight:700;line-height:1.2;color:#10263f}
+.cover .product{margin-top:5mm;font-size:15pt;font-weight:700;color:#10263f}
+.cover .product span{font-weight:400;color:var(--muted);margin-left:3mm;letter-spacing:1pt;font-size:12pt}
+.cover .bar{width:26mm;height:1.6mm;border-radius:1mm;background:var(--grad);margin-top:9mm}
+.cover .intro{margin-top:8mm;font-size:11pt;line-height:1.9;color:var(--muted);max-width:112mm}
+.cover .meta{margin-top:auto;display:grid;grid-template-columns:1.7fr 1fr 1fr;gap:6mm;border-top:1px solid var(--line);padding-top:6mm;max-width:130mm;background:rgba(255,255,255,.85)}
+.cover .meta div{font-size:8.5pt;color:#7b8794;letter-spacing:1pt}
+.cover .meta b{display:block;font-size:10.5pt;color:#10263f;font-weight:500;letter-spacing:0;margin-top:1.5mm;font-family:'JetBrains Mono','Noto Sans SC';white-space:nowrap}
 
 /* ---------- front matter ---------- */
 .front{page-break-after:always}
@@ -154,7 +164,8 @@ li{margin:.18em 0}
 .toc-ch ol a{font-size:9pt;padding:.2mm 0;line-height:1.6;color:#334155}
 
 /* ---------- chapters ---------- */
-.chapter-head{page-break-before:always;margin:0 0 7mm;padding:0 0 5mm;border-bottom:2px solid var(--ink);position:relative}
+.chapter-head{page-break-before:always;margin:0 0 7mm;padding:0 0 5mm;position:relative}
+.chapter-head::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--grad)}
 .chapter-kicker{font-family:'JetBrains Mono';font-size:8.5pt;letter-spacing:3pt;color:var(--brand);font-weight:600}
 .chapter-head h2{font-family:'Noto Serif SC',serif;font-size:22pt;margin:2mm 0 0;display:flex;align-items:baseline;gap:4mm;line-height:1.3}
 .chapter-num{font-family:'JetBrains Mono';font-size:30pt;font-weight:600;color:transparent;-webkit-text-stroke:1px #94a3b8}
@@ -164,15 +175,17 @@ h3+p,h3+figure{break-before:avoid}
 p:has(+ figure),p:has(+ .code),p:has(+ ul),h4{break-after:avoid}
 li:has(figure){break-inside:avoid}
 
-table{width:100%;border-collapse:separate;border-spacing:0;margin:3mm 0 5mm;font-size:9pt;border:1px solid var(--line);border-radius:2.5mm;overflow:hidden;break-inside:auto}
-thead th{background:#eef2ff;color:#312e81;text-align:left;font-weight:700;padding:2.2mm 3mm;border-bottom:1px solid #c7d2fe}
+table{width:100%;border-collapse:separate;border-spacing:0;margin:3mm 0 5mm;font-size:9pt;border:1px solid var(--line);border-radius:2.5mm;overflow:hidden;}
+thead th{background:#eaf3fc;color:#174a86;text-align:left;font-weight:700;padding:2.2mm 3mm;border-bottom:1px solid #bcd7f2}
 td{padding:2mm 3mm;border-bottom:1px solid var(--line);vertical-align:top}
 td:first-child{min-width:24mm}
 tr:last-child td{border-bottom:0}
-tbody tr:nth-child(even) td{background:#fafbff}
+tbody tr:nth-child(even) td{background:#f8fbfe}
 tr{break-inside:avoid}
+table,ul,ol,.keep,aside,figure,.code{break-inside:avoid}
+.keep>*:last-child{margin-bottom:0}.keep{margin-bottom:5mm}
 
-code{font-family:'JetBrains Mono','Noto Sans SC',monospace;font-size:.86em;background:#eef2ff;color:#3730a3;padding:.15em .4em;border-radius:1mm}
+code{font-family:'JetBrains Mono','Noto Sans SC',monospace;font-size:.86em;background:#edf5fd;color:#1d5fa8;padding:.15em .4em;border-radius:1mm}
 .code{margin:3mm 0 5mm;border-radius:2.5mm;overflow:hidden;background:#0b1220;break-inside:avoid;box-shadow:0 2px 0 rgba(15,23,42,.04)}
 .code-bar{display:flex;align-items:center;gap:1.4mm;padding:1.8mm 3.5mm;background:#1e293b}
 .code-bar i{width:2.2mm;height:2.2mm;border-radius:50%;background:#ef4444;display:block}
@@ -190,20 +203,22 @@ li figure{margin-left:-1.4em}
 .callout{margin:4mm 0 5mm;padding:3.5mm 4.5mm;border-radius:2.5mm;border:1px solid;break-inside:avoid;font-size:9.8pt}
 .callout p{margin:.2em 0}
 .callout.note{background:#f8fafc;border-color:#e2e8f0;color:#334155}
-.callout.tip{background:#ecfeff;border-color:#a5f3fc;color:#155e75}
+.callout.tip{background:#ebf8f0;border-color:#b5e3c5;color:#1f6b3d}
 .callout.warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
-.callout.star{background:linear-gradient(135deg,#eef2ff,#ecfeff);border-color:#a5b4fc;color:#1e1b4b;border-left:4px solid var(--brand);padding:4.5mm 5mm;font-size:10.4pt}
-.callout.star strong{color:#3730a3}
+.callout.star{background:linear-gradient(135deg,#eaf3fc,#ebf8f0);border-color:#9cc6ec;color:#0f2f55;border-left:4px solid var(--brand);padding:4.5mm 5mm;font-size:10.4pt}
+.callout.star strong{color:#1d5fa8}
 </style></head><body>
 
-${part === 'cover' ? `<section class="cover"><div class="grid"></div>
-  <div class="stamp">INTERNAL · 内部资料</div>
+${part === 'cover' ? `<section class="cover">
+  <div class="topbar"></div>
+  <svg class="arcs" viewBox="0 0 460 460"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1f6fc5"/><stop offset=".5" stop-color="#2ea3d9"/><stop offset="1" stop-color="#3fb56f"/></linearGradient></defs><circle cx="230" cy="230" r="60" fill="none" stroke="url(#g)" stroke-width="16" opacity="0.9"/><circle cx="230" cy="230" r="100" fill="none" stroke="url(#g)" stroke-width="16" opacity="0.7"/><circle cx="230" cy="230" r="140" fill="none" stroke="url(#g)" stroke-width="16" opacity="0.5"/><circle cx="230" cy="230" r="180" fill="none" stroke="url(#g)" stroke-width="16" opacity="0.32"/><circle cx="230" cy="230" r="220" fill="none" stroke="url(#g)" stroke-width="16" opacity="0.18"/></svg>
   <div class="inner">
-    <div class="logo">${logo}</div>
-    <div class="brand">BeaconChip</div>
-    <div class="tag">API GATEWAY PLATFORM</div>
+    <div class="lockup"><img src="${asset('logo-lockup.png')}" alt="标控科技 BEACON CHIP"/></div>
+    <div class="kicker">EMPLOYEE HANDBOOK · INTERNAL</div>
+    <div class="title">员工使用手册</div>
+    <div class="product">BeaconChip<span>API Gateway Platform</span></div>
     <div class="bar"></div>
-    <div class="title">员工使用手册<small>${introQuote.replace(/\*\*/g, '')}</small></div>
+    <div class="intro">${introQuote.replace(/\*\*/g, '')}</div>
     <div class="meta">
       <div>控制台 / API 端点<b>api.beaconchip-token.com</b></div>
       <div>版本<b>${VERSION}</b></div>
@@ -231,9 +246,9 @@ ${part === 'cover' ? `<section class="cover"><div class="grid"></div>
 }
 
 const footer = `<div style="width:100%;font-size:7.5pt;color:#94a3b8;padding:0 18mm;display:flex;justify-content:space-between;font-family:'WenQuanYi Zen Hei',sans-serif">
-  <span>BeaconChip 员工使用手册 · 内部资料</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`
+  <span>标控科技 BeaconChip · 员工使用手册 · 内部资料</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`
 const header = `<div style="width:100%;padding:0 18mm;display:flex;align-items:center;justify-content:space-between;font-size:7pt;color:#94a3b8;letter-spacing:2px;font-family:'WenQuanYi Zen Hei',sans-serif">
-  <img style="height:5.5mm" src="data:image/png;base64,${fs.readFileSync(path.join(ROOT, 'assets/logo-small.png')).toString('base64')}"/><span>BEACONCHIP · API GATEWAY PLATFORM</span></div>`
+  <img style="height:6mm" src="data:image/png;base64,${fs.readFileSync(path.join(ROOT, 'assets/logo-mark-small.png')).toString('base64')}"/><span>BEACONCHIP · API GATEWAY PLATFORM</span></div>`
 
 async function render(browser, html, file, chrome = true) {
   const tmp = path.join(ROOT, '.manual-print.html')
