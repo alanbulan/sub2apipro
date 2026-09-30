@@ -101,9 +101,13 @@ diff -u "$backup_dir/core-counts-before.tsv" "$backup_dir/core-counts-after.tsv"
 sql 'SELECT filename, checksum FROM schema_migrations ORDER BY filename;' > "$backup_dir/migrations-after.tsv"
 
 # Promote the validated manifest and persist the exact image for future restarts.
-cp -p "$staged_compose" "$compose_name"
+cp "$staged_compose" .compose.action-next
+chmod --reference="$compose_name" .compose.action-next
+chown --reference="$compose_name" .compose.action-next
+mv .compose.action-next "$compose_name"
 awk -v image="$app_image" '!/^APP_IMAGE=/ {print} END {print "APP_IMAGE=" image}' .env > .env.action-next
 chmod --reference=.env .env.action-next
+chown --reference=.env .env.action-next
 mv .env.action-next .env
 completed=1
 echo "Deployment healthy; core records retained. Recovery snapshot: $backup_dir"
