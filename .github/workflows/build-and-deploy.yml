@@ -185,4 +185,4 @@ jobs:
         run: |
           staging="$DEPLOY_PATH/.deploy/$GITHUB_SHA"
           ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash '$staging/action-deploy.sh' '$DEPLOY_PATH' '$DEPLOY_COMPOSE_FILE' '$staging/$DEPLOY_COMPOSE_FILE' '$APP_IMAGE'"
+            "cmp -s '$staging/action-deploy.sh' /usr/local/sbin/sub2api-action-deploy && sudo -n /usr/local/sbin/sub2api-action-deploy '$DEPLOY_PATH' '$DEPLOY_COMPOSE_FILE' '$staging/$DEPLOY_COMPOSE_FILE' '$APP_IMAGE'"

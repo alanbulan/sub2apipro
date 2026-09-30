@@ -15,3 +15,4 @@ frontend/src/components/common/ThemePreview.vue
 frontend/src/__tests__/rememberMePro.spec.ts
 frontend/public/logo.svg
 deploy/action-deploy.sh
+deploy/install-action-deploy.sh

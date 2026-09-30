@@ -19,7 +19,7 @@ jobs:
         id: sync
         run: |
           set -o pipefail
-          bash -n deploy/action-deploy.sh
+          bash -n deploy/action-deploy.sh deploy/install-action-deploy.sh
           sh -n deploy/cron/upstream-sync
           bash -n scripts/check-upstream.sh
           bash -n .github/scripts/report-ci-failure.sh

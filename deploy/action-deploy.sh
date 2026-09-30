@@ -7,11 +7,13 @@ deploy_path=${1:?deployment directory required}
 compose_name=${2:?compose filename required}
 staged_compose=${3:?staged compose required}
 app_image=${4:?immutable image required}
+test "$(realpath "$deploy_path")" = /opt/sub2api
 case "$compose_name" in
   docker-compose.local.yml|docker-compose.yml|docker-compose.standalone.yml) ;;
   *) exit 1 ;;
 esac
-case "$app_image" in ghcr.io/alanbulan/sub2apipro:sha-*) ;; *) exit 1 ;; esac
+[[ "$app_image" =~ ^ghcr\.io/alanbulan/sub2apipro:sha-[0-9a-f]{40}$ ]] || exit 1
+test "$(realpath "$staged_compose")" = "$deploy_path/.deploy/${app_image##*:sha-}/$compose_name"
 cd "$deploy_path"
 test -s .env
 test -s "$compose_name"
