@@ -763,7 +763,7 @@ describe("admin SettingsView payment visible method controls", () => {
     const wrapper = mountView();
     await flushPromises();
     const card = wrapper.get('[data-testid="pelican-showcase-moved"]');
-    expect(card.get("router-link").attributes("to")).toBe("/admin/pelican-tests");
+    expect(card.get("a").attributes("href")).toBe("/admin/pelican-tests");
 
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
