@@ -290,6 +290,16 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	}
 	autoPauseOnExpired := source.AutoPauseOnExpired
 	groups, groupIDs := duplicateAccountGroups(source)
+	if _, scoped := ObserverGroupIDs(ctx); scoped {
+		groupIDs = ObserverVisibleGroups(ctx, groupIDs)
+		filtered := make([]AccountGroup, 0, len(groups))
+		for _, group := range groups {
+			if ObserverCanManageGroup(ctx, group.GroupID) {
+				filtered = append(filtered, group)
+			}
+		}
+		groups = filtered
+	}
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
@@ -309,6 +319,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		Concurrency:           source.Concurrency,
 		Priority:              source.Priority,
 		RateMultiplier:        cloneAccountValuePointer(source.RateMultiplier),
+		GroupRateMultiplier:   cloneAccountValuePointer(source.GroupRateMultiplier),
 		LoadFactor:            cloneAccountValuePointer(source.LoadFactor),
 		GroupIDs:              groupIDs,
 		ExpiresAt:             expiresAt,
@@ -411,6 +422,7 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -418,6 +430,8 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
+	delete(accountExtra, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
 		Name:        input.Name,
@@ -464,6 +478,12 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		}
 		account.RateMultiplier = input.RateMultiplier
 	}
+	if input.GroupRateMultiplier != nil {
+		if *input.GroupRateMultiplier < 0 {
+			return nil, errors.New("group_rate_multiplier must be >= 0")
+		}
+		account.GroupRateMultiplier = input.GroupRateMultiplier
+	}
 	if input.LoadFactor != nil && *input.LoadFactor > 0 {
 		if *input.LoadFactor > 10000 {
 			return nil, errors.New("load_factor must be <= 10000")
@@ -474,6 +494,15 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := s.ApplyOAuthAutoConfig(ctx, input); err != nil {
+		return nil, err
+	}
+	if err := ValidateObserverGroupBindings(ctx, input.GroupIDs); err != nil {
+		return nil, err
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -527,6 +556,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateExcelBPS403GroupSettings(ctx, account); err != nil {
+		return nil, err
+	}
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
@@ -540,6 +572,8 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, err
 		}
 	}
+
+	recordAutoConfigInitial(ctx, s.accountRepo, account, groupIDs)
 
 	// OAuth 账号：创建后异步设置隐私。
 	// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
@@ -570,6 +604,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
+	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateGroupAllowedModels(input.GroupAllowedModels); err != nil {
+		return nil, err
+	}
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -598,6 +638,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
+	previousOpenCodeUsageIdentity := openCodeGoUsageIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
 	if account.IsCredentialShadow() {
@@ -674,6 +715,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
+		delete(normalizedExtra, OpenCodeGoUsageAutoRefreshExtraKey)
+		delete(normalizedExtra, OpenCodeGoUsageSnapshotExtraKey)
 		// 保留配额用量和专用服务受管字段，防止普通账号编辑意外覆盖。
 		for _, key := range []string{
 			"quota_used",
@@ -689,11 +732,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
 			OpenAIAutoResetCreditStateExtraKey,
+			OpenCodeGoUsageAutoRefreshExtraKey,
+			OpenCodeGoUsageSnapshotExtraKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
 			}
 		}
+		normalizedExtra = MergeOpenAICodexTicketExtra(normalizedExtra, account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
@@ -775,6 +821,17 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			delete(account.Extra, OllamaCloudUsageSnapshotExtraKey)
 		}
 	}
+	// OpenCode Go 受管键：身份改变或不再 eligible 时随本次写入清除，防止跨组污染。
+	// （代理变化只失效快照而保留开关，由 repository 合并层在锁定的 DB 行上裁决。）
+	if account.Extra != nil {
+		if !IsOpenCodeGoUsageAccount(account) {
+			delete(account.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+			delete(account.Extra, OpenCodeGoUsageSnapshotExtraKey)
+		} else if !reflect.DeepEqual(previousOpenCodeUsageIdentity, openCodeGoUsageIdentity(account)) {
+			delete(account.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+			delete(account.Extra, OpenCodeGoUsageSnapshotExtraKey)
+		}
+	}
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
 	if input.Concurrency != nil {
 		account.Concurrency = normalizeAccountConcurrency(account.Platform, account.Type, *input.Concurrency)
@@ -795,6 +852,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, ErrUpstreamBillingRateSyncConflict
 		}
 		account.RateMultiplier = input.RateMultiplier
+	}
+	if input.GroupRateMultiplier != nil {
+		if *input.GroupRateMultiplier < 0 {
+			return nil, errors.New("group_rate_multiplier must be >= 0")
+		}
+		account.GroupRateMultiplier = input.GroupRateMultiplier
 	}
 	if input.LoadFactor != nil {
 		if *input.LoadFactor <= 0 {
@@ -837,6 +900,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if err := s.validateExcelBPS403GroupSettings(ctx, account); err != nil {
+		return nil, err
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -891,6 +957,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	// 分组内的模型限制写在绑定之后，只作用于最终绑定的分组。
+	if input.GroupAllowedModels != nil {
+		if err := s.accountRepo.SetGroupAllowedModels(ctx, account.ID, input.GroupAllowedModels); err != nil {
+			return nil, err
+		}
+	}
+
 	// 重新查询以确保返回完整数据（包括正确的 Proxy 关联对象）
 	updated, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
@@ -902,6 +975,26 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if err := ValidateAccountCostMultiplierExtra(updates); err != nil {
+		return err
+	}
+	_, moveChanged := updates[ExcelBPSAutoMoveOn403Key]
+	_, targetChanged := updates[ExcelBPS403TargetGroupIDKey]
+	_, bpsChanged := updates["openai_excel_bps"]
+	if moveChanged || targetChanged || bpsChanged {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		merged := *account
+		merged.Extra = make(map[string]any, len(account.Extra)+len(updates))
+		maps.Copy(merged.Extra, account.Extra)
+		maps.Copy(merged.Extra, updates)
+		if err := s.validateExcelBPS403GroupSettings(ctx, &merged); err != nil {
+			return err
+		}
+	}
+	updates = MergeOpenAICodexTicketExtra(updates, nil)
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -910,6 +1003,8 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
+	delete(updates, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(updates, OpenCodeGoUsageSnapshotExtraKey)
 	if _, exists := updates[openAILongContextBillingEnabledKey]; exists {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
@@ -928,7 +1023,11 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
+	input.Extra = MergeOpenAICodexTicketExtra(input.Extra, nil)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
@@ -937,6 +1036,8 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
+	delete(input.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(input.Extra, OpenCodeGoUsageSnapshotExtraKey)
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
@@ -944,6 +1045,24 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			return nil, err
 		}
 		input.AccountIDs = accountIDs
+	}
+
+	if _, scoped := ObserverGroupIDs(ctx); scoped {
+		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
+		if err != nil {
+			return nil, err
+		}
+		allowed := map[int64]bool{}
+		for _, a := range accounts {
+			if a != nil && ObserverCanManageAccount(ctx, a) {
+				allowed[a.ID] = true
+			}
+		}
+		for _, id := range input.AccountIDs {
+			if !allowed[id] {
+				return nil, ErrObserverScope
+			}
+		}
 	}
 
 	result := &BulkUpdateAccountsResult{
@@ -991,6 +1110,29 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			return nil, err
 		}
 		result.LongContextInheritedCount = inheritedCount
+	}
+	_, moveChanged := input.Extra[ExcelBPSAutoMoveOn403Key]
+	_, targetChanged := input.Extra[ExcelBPS403TargetGroupIDKey]
+	_, bpsChanged := input.Extra["openai_excel_bps"]
+	_, planChanged := input.Credentials["plan_type"]
+	if moveChanged || targetChanged || bpsChanged || planChanged {
+		for _, account := range cachedTargets {
+			if account == nil {
+				continue
+			}
+			merged := *account
+			merged.Credentials = maps.Clone(account.Credentials)
+			if merged.Credentials == nil {
+				merged.Credentials = make(map[string]any)
+			}
+			maps.Copy(merged.Credentials, input.Credentials)
+			merged.Extra = make(map[string]any, len(account.Extra)+len(input.Extra))
+			maps.Copy(merged.Extra, account.Extra)
+			maps.Copy(merged.Extra, input.Extra)
+			if err := s.validateExcelBPS403GroupSettings(ctx, &merged); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if input.ProbeEnabled != nil {
 		for _, accountID := range input.AccountIDs {
@@ -1121,6 +1263,12 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 	if input.RateMultiplier != nil {
 		repoUpdates.RateMultiplier = input.RateMultiplier
+	}
+	if input.GroupRateMultiplier != nil {
+		if *input.GroupRateMultiplier < 0 {
+			return nil, errors.New("group_rate_multiplier must be >= 0")
+		}
+		repoUpdates.GroupRateMultiplier = input.GroupRateMultiplier
 	}
 	if input.LoadFactor != nil {
 		if *input.LoadFactor <= 0 {
@@ -1299,7 +1447,14 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 	if s.runtimeBlocker != nil {
 		s.runtimeBlocker.ClearAccountSchedulingBlock(id)
 	}
-	return s.accountRepo.GetByID(ctx, id)
+	updated, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if updated != nil && updated.Platform == PlatformOpenAI {
+		s.settingService.NotifyCodexHarvest()
+	}
+	return updated, nil
 }
 
 func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
@@ -1313,6 +1468,9 @@ func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, 
 	updated, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if schedulable && updated != nil && updated.Platform == PlatformOpenAI {
+		s.settingService.NotifyCodexHarvest()
 	}
 	return updated, nil
 }
@@ -1370,7 +1528,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 			}
 		}
 	} else if len(parent.GroupIDs) > 0 {
-		groupIDs = append([]int64(nil), parent.GroupIDs...)
+		groupIDs = ObserverVisibleGroups(ctx, parent.GroupIDs)
 	} else if s.groupRepo != nil {
 		defaultGroupName := PlatformOpenAI + "-default"
 		if groups, gerr := s.groupRepo.ListActiveByPlatform(ctx, PlatformOpenAI); gerr == nil {
@@ -1560,6 +1718,9 @@ func (s *adminServiceImpl) validateGroupIDsExist(ctx context.Context, groupIDs [
 // ValidateAccountGroupBindings is the shared fail-closed policy boundary for
 // every account path that accepts explicit group bindings.
 func (s *adminServiceImpl) ValidateAccountGroupBindings(ctx context.Context, groupIDs []int64) error {
+	if err := ValidateObserverGroupBindings(ctx, groupIDs); err != nil {
+		return err
+	}
 	if len(groupIDs) == 0 || s.cfg == nil || s.cfg.RunMode != config.RunModeSimple {
 		return nil
 	}

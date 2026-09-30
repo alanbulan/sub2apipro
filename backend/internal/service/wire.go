@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/google/wire"
@@ -117,6 +118,25 @@ func ProvideOpenAIOAuthService(
 	return svc
 }
 
+// ProvideOpenAIOAuthReauthService wires the durable mailbox/task flow while
+// keeping the pure HTTP protocol runner in a separately run worker process.
+func ProvideOpenAIOAuthReauthService(
+	repo OpenAIOAuthReauthRepository,
+	adminService AdminService,
+	accountRepo AccountRepository,
+	openaiOAuthService *OpenAIOAuthService,
+	secretEncryptor OpenAICredentialEncryptor,
+	cfg *config.Config,
+	tokenCacheInvalidator TokenCacheInvalidator,
+	runtimeBlocker AccountRuntimeBlocker,
+	buildInfo BuildInfo,
+) *OpenAIOAuthReauthService {
+	credentialUpdater, _ := accountRepo.(OpenAIOAuthReauthCredentialUpdater)
+	svc := NewOpenAIOAuthReauthService(repo, adminService, credentialUpdater, openaiOAuthService, secretEncryptor, cfg != nil && cfg.Totp.EncryptionKeyConfigured, tokenCacheInvalidator, runtimeBlocker)
+	svc.configureWorker(cfg, buildInfo)
+	return svc
+}
+
 // ProvideTokenRefreshService creates and starts TokenRefreshService
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
@@ -174,6 +194,13 @@ func ProvideOpenAITokenProvider(
 	return p
 }
 
+// ProvidePluginManager preserves account-directory wiring when regenerating Wire.
+func ProvidePluginManager(repo PluginRepository, encryptor SecretEncryptor, cfg *config.Config, hostInfo PluginHostInfo, kvStore PluginKVStore, gateway *OpenAIGatewayService) *PluginManager {
+	manager := NewPluginManager(repo, encryptor, cfg, hostInfo, kvStore)
+	manager.SetAccountDirectory(gateway)
+	return manager
+}
+
 // ProvideOpenAIQuotaService wires the OpenAI quota query/reset service.
 // It depends on the OpenAI token provider for refreshed access tokens and the
 // privacy client factory for the impersonated upstream HTTP client.
@@ -182,9 +209,10 @@ func ProvideOpenAIQuotaService(
 	proxyRepo ProxyRepository,
 	tokenProvider *OpenAITokenProvider,
 	privacyClientFactory PrivacyClientFactory,
+	referralClient OpenAIReferralClient,
 	openAIGatewayService *OpenAIGatewayService,
 ) *OpenAIQuotaService {
-	service := NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory)
+	service := NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory, referralClient)
 	service.agentIdentityWS = openAIGatewayService
 	return service
 }
@@ -373,8 +401,9 @@ func ProvideGrokTokenProvider(
 }
 
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务
-func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config) *DashboardAggregationService {
+func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config, settingRepo SettingRepository) *DashboardAggregationService {
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
+	svc.settingRepo = settingRepo
 	svc.SetLeaderLock(lockCache, db)
 	svc.Start()
 	return svc
@@ -402,6 +431,18 @@ func ProvideOpenAICodexVersionSyncService(
 	githubClient GitHubReleaseClient,
 ) *OpenAICodexVersionSyncService {
 	svc := NewOpenAICodexVersionSyncService(settingRepo, settingService, githubClient, openAICodexVersionSyncInterval)
+	svc.Start()
+	return svc
+}
+
+// ProvideClaudeCodeVersionSyncService creates and starts ClaudeCodeVersionSyncService.
+// 出站 Claude Code 身份的版本号靠它跟随官方发布，无需为了跟版本而发新版本；面板可关闭。
+func ProvideClaudeCodeVersionSyncService(
+	settingRepo SettingRepository,
+	settingService *SettingService,
+	githubClient GitHubReleaseClient,
+) *ClaudeCodeVersionSyncService {
+	svc := NewClaudeCodeVersionSyncService(settingRepo, settingService, githubClient, claudeCodeVersionSyncInterval)
 	svc.Start()
 	return svc
 }
@@ -487,8 +528,10 @@ func ProvideRateLimitService(
 	settingService *SettingService,
 	tokenCacheInvalidator TokenCacheInvalidator,
 	ollamaCloudUsage *OllamaCloudUsageService,
+	accountOps *AccountOpsService,
 ) *RateLimitService {
 	svc := NewRateLimitService(accountRepo, usageRepo, cfg, geminiQuotaService, tempUnschedCache)
+	svc.accountOps = accountOps
 	if healthCache, ok := tempUnschedCache.(OpenAIAPIKeyHealthCache); ok {
 		svc.SetOpenAIAPIKeyHealthCache(healthCache)
 	}
@@ -622,8 +665,11 @@ func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Co
 func ProvideScheduledTestService(
 	planRepo ScheduledTestPlanRepository,
 	resultRepo ScheduledTestResultRepository,
+	templateRepo QualityRuleTemplateRepository,
 ) *ScheduledTestService {
-	return NewScheduledTestService(planRepo, resultRepo)
+	svc := NewScheduledTestService(planRepo, resultRepo)
+	svc.templateRepo = templateRepo
+	return svc
 }
 
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.
@@ -633,8 +679,14 @@ func ProvideScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
+	judge *QualityJudgeService,
+	groupTests *PelicanGroupTestService,
+	monitor *ChannelMonitorV2Service,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
+	svc.judgeQuality = judge.Judge
+	svc.groupTests = groupTests
+	svc.candyMonitor = monitor.candy
 	svc.Start()
 	return svc
 }
@@ -709,6 +761,7 @@ func ProvideBackupService(
 // hold a *SettingService reference, but wire injects a tiny callback so writes to
 // ops_advanced_settings immediately propagate into the scheduler hot-path cache.
 func ProvideOpsService(
+	accountOps *AccountOpsService,
 	opsRepo OpsRepository,
 	settingRepo SettingRepository,
 	cfg *config.Config,
@@ -743,6 +796,7 @@ func ProvideOpsService(
 		// a populated cache rather than zero defaults. Best-effort, sync-bounded.
 		settingService.WarmOpenAIQuotaAutoPauseSettings(context.Background())
 	}
+	svc.SetAutoConfigObserver(accountOps.ObserveConcurrencyResult)
 	svc.authCacheInvalidationWorker = authCacheInvalidationWorker
 	svc.apiKeyService = apiKeyService
 	svc.StartRuntimeSettingsRefresh(context.Background())
@@ -785,6 +839,11 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	SetCodexCanonicalUserAgentResolver(func() string {
 		return svc.GetOpenAICodexCanonicalUserAgent(context.Background())
 	})
+	// Claude CLI 伪装版本号同理：运行期解析（面板手动值 → 后台同步值 → 内置基线），
+	// 解析器内部自带 60s TTL 缓存，热路径不触库。
+	claude.SetCLIVersionResolver(func() string {
+		return svc.GetClaudeCodeClientVersion(context.Background())
+	})
 	return svc
 }
 
@@ -822,6 +881,7 @@ func ProvideAPIKeyService(
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
+	ProvideRequestCaptureManager,
 	// Core services
 	ProvideAuthService,
 	NewPasskeyService,
@@ -844,7 +904,9 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
-	NewOpenAIGatewayService,
+	ProvideOpenAIGatewayService,
+	wire.Struct(new(OpenAIGatewayDependencies), "*"),
+	ProvideCodexHarvestService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,
@@ -855,6 +917,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
+	ProvideOpenAIOAuthReauthService,
 	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
 	NewGeminiOAuthService,
@@ -881,6 +944,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountTestService,
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
+	ProvideOpenCodeGoUsageService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
@@ -893,6 +957,9 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsAlertEvaluatorService,
 	ProvideOpsCleanupService,
 	ProvideOpsScheduledReportService,
+	ProvideAccountOpsService,
+	ProvideAccountTokenGuardService,
+	ProvideAccountTokenGuardV2Service,
 	NewEmailService,
 	NewNotificationEmailService,
 	ProvideEmailQueueService,
@@ -906,12 +973,13 @@ var ProviderSet = wire.NewSet(
 	NewUsageRecordWorkerPool,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
-	NewCRSSyncService,
+	ProvideCRSSyncService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
 	ProvideOpenAICodexVersionSyncService,
+	ProvideClaudeCodeVersionSyncService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
@@ -925,13 +993,16 @@ var ProviderSet = wire.NewSet(
 	NewTotpService,
 	NewErrorPassthroughService,
 	NewTLSFingerprintProfileService,
-	NewPluginManager,
+	ProvidePluginManager,
 	NewDigestSessionStore,
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
+	NewPelicanShowcaseService,
+	NewPelicanGroupTestService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
+	NewQualityJudgeService,
 	NewGroupCapacityService,
 	NewChannelService,
 	wire.Bind(new(ChannelCacheInvalidator), new(*ChannelService)),
@@ -1025,9 +1096,10 @@ func ProvideChannelMonitorRunner(
 
 // ProvideChannelMonitorV2Service wires settings for user-facing privacy flags
 // (e.g. hide RPM/TPM throughput).
-func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService) *ChannelMonitorV2Service {
+func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService, groups *PelicanGroupTestService) *ChannelMonitorV2Service {
 	svc := NewChannelMonitorV2Service(repo)
 	svc.SetRuntimeReader(settingService)
+	svc.candy = newChannelMonitorV2CandyService(repo, groups, settingService)
 	return svc
 }
 
@@ -1041,4 +1113,34 @@ func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.
 	}
 	aggregator.Start()
 	return aggregator
+}
+
+func ProvideAccountOpsService(settings SettingRepository, repo AccountOpsRepository, email *EmailService, accounts AccountRepository, groups GroupRepository) *AccountOpsService {
+	svc := NewAccountOpsService(settings, repo, email)
+	svc.autoAccounts, _ = accounts.(AccountConcurrencyRepository)
+	svc.autoGroups = groups
+	svc.Start()
+	return svc
+}
+
+// ProvideAccountTokenGuardService 创建并启动「凭证守护」后台巡检（智能运维子页面）。
+func ProvideAccountTokenGuardService(settings SettingRepository, repo AccountTokenGuardRepository,
+	accounts AccountRepository, admin AdminService, invalidator TokenCacheInvalidator) *AccountTokenGuardService {
+	svc := NewAccountTokenGuardService(settings, repo, accounts, admin, invalidator)
+	svc.Start()
+	return svc
+}
+
+func ProvideAccountTokenGuardV2Service(repo AccountTokenGuardV2Repository, settings SettingRepository, admin AdminService,
+	openAIGateway *OpenAIGatewayService, reauth *OpenAIOAuthReauthService) *AccountTokenGuardV2Service {
+	svc := NewAccountTokenGuardV2Service(repo, settings, admin, openAIGateway, reauth)
+	svc.Start()
+	return svc
+}
+
+func ProvideCRSSyncService(accounts AccountRepository, proxies ProxyRepository, oauth *OAuthService, openai *OpenAIOAuthService, gemini *GeminiOAuthService, cfg *config.Config, settings *SettingService, groups GroupRepository) *CRSSyncService {
+	svc := NewCRSSyncService(accounts, proxies, oauth, openai, gemini, cfg)
+	defaults := &adminServiceImpl{settingService: settings, groupRepo: groups}
+	svc.autoConfigure = defaults.ApplyOAuthAutoConfig
+	return svc
 }

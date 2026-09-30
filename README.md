@@ -22,7 +22,7 @@ Sub2API 维护副本 · AI API 网关与自托管部署。
 
 | 范围 | 说明 |
 | --- | --- |
-| 上游项目 | [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api) |
+| 当前上游 | [ranxi2001/sub2api](https://github.com/ranxi2001/sub2api)，生产分支 `production` |
 | 当前副本 | [alanbulan/sub2apipro](https://github.com/alanbulan/sub2apipro)，默认分支 `main` |
 | 使用资料 | [中文](./README_CN.md)、[原英文](./README_UPSTREAM.md)、[日本語](./README_JA.md) |
 | 本仓库变更 | [提交记录](https://github.com/alanbulan/sub2apipro/commits/main) |

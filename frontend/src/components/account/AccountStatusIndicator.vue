@@ -1,7 +1,13 @@
 <template>
   <div class="flex items-center gap-2">
+    <!-- OpenAI OAuth RPM Display - keep the pause reason explicit -->
+    <div v-if="isRPMPaused" class="flex flex-col items-center gap-1">
+      <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rpmPaused') }}</span>
+      <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ rpmResumeText }}</span>
+    </div>
+
     <!-- Rate Limit Display (429) - Two-line layout -->
-    <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
+    <div v-else-if="isRateLimited" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ rateLimitResumeText }}</span>
     </div>
@@ -230,6 +236,7 @@ const formatScopeName = (scope: string): string => {
     'claude-opus-4-6-thinking': 'COpus46T',
     'claude-opus-4-7': 'COpus47',
     'claude-opus-4-8': 'COpus48',
+    'claude-opus-5-5': 'COpus55',
     'claude-opus-5': 'COpus5',
     'claude-sonnet-4-6': 'CSon46',
     'claude-sonnet-4-5': 'CSon45',
@@ -269,6 +276,23 @@ const formatScopeName = (scope: string): string => {
 const isOverloaded = computed(() => {
   if (!props.account.overload_until) return false
   return new Date(props.account.overload_until) > new Date()
+})
+
+const isRPMPaused = computed(() =>
+  props.account.platform === 'openai' && props.account.type === 'oauth' &&
+  props.account.status === 'active' && props.account.schedulable &&
+  (props.account.base_rpm ?? 0) > 0 &&
+  (props.account.rpm_paused === true ||
+    (props.account.current_rpm ?? 0) >= (props.account.base_rpm ?? 0))
+)
+
+const rpmResumeText = computed(() => {
+  if (props.account.rpm_reset_at) {
+    return t('admin.accounts.status.rpmPausedUntil', {
+      time: formatDateTime(new Date(props.account.rpm_reset_at * 1000).toISOString())
+    })
+  }
+  return t('admin.accounts.status.rpmPausedRetry')
 })
 
 // Computed: is temp unschedulable

@@ -1,5 +1,13 @@
 export default {
     ops: {
+      balanceError: {
+        user: 'Insufficient user balance',
+        userHint: 'The local user balance does not meet the request requirement. Top up this user’s balance before retrying.',
+        upstream: 'Insufficient upstream account balance',
+        upstreamHint: 'The upstream service reports insufficient account balance. Ask an administrator to top up or replace the upstream account.',
+        unknown: 'Insufficient balance (source unconfirmed)',
+        unknownHint: 'This log has insufficient source information. Check the original error and upstream response to identify whose balance is insufficient.',
+      },
       title: 'Ops Monitoring',
       description: 'Operational monitoring and troubleshooting',
       // Dashboard
@@ -41,8 +49,14 @@ export default {
         stacktraceThreshold: 'Stacktrace threshold',
         samplingInitial: 'Sampling initial',
         samplingThereafter: 'Sampling thereafter',
-        retentionDays: 'Retention days',
-        retentionDaysHint: 'Applied by the scheduled data-cleanup job.',
+        retentionDays: 'Operations log retention days',
+        requestRetentionDays: 'Request log retention days',
+        requestRetentionDaysHint: 'Request usage records are pruned every 6 hours. Changes apply on the next cleanup. Keeping records forever uses increasing storage.',
+        retentionDaysInvalid: 'Keep operations logs for 1–3650 days; keep request logs for 1–3650 days or choose Forever.',
+        retentionDaysOption: '{days} days',
+        retentionDaysCustom: 'Custom days',
+        retentionForever: 'Forever',
+        retentionDaysHint: 'Applied on the data-cleanup schedule when cleanup is enabled in Operations Settings.',
         caller: 'caller',
         sampling: 'sampling',
         persistAccessLogs: 'Store access logs in database',
@@ -69,6 +83,7 @@ export default {
         logDetails: 'Log Details',
         loadFailed: 'Failed to load system logs',
         runtimeConfigActive: 'Runtime log configuration is active',
+        runtimeConfigLoadFailed: 'Failed to load log configuration. Refresh and try again.',
         runtimeConfigSaveFailed: 'Failed to save log configuration',
         resetRuntimeConfigConfirm: 'Reset to startup configuration (env/yaml) and apply immediately?',
         runtimeConfigReset: 'Reset to startup log configuration',

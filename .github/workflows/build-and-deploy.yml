@@ -91,6 +91,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=application-image
 
   deploy:
+    timeout-minutes: 30
     name: Deploy to production server
     needs: [ci, image]
     if: ${{ needs.ci.result == 'success' && needs.image.result == 'success' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && vars.DEPLOY_ENABLED == 'true' && (github.event_name != 'workflow_dispatch' || inputs.deploy) }}
@@ -140,7 +141,7 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Upload Compose file
+      - name: Stage deployment files
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
@@ -150,8 +151,10 @@ jobs:
         shell: bash
         run: |
           target="$DEPLOY_USER@$DEPLOY_HOST"
-          ssh -p "$DEPLOY_PORT" "$target" "mkdir -p '$DEPLOY_PATH'"
-          scp -P "$DEPLOY_PORT" "deploy/$DEPLOY_COMPOSE_FILE" "$target:$DEPLOY_PATH/$DEPLOY_COMPOSE_FILE"
+          staging="$DEPLOY_PATH/.deploy/$GITHUB_SHA"
+          ssh -p "$DEPLOY_PORT" "$target" "umask 077 && mkdir -p '$staging'"
+          scp -P "$DEPLOY_PORT" "deploy/$DEPLOY_COMPOSE_FILE" "$target:$staging/$DEPLOY_COMPOSE_FILE"
+          scp -P "$DEPLOY_PORT" deploy/action-deploy.sh "$target:$staging/action-deploy.sh"
 
       - name: Log in to GHCR on the server
         env:
@@ -170,7 +173,7 @@ jobs:
           printf '%s' "$DEPLOY_REGISTRY_TOKEN" | ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "docker login ghcr.io --username '$DEPLOY_REGISTRY_USERNAME' --password-stdin"
 
-      - name: Pull and restart application
+      - name: Back up data and deploy application
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
@@ -180,30 +183,6 @@ jobs:
           APP_IMAGE: ${{ needs.image.outputs.image }}
         shell: bash
         run: |
+          staging="$DEPLOY_PATH/.deploy/$GITHUB_SHA"
           ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && test -f .env && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' config --quiet && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' pull sub2api && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' up -d --no-build sub2api && APP_IMAGE='$APP_IMAGE' docker compose -f '$DEPLOY_COMPOSE_FILE' ps sub2api"
-
-      - name: Wait for application health
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        shell: bash
-        run: |
-          for attempt in $(seq 1 30); do
-            health="$(ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-              "docker inspect --format '{{.State.Health.Status}}' sub2api 2>/dev/null || true")"
-            case "$health" in
-              healthy)
-                echo 'Application health check passed.'
-                exit 0
-                ;;
-              unhealthy)
-                echo 'Application health check failed.' >&2
-                exit 1
-                ;;
-            esac
-            sleep 2
-          done
-          echo 'Application did not become healthy within 60 seconds.' >&2
-          exit 1
+            "bash '$staging/action-deploy.sh' '$DEPLOY_PATH' '$DEPLOY_COMPOSE_FILE' '$staging/$DEPLOY_COMPOSE_FILE' '$APP_IMAGE'"

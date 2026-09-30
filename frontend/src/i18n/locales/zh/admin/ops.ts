@@ -1,5 +1,13 @@
 export default {
     ops: {
+      balanceError: {
+        user: '用户余额不足',
+        userHint: '本站用户余额未达到请求要求。请充值该用户余额后重试。',
+        upstream: '上游账户余额不足',
+        upstreamHint: '上游服务报告账户余额不足。请管理员检查并充值或更换上游账户。',
+        unknown: '余额不足（来源未确认）',
+        unknownHint: '这条日志缺少足够的来源信息，请结合原始错误和上游响应确认余额归属。',
+      },
       title: '运维监控',
       description: '运维监控与排障',
       // Dashboard
@@ -41,8 +49,14 @@ export default {
         stacktraceThreshold: '堆栈阈值',
         samplingInitial: '采样初始条数',
         samplingThereafter: '后续采样间隔',
-        retentionDays: '保留天数',
-        retentionDaysHint: '由定时数据清理任务执行。',
+        retentionDays: '运维日志保留天数',
+        requestRetentionDays: '请求日志保留天数',
+        requestRetentionDaysHint: '请求使用明细每 6 小时滚动清理一次，保存后在下次清理生效。永久保留会持续占用存储空间。',
+        retentionDaysInvalid: '运维日志须保留 1–3650 天；请求日志须保留 1–3650 天或选择永久保留。',
+        retentionDaysOption: '{days} 天',
+        retentionDaysCustom: '自定义天数',
+        retentionForever: '永久保留',
+        retentionDaysHint: '按运维设置中启用的数据清理计划执行。',
         caller: '调用方',
         sampling: '采样',
         persistAccessLogs: '将访问日志写入数据库',
@@ -69,6 +83,7 @@ export default {
         logDetails: '日志详情',
         loadFailed: '加载系统日志失败',
         runtimeConfigActive: '运行时日志配置已生效',
+        runtimeConfigLoadFailed: '日志配置加载失败，请刷新后重试。',
         runtimeConfigSaveFailed: '保存日志配置失败',
         resetRuntimeConfigConfirm: '确定要重置为启动配置（env/yaml）并立即应用吗？',
         runtimeConfigReset: '已重置为启动日志配置',

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 UPSTREAM="${UPSTREAM_REMOTE:-upstream}"
-BRANCH="${UPSTREAM_BRANCH:-main}"
+BRANCH="${UPSTREAM_BRANCH:-production}"
 REPORT_DIR="$ROOT/.codex-upstream-sync"
 STATE_FILE="$REPORT_DIR/last-seen-head"
 LEGACY_STATE_FILE="$REPORT_DIR/last-seen"

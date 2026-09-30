@@ -1,5 +1,8 @@
 # 每日上游同步
 
+当前上游为 `https://github.com/ranxi2001/sub2api.git`，跟踪 `production` 分支；
+自有 `origin/main`、候选 CI 与 Pro 镜像发布渠道保持不变。
+
 每天北京时间（`Asia/Shanghai`，UTC+8）04:00 检查上游提交，不依赖版本号
 或发布标签变化。默认跟随上游的后端、数据库迁移、支付、OAuth、安全策略和
 公共接口更新；保留本项目明确要求的 UI、文案、24 个主题及同步自动化。
@@ -104,3 +107,18 @@
 标志。部署拉取 GitHub 构建的镜像，压缩后的 JS/CSS 与源码不同属于正常构建
 结果，不能要求二者哈希相同。自动上游合并不得覆盖保护路径；仓库所有者明确
 要求修订自有流程或 UI 时，可进行对应修改并让 Actions 验证。
+
+## v2.9.4 上游切换
+
+2026-09-29 切换到 ranxi2001 的生产分支，首次合并 v2.9.4。
+移除的是 Pro 的七个自有 292 ticket 提交；新上游自带的 Codex ticket、
+采集出口、智能运维和配置功能全部保留，后续同步不得再恢复旧的独立采集实现。
+已应用的历史 SQL 文件不得改名、删除或改写，特别保留
+`231_white_label_legacy_defaults.sql` 和 `234_conversation_logs.sql`。
+会话记录模块继续独立于上游 request capture 保存与读取原有记录。
+
+`Build and Deploy` 调用 `deploy/action-deploy.sh`：先下载镜像，再排空应用请求，
+保存 PostgreSQL 完整 dump、应用 data、原 .env、原 Compose、Redis RDB 和数据计数，
+仅以 `--no-build --no-deps` 更新应用。健康及核心记录检查通过后保存新 Compose
+和固定的 APP_IMAGE；失败启动旧镜像，保留新数据库，不自动恢复旧数据库快照。
+备份位于部署目录的 `backups/action-*`，包含敏感信息，不上传 GitHub。

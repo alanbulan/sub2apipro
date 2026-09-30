@@ -21,12 +21,14 @@ type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
 	adminService       service.AdminService
 	quotaService       openAIQuotaService
+	referralService    openAIReferralService
 	rateLimitService   openAIAccountStateRecoverer
 }
 
 type openAIQuotaService interface {
 	QueryUsage(ctx context.Context, accountID int64) (*service.OpenAIQuotaUsage, error)
 	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *service.OpenAIRateLimitResetCredits) error
+	CacheCreditsSnapshot(ctx context.Context, accountID int64, usage *service.OpenAIQuotaUsage) error
 	CachePostResetSnapshot(ctx context.Context, accountID int64, usage *service.OpenAIQuotaUsage) error
 	ResetCredit(ctx context.Context, accountID int64) (*service.OpenAIQuotaResetResult, error)
 }
@@ -57,7 +59,8 @@ type openAIQuotaResetResponse struct {
 // failed display-cache write must never discard a successful upstream read.
 type openAIQuotaRefreshResponse struct {
 	service.OpenAIQuotaUsage
-	CachePersisted bool `json:"cache_persisted"`
+	CachePersisted        bool `json:"cache_persisted"`
+	CreditsCachePersisted bool `json:"credits_cache_persisted"`
 }
 
 // openAIQuotaResetPostProcessContext detaches the post-reset bookkeeping from the
@@ -92,6 +95,7 @@ func NewOpenAIOAuthHandler(
 	// `== nil` capability guards below and panic instead of returning 400.
 	if quotaService != nil {
 		h.quotaService = quotaService
+		h.referralService = quotaService
 	}
 	if rateLimitService != nil {
 		h.rateLimitService = rateLimitService
@@ -289,7 +293,7 @@ func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.AccountFromService(updatedAccount))
+	response.Success(c, dto.AccountForObserver(c.Request.Context(), dto.AccountFromService(updatedAccount)))
 }
 
 // CreateAccountFromOAuth creates a new OpenAI OAuth account from token info
@@ -355,7 +359,7 @@ func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, dto.AccountForObserver(c.Request.Context(), dto.AccountFromService(account)))
 }
 
 // CreateAccountFromCodexPAT creates an OpenAI OAuth account from a Codex at-* personal access token.
@@ -452,7 +456,7 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, dto.AccountForObserver(c.Request.Context(), dto.AccountFromService(account)))
 }
 
 func buildOpenAICodexPATAccountName(name string, tokenInfo *service.OpenAITokenInfo) string {
@@ -522,6 +526,11 @@ func (h *OpenAIOAuthHandler) RefreshQuota(c *gin.Context) {
 	service.NotifyOpenAIAutoResetCredit(accountID)
 
 	refreshResponse := openAIQuotaRefreshResponse{OpenAIQuotaUsage: *usage}
+	if err := h.quotaService.CacheCreditsSnapshot(c.Request.Context(), accountID, usage); err != nil {
+		slog.Warn("openai_quota_credits_cache_persist_failed", "account_id", accountID, "error", err)
+	} else {
+		refreshResponse.CreditsCachePersisted = true
+	}
 	// A failed snapshot write leaves the previous cache intact — report it as a
 	// partial success instead of discarding the usage payload we just fetched,
 	// which would leave the card without a credit count at all.
@@ -568,7 +577,7 @@ func (h *OpenAIOAuthHandler) CreateShadow(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.AccountFromServiceShallow(shadow))
+	response.Success(c, dto.AccountForObserver(c.Request.Context(), dto.AccountFromServiceShallow(shadow)))
 }
 
 // ResetQuota consumes one rate-limit reset credit for an OpenAI account.
@@ -609,7 +618,7 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 	resetResponse.AccountStateRecovered = postResult.AccountStateRecovered
 	resetResponse.WarningCode = postResult.WarningCode
 	if postResult.Account != nil {
-		resetResponse.Account = dto.AccountFromService(postResult.Account)
+		resetResponse.Account = dto.AccountForObserver(c.Request.Context(), dto.AccountFromService(postResult.Account))
 	}
 	response.Success(c, resetResponse)
 }

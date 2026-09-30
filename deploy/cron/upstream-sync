@@ -46,7 +46,7 @@ CI_STATUS_FILE="$STATE_DIR/ci-status.json"
 RUN_STATE_FILE="$STATE_DIR/in-progress-head"
 CI_HELPER="$REPO_DIR/deploy/cron/upstream-sync-ci.cjs"
 UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-upstream}"
-UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
+UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-production}"
 
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/$(date +%Y-%m-%d).log"

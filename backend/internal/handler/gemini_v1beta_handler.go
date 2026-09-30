@@ -46,14 +46,16 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 
-	// 分组级模型白名单开启时过滤 models[].name（名字形如 models/xxx）。
+	// 分组级模型白名单开启、或用户在分组内有禁用模型时过滤 models[].name（名字形如 models/xxx）。
 	filterGeminiModels := func(models []gemini.Model) []gemini.Model {
-		if apiKey.Group == nil || !apiKey.Group.ModelAllowlistEnabled() {
+		allowlistEnabled := apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled()
+		denied := apiKey.DeniedModelsInGroup()
+		if !allowlistEnabled && len(denied) == 0 {
 			return models
 		}
 		filtered := make([]gemini.Model, 0, len(models))
 		for _, model := range models {
-			if apiKey.Group.ModelAllowlist.Allows(model.Name) {
+			if (!allowlistEnabled || apiKey.Group.ModelAllowlist.Allows(model.Name)) && !service.UserGroupDeniesModel(denied, model.Name) {
 				filtered = append(filtered, model)
 			}
 		}
@@ -322,7 +324,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		modelName = strings.TrimSpace(resolvedModel)
 	}
 
-	stream := action == "streamGenerateContent"
+	stream := action == gemini.ActionStreamGenerateContent
 	reqLog = reqLog.With(zap.String("model", modelName), zap.String("action", action), zap.Bool("stream", stream))
 
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
@@ -370,7 +372,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	userReleaseFunc, err := geminiConcurrency.AcquireUserSlotWithWait(c, authSubject.UserID, authSubject.Concurrency, stream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gemini.user_slot_acquire_failed", zap.Error(err))
-		googleError(c, http.StatusTooManyRequests, err.Error())
+		googleConcurrencyError(c, err, "user")
 		return
 	}
 	// 确保请求取消时也会释放槽位，避免长连接被动中断造成泄漏
@@ -506,6 +508,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 		if err != nil {
+			if failoverClientGone(c) {
+				reqLog.Info("gemini.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+			}
 			if len(fs.FailedAccountIDs) == 0 {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, modelName, modelName, service.PlatformGemini)
 				if !cls.ModelNotFound {
@@ -598,7 +604,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			)
 			if err != nil {
 				reqLog.Warn("gemini.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-				googleError(c, http.StatusTooManyRequests, err.Error())
+				googleConcurrencyError(c, err, "account")
 				return
 			}
 			if accountWaitCounted {
@@ -674,7 +680,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 					return
 				}
 			}
-			// ForwardNative already wrote the response
+			// 转发层已写出错误响应；客户端断开时转发层不写，响应未提交则标记 499。
+			failoverClientGone(c)
 			reqLog.Error("gemini.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			return
 		}
@@ -749,18 +756,11 @@ func parseGeminiModelAction(rest string) (model string, action string, err error
 	if rest == "" {
 		return "", "", &pathParseError{"missing path"}
 	}
-
-	// Standard: {model}:{action}
-	if i := strings.Index(rest, ":"); i > 0 && i < len(rest)-1 {
-		return rest[:i], rest[i+1:], nil
+	model, action, ok := gemini.ParseModelAction(rest)
+	if !ok {
+		return "", "", &pathParseError{"invalid model action path"}
 	}
-
-	// Fallback: {model}/{action}
-	if i := strings.Index(rest, "/"); i > 0 && i < len(rest)-1 {
-		return rest[:i], rest[i+1:], nil
-	}
-
-	return "", "", &pathParseError{"invalid model action path"}
+	return model, action, nil
 }
 
 func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError) {
@@ -834,6 +834,13 @@ func googleError(c *gin.Context, status int, message string) {
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
 	})
+}
+
+// googleConcurrencyError 以 Google 错误格式回写并发槽获取失败，状态码与文案
+// 沿用 concurrencyErrorResponse 的统一映射（客户端断开为 499）。
+func googleConcurrencyError(c *gin.Context, err error, slotType string) {
+	status, _, _, message := concurrencyErrorResponse(err, slotType)
+	googleError(c, status, message)
 }
 
 func writeUpstreamResponse(c *gin.Context, res *service.UpstreamHTTPResult) {
