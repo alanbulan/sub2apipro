@@ -231,6 +231,23 @@ func TestFetchOpenAIModelsListEmptyAndMalformedResponses(t *testing.T) {
 	}
 }
 
+func TestModelsRefreshReusesCacheFilledAfterCallerLookup(t *testing.T) {
+	s := &OpenAIGatewayService{}
+	const key = "late-refresh"
+	_, state := s.openAIModelsCache.get(key, time.Now())
+	require.Equal(t, openAIModelsCacheMiss, state)
+	manifest := &OpenAIModelsResponse{Body: []byte(`{"data":[{"id":"shared-model"}]}`)}
+	s.openAIModelsCache.set(key, manifest, time.Now())
+	var calls atomic.Int32
+	result := <-s.refreshCachedOpenAIModels(key, openAIModelsRequest{}, func(context.Context, string) (*OpenAIModelsResponse, error) {
+		calls.Add(1)
+		return manifest, nil
+	})
+	require.NoError(t, result.Err)
+	require.Same(t, manifest, result.Val)
+	require.Zero(t, calls.Load())
+}
+
 func TestPinnedOpenAIModelsListMixedAccountsShareColdCacheAcrossGroups(t *testing.T) {
 	_, oauthCalls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"shared-model"},{"slug":"oauth-special"}]}`)
 	var apiCalls atomic.Int32
