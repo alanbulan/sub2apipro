@@ -65,6 +65,10 @@ log() {
 
 fail() {
   log "ERROR: $*"
+  # Keep merge-agent output separate from the final wrapper outcome.
+  if [ -n "$BEFORE_HEAD" ]; then
+    node -e 'const fs=require("fs"); const file=process.argv[1]; let r={}; try {r=JSON.parse(fs.readFileSync(file,"utf8"));} catch {} r.sync_status="failed"; r.sync_error=process.argv[2]; fs.writeFileSync(file,JSON.stringify(r,null,2)+"\n");' "$RESULT_FILE" "$*" || true
+  fi
   if command -v logger >/dev/null 2>&1; then
     logger -t sub2api-upstream-sync -- "$*" || true
   fi
@@ -258,9 +262,28 @@ is_protected_path() {
 
 check_protected_changes() {
   changed_file="$1"
+  protected_target="${2:-}"
   while IFS= read -r path || [ -n "$path" ]; do
     [ -n "$path" ] || continue
     if is_protected_path "$path"; then
+      # These upstream CI extensions may add checks but may not replace or
+      # remove any existing fork trigger, job, permission or validation step.
+      case "$path" in
+        .github/workflows/backend-ci.yml|.github/workflows/reauth-runtime.yml)
+          if [ -n "$protected_target" ]; then
+            protected_deleted="$(git diff --numstat "$BEFORE_HEAD" "$protected_target" -- "$path" | awk '{print $2}')"
+            git cat-file -e "$protected_target:$path" 2>/dev/null || fail "protected workflow missing from candidate: $path"
+          else
+            protected_deleted="$(git diff --numstat "$BEFORE_HEAD" -- "$path" | awk '{print $2}')"
+          fi
+          if git cat-file -e "$BEFORE_HEAD:$path" 2>/dev/null &&
+             [ -f "$path" ] &&
+             [ "$protected_deleted" = 0 ]; then
+            log "allowing additive upstream CI checks: $path"
+            continue
+          fi
+          ;;
+      esac
       fail "protected path changed by automated sync: $path"
     fi
   done < "$changed_file"
@@ -333,6 +356,7 @@ promote_candidate() {
   write_state "$TARGET_HEAD" || fail 'unable to save promoted upstream state; checkpoint retained'
   rm -f "$CANDIDATE_FILE" || fail 'unable to remove completed candidate checkpoint'
   log "candidate promoted successfully; state advanced to $TARGET_HEAD; Build and Deploy now handles production"
+  node -e 'const fs=require("fs"); const file=process.argv[1]; let r={}; try {r=JSON.parse(fs.readFileSync(file,"utf8"));} catch {} r.sync_status="promoted"; r.candidate_head=process.argv[2]; r.deployment="pending"; delete r.sync_error; fs.writeFileSync(file,JSON.stringify(r,null,2)+"\n");' "$RESULT_FILE" "$CANDIDATE_HEAD"
   clear_run_state
   RUN_FINISHED=1
 }
@@ -360,7 +384,7 @@ EOF
   [ "$resumed_local" = "$BEFORE_HEAD" ] || [ "$resumed_local" = "$CANDIDATE_HEAD" ] || fail 'local main differs from saved candidate and base; preserving local work'
   CHANGED_FILE="$(mktemp "$STATE_DIR/changed.XXXXXX")"
   git diff --name-only "$BEFORE_HEAD" "$CANDIDATE_HEAD" > "$CHANGED_FILE" || fail 'unable to inspect saved candidate'
-  check_protected_changes "$CHANGED_FILE"
+  check_protected_changes "$CHANGED_FILE" "$CANDIDATE_HEAD"
   git diff --check "$BEFORE_HEAD" "$CANDIDATE_HEAD" || fail 'saved candidate contains whitespace errors'
   # A previous hard interruption may have left our own candidate checked out.
   # Recover it on failure so the next review can start from production main.

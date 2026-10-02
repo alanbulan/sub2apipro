@@ -68,6 +68,9 @@
 记录都在 `.codex-upstream-sync/`：`analysis.md` 是合并审核，`candidate.json`
 是待完成候选，`ci-status.json` 是最后观察到的状态及运行链接，
 `last-seen-head` 只表示已推广/完成审核的上游位置。日志在 `logs/` 中。
+`result.json` 的 `status` 是合并代理的结果；包装脚本另写 `sync_status`：
+`failed` 表示同步未完成，`promoted` 表示候选已通过 CI 并推广。
+推广后的 `deployment: pending` 仍需以生产 Action 的结果确认部署成功。
 本地临时合并在失败退出时可能回到审核前的位置，远端候选和续跑记录仍保留；
 这不表示生产服务被回滚。不要手工把 `last-seen-head` 改成待处理上游头。
 
@@ -107,6 +110,8 @@
 标志。部署拉取 GitHub 构建的镜像，压缩后的 JS/CSS 与源码不同属于正常构建
 结果，不能要求二者哈希相同。自动上游合并不得覆盖保护路径；仓库所有者明确
 要求修订自有流程或 UI 时，可进行对应修改并让 Actions 验证。
+仅 `backend-ci.yml` 和 `reauth-runtime.yml` 允许追加上游检查或触发路径，
+不得删除或修改任何既有行；其余保护路径在无人值守同步时保持原样。
 
 ## v2.9.4 上游切换
 

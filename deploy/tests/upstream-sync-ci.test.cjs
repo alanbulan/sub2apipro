@@ -96,7 +96,7 @@ function git(cwd, args, env) {
   return result.stdout.trim();
 }
 
-async function fixture(t, { withChecker = false } = {}) {
+async function fixture(t, { withChecker = false, workflowChange } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'upstream-sync-ci-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const repo = path.join(directory, 'repo');
@@ -114,13 +114,21 @@ async function fixture(t, { withChecker = false } = {}) {
     fs.writeFileSync(path.join(repo, 'scripts/check-upstream.sh'), '#!/bin/sh\nprintf "0\\n"\n', { mode: 0o755 });
   }
   fs.mkdirSync(path.join(repo, 'custom'));
-  fs.writeFileSync(path.join(repo, 'custom/protected-paths.txt'), 'custom/\ndeploy/cron/\n');
+  fs.writeFileSync(path.join(repo, 'custom/protected-paths.txt'), 'custom/\ndeploy/cron/\n.github/workflows/\n');
+  if (workflowChange) {
+    fs.mkdirSync(path.join(repo, '.github/workflows'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.github/workflows', workflowChange.name), 'name: Existing CI\n');
+  }
   fs.writeFileSync(path.join(repo, '.gitignore'), '.codex-upstream-sync/\n');
   git(repo, ['add', '.']);
   git(repo, ['commit', '-qm', 'base']);
   const before = git(repo, ['rev-parse', 'HEAD']);
   git(repo, ['clone', '--bare', '-q', repo, remote]);
   fs.writeFileSync(path.join(repo, 'feature.txt'), 'upstream change\n');
+  if (workflowChange) {
+    fs.writeFileSync(path.join(repo, '.github/workflows', workflowChange.name), workflowChange.content);
+    git(repo, ['add', '.github/workflows']);
+  }
   git(repo, ['add', 'feature.txt']);
   git(repo, ['commit', '-qm', 'candidate']);
   const candidate = git(repo, ['rev-parse', 'HEAD']);
@@ -182,6 +190,27 @@ test('wrapper resumes an unknown CI result and promotes the same saved candidate
   assert.equal(git(f.remote, ['rev-parse', branch]), f.candidate);
   assert.equal(fs.readFileSync(path.join(f.stateDir, 'last-seen-head'), 'utf8').trim(), f.candidate);
   assert.ok(!fs.existsSync(f.checkpointFile));
+});
+
+test('wrapper permits additive checks only in the two reviewed CI workflows', async t => {
+  for (const name of ['backend-ci.yml', 'reauth-runtime.yml']) {
+    const f = await fixture(t, { workflowChange: { name, content: 'name: Existing CI\n# Added upstream check\n' } });
+    assert.equal(await f.invoke(), 0, f.state.log);
+    assert.equal(git(f.remote, ['rev-parse', 'main']), f.candidate);
+  }
+});
+
+test('wrapper rejects replacement of existing CI lines and additions to other protected workflows', async t => {
+  for (const change of [
+    { name: 'backend-ci.yml', content: 'name: Replacement CI\n' },
+    { name: 'build-and-deploy.yml', content: 'name: Existing CI\n# Unauthorized addition\n' },
+  ]) {
+    const f = await fixture(t, { workflowChange: change });
+    assert.notEqual(await f.invoke(), 0);
+    assert.equal(f.state.requests, 0);
+    assert.equal(git(f.remote, ['rev-parse', 'main']), f.before);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(f.stateDir, 'result.json'))).sync_status, 'failed');
+  }
 });
 
 test('wrapper archives an explicit failed CI without promoting or advancing state', async t => {
