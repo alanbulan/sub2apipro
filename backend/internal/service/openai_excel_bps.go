@@ -114,6 +114,9 @@ func (s *OpenAIGatewayService) excelBPSImageRelayForSettings(settings ExcelBPSIm
 			dataDir = "./data"
 		}
 		s.excelBPSImages, err = basispoints.NewImageRelay(settings.BaseURL, filepath.Join(dataDir, "bps-images"))
+		if err == nil && s.settingService.Serverless != nil {
+			s.excelBPSImages.SetURLDecorator(s.settingService.Serverless.ImageOwnerURL)
+		}
 	}
 	if err == nil {
 		err = s.excelBPSImages.Configure(settings.BaseURL, settings.Limits)
@@ -271,12 +274,6 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		return fail(503, "basispoints_image_settings_unavailable", "Excel BPS image settings are unavailable")
 	}
-	if !imageSettings.Enabled && account.IsExcelBPSIgnoreImagesEnabled() {
-		body, err = basispoints.StripInputImages(body)
-		if err != nil {
-			return fail(400, "basispoints_request_invalid", err.Error())
-		}
-	}
 	if account.IsExcelBPSIgnoreEncryptedContentEnabled() {
 		body, err = basispoints.StripEncryptedContent(body)
 		if err != nil {
@@ -367,7 +364,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		var lease excelBPSLease
 		// Pin the attachment upload and the Responses request to the same exit,
 		// whichever pool the account chose.
-		attachmentProxy, lease, err = requestAcquire(ctx, scope)
+		attachmentProxy, lease, err = acquireExcelBPSAttachmentProxy(ctx, c, account, scope, requestAcquire)
 		if err != nil {
 			if isExcelBPSClientCancellation(c, err) {
 				return clientCanceled()
@@ -399,15 +396,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 				status = http.StatusServiceUnavailable
 			}
 			if status == http.StatusTooManyRequests && uploadError != nil {
-				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-					Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
-					ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
-					UpstreamStatusCode: status, UpstreamURL: basispoints.AttachmentsURL, Kind: "failover",
-					Message: "Excel BPS attachment upload was rate limited",
-				})
+				recordExcelBPSAttachmentFailure(ctx, c, account, err, true)
 				return failoverRateLimited(uploadError.retryAfter)
 			}
-			setOpsUpstreamError(c, status, "Excel BPS attachment upload failed", "")
+			recordExcelBPSAttachmentFailure(ctx, c, account, err, false)
 			if status == http.StatusUnauthorized {
 				return fail(status, code, "Excel BPS attachment authentication failed; request was not replayed")
 			}

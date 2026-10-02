@@ -27,6 +27,8 @@
       </div>
     </div>
 
+    <FeatureSearch v-if="isAdmin" :items="searchNavItems" :collapsed="sidebarCollapsed" @navigate="handleMenuItemClick" />
+
     <!-- Navigation -->
     <nav ref="sidebarNavRef" class="sidebar-nav scrollbar-hide">
       <div v-if="authStore.isObserver" class="sidebar-section">
@@ -192,6 +194,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
+import FeatureSearch from './FeatureSearch.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
@@ -870,6 +873,12 @@ const adminNavItems = computed((): NavItem[] => {
   }
   return visible
 })
+
+// Use exactly the visible navigation, including the personal section only when shown.
+const searchNavItems = computed(() => [
+  ...adminNavItems.value,
+  ...(authStore.isSimpleMode ? [] : personalNavItems.value)
+])
 
 function toggleSidebar() {
   appStore.toggleSidebar()

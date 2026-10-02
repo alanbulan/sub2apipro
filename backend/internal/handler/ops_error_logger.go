@@ -784,6 +784,19 @@ func (w *opsCaptureWriter) Flush() {
 	defer finishDelegatedCall(state)
 	rw.Flush()
 }
+
+// FlushError keeps the writer lease alive while exposing transport flush failures.
+// Do not expose Unwrap: it would let callers bypass the generation/in-flight guard.
+func (w *opsCaptureWriter) FlushError() error {
+	state, rw := w.beginDelegatedCall()
+	if state == nil {
+		return errors.New("response writer released")
+	}
+	state.mu.Unlock()
+	defer finishDelegatedCall(state)
+	return service.FlushGatewayResponse(rw)
+}
+
 func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	state, rw := w.beginDelegatedCall()
 	if state == nil {
@@ -2333,7 +2346,9 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		opsCodeSubscriptionNotFound,
 		opsCodeSubscriptionInvalid,
 		opsCodeAPIKeyQuotaExhausted,
-		opsCodeAPIKeyQueryDeprecated:
+		opsCodeAPIKeyQueryDeprecated,
+		apiKeyQueueFullCode,
+		apiKeyQueueTimeoutCode:
 		return true
 	}
 	return strings.Contains(msg, "api key in query parameter is deprecated") ||
@@ -2354,6 +2369,8 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		strings.Contains(msg, "usage quota exhausted for this platform") ||
 		strings.Contains(msg, "requests-per-minute limit exceeded") ||
 		strings.Contains(msg, "too many pending requests") ||
+		strings.Contains(msg, "api key wait queue is full") ||
+		strings.Contains(msg, "waiting for api key concurrency slot") ||
 		strings.Contains(msg, "concurrency limit exceeded") ||
 		strings.Contains(msg, "image generation concurrency limit exceeded") ||
 		strings.Contains(msg, "this group is restricted to claude code clients") ||
