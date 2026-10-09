@@ -16,6 +16,7 @@ builds:
       - -tags=embed
     env:
       - CGO_ENABLED=0
+      - GOTOOLCHAIN=go1.27.2
     goos:
       - linux
     goarch:

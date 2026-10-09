@@ -6,7 +6,7 @@
 
 Sub2API 维护副本 · AI API 网关与自托管部署。
 
-![Go](https://img.shields.io/badge/Backend-Go-5eead4?style=flat-square)
+![Go](https://img.shields.io/badge/Backend-Go_1.27.2-5eead4?style=flat-square)
 ![Vue](https://img.shields.io/badge/Frontend-Vue-818cf8?style=flat-square)
 ![Category](https://img.shields.io/badge/category-API_Gateway-fb7185?style=flat-square)
 
