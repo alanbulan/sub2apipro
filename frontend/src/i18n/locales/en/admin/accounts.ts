@@ -1695,6 +1695,7 @@ export default {
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
+      testRequestStarted: 'Test request started; waiting for an upstream response',
       testAccountConnection: 'Test Account Connection',
       errorPrefix: 'Error: {message}',
       imagePreviewAlt: 'Test image {index}',
@@ -1704,7 +1705,6 @@ export default {
       connectingToApi: 'Connecting to API...',
       testCompleted: 'Test completed successfully!',
       testFailed: 'Test failed',
-      testRequestStarted: 'Test request started; waiting for an upstream response',
       connectedToApi: 'Connected to API',
       usingModel: 'Using model: {model}',
       sendingTestMessage: 'Sending test message: "hi"',

@@ -1784,6 +1784,7 @@ export default {
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
+      testRequestStarted: '测试请求已开始，等待上游响应',
       testAccountConnection: '测试账号连接',
       errorPrefix: '错误：{message}',
       imagePreviewAlt: '测试图片 {index}',
@@ -1792,7 +1793,6 @@ export default {
       readyToTest: '准备测试。点击"开始测试"按钮开始...',
       connectingToApi: '连接 API 中...',
       testCompleted: '测试完成！',
-      testRequestStarted: '测试请求已开始，等待上游响应',
       connectedToApi: '已连接到 API',
       usingModel: '使用模型：{model}',
       sendingTestMessage: '发送测试消息："hi"',
