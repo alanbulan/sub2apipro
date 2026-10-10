@@ -1784,6 +1784,7 @@ export default {
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
+      testRequestStarted: '测试请求已开始，等待上游响应',
       testAccountConnection: '测试账号连接',
       errorPrefix: '错误：{message}',
       imagePreviewAlt: '测试图片 {index}',

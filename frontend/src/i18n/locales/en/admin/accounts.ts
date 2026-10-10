@@ -1695,6 +1695,7 @@ export default {
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
+      testRequestStarted: 'Test request started; waiting for an upstream response',
       testAccountConnection: 'Test Account Connection',
       errorPrefix: 'Error: {message}',
       imagePreviewAlt: 'Test image {index}',
