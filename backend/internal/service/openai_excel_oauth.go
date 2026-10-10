@@ -154,6 +154,10 @@ func (s *OpenAIOAuthReauthService) QueueMissingExcelAuthorizations(ctx context.C
 
 var excelOAuthRefreshLocks sync.Map
 
+// Stored inside the encrypted grant. A resource-server 401 rejects the access
+// token, not necessarily the refresh token; refresh it on the next token read.
+const excelAccessTokenRejectedKey = "_access_token_rejected"
+
 func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account *Account, tokenCache OpenAITokenCache) (string, error) {
 	repo, ok := s.repo.(OpenAIExcelOAuthRepository)
 	if !ok {
@@ -172,7 +176,7 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 	if err != nil {
 		return "", errors.New("invalid saved Excel access token")
 	}
-	if claims.Exp > time.Now().Add(openAITokenRefreshSkew).Unix() {
+	if cached[excelAccessTokenRejectedKey] != true && claims.Exp > time.Now().Add(openAITokenRefreshSkew).Unix() {
 		return validatedExcelAccessToken(fresh, cached)
 	}
 	key := fmt.Sprintf("openai:excel:account:%d", account.ID)
@@ -205,7 +209,7 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 	if err != nil {
 		return "", errors.New("invalid saved Excel access token")
 	}
-	if accessClaims.Exp <= time.Now().Add(openAITokenRefreshSkew).Unix() {
+	if credentials[excelAccessTokenRejectedKey] == true || accessClaims.Exp <= time.Now().Add(openAITokenRefreshSkew).Unix() {
 		oldInfo, err := decodeExcelOAuthTokenInfo(credentials, true)
 		if err == nil {
 			err = validateReauthToken(fresh, oldInfo)
@@ -225,8 +229,9 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 				cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				defer cancel()
 				_ = repo.DeleteExcelCredentials(cleanup, account.ID, ciphertext)
+				return "", errors.New("excel OAuth refresh token is invalid; automatic reauthorization is required")
 			}
-			return "", errors.New("excel OAuth refresh failed; reauthorize Excel in Credential Operations")
+			return "", errors.New("excel OAuth refresh failed; credentials were retained, retry later")
 		}
 		credentials["access_token"] = response.AccessToken
 		if response.RefreshToken != "" {
@@ -320,8 +325,8 @@ func (s *OpenAIGatewayService) getExcelBPSAccessToken(ctx context.Context, accou
 	return token, err
 }
 
-// Reject only the grant actually used by this request. A late 401 must not
-// remove a concurrently rotated Excel token or quarantine the Codex account.
+// Reject only the access token actually used by this request. Preserve its RT
+// for the normal refresh flow, and never overwrite a concurrently rotated grant.
 func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Context, id int64, token string) error {
 	repo, ok := s.repo.(OpenAIExcelOAuthRepository)
 	if !ok || token == "" {
@@ -339,10 +344,22 @@ func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Contex
 	if json.Unmarshal([]byte(plain), &credentials) != nil {
 		return errors.New("invalid saved Excel grant")
 	}
-	if reauthMapString(credentials, "access_token") != token {
+	if reauthMapString(credentials, "access_token") != token || credentials[excelAccessTokenRejectedKey] == true {
 		return nil
 	}
-	return repo.DeleteExcelCredentials(ctx, id, ciphertext)
+	credentials[excelAccessTokenRejectedKey] = true
+	raw, err := json.Marshal(credentials)
+	if err != nil {
+		return errors.New("failed to encode rejected Excel access token")
+	}
+	replacement, err := s.encryptor.Encrypt(string(raw))
+	if err != nil {
+		return errors.New("failed to encrypt rejected Excel access token")
+	}
+	// CAS losing to a refreshed/replaced grant is a no-op: the old token's 401
+	// provides no evidence about the new grant.
+	_, err = repo.ReplaceExcelCredentials(ctx, id, ciphertext, replacement)
+	return err
 }
 
 // Missing grants are not necessarily queued. Read only the Excel task so a
