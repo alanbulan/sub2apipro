@@ -35,7 +35,7 @@ func (r *excelReauthTestRepo) GetExcelCredentials(context.Context, int64) (strin
 	defer r.mu.Unlock()
 	return r.ciphertext, nil
 }
-func (r *excelReauthTestRepo) ApplyExcelCredentials(_ context.Context, record *OpenAIOAuthReauthTaskRecord, _ map[string]any, ciphertext string) (bool, error) {
+func (r *excelReauthTestRepo) ApplyExcelCredentials(_ context.Context, record *OpenAIOAuthReauthTaskRecord, _ map[string]any, ciphertext string, _ ...ExcelBPSCredentialState) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.replaceErr != nil {
@@ -47,7 +47,7 @@ func (r *excelReauthTestRepo) ApplyExcelCredentials(_ context.Context, record *O
 	r.task.Stage = OpenAIOAuthReauthStageSucceeded
 	return true, nil
 }
-func (r *excelReauthTestRepo) ReplaceExcelCredentials(_ context.Context, _ int64, expected, replacement string) (bool, error) {
+func (r *excelReauthTestRepo) ReplaceExcelCredentials(_ context.Context, _ int64, expected, replacement string, _ ...ExcelBPSCredentialState) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.replaceErr != nil {
@@ -59,7 +59,7 @@ func (r *excelReauthTestRepo) ReplaceExcelCredentials(_ context.Context, _ int64
 	r.ciphertext = replacement
 	return true, nil
 }
-func (r *excelReauthTestRepo) DeleteExcelCredentials(_ context.Context, _ int64, expected string) error {
+func (r *excelReauthTestRepo) DeleteExcelCredentials(_ context.Context, _ int64, expected string, _ ...ExcelBPSCredentialState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.ciphertext == expected {

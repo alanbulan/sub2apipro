@@ -22,9 +22,9 @@ type OpenAIExcelOAuthRepository interface {
 	GetLatestExcelTask(context.Context, int64) (*OpenAIOAuthReauthTaskRecord, error)
 	PrepareMissingExcelRoutes(context.Context) error
 	GetExcelCredentials(context.Context, int64) (string, error)
-	ApplyExcelCredentials(context.Context, *OpenAIOAuthReauthTaskRecord, map[string]any, string) (bool, error)
-	ReplaceExcelCredentials(context.Context, int64, string, string) (bool, error)
-	DeleteExcelCredentials(context.Context, int64, string) error
+	ApplyExcelCredentials(context.Context, *OpenAIOAuthReauthTaskRecord, map[string]any, string, ...ExcelBPSCredentialState) (bool, error)
+	ReplaceExcelCredentials(context.Context, int64, string, string, ...ExcelBPSCredentialState) (bool, error)
+	DeleteExcelCredentials(context.Context, int64, string, ...ExcelBPSCredentialState) error
 	ListMissingExcelAuthorizations(context.Context, int) ([]int64, error)
 }
 
@@ -105,7 +105,7 @@ func (s *OpenAIOAuthReauthService) applyExcelReauthCredentials(ctx context.Conte
 	if err != nil {
 		return s.failCallback(ctx, record.ID, "failed to encrypt Excel credentials", err)
 	}
-	changed, err := repo.ApplyExcelCredentials(ctx, record, account.Credentials, ciphertext)
+	changed, err := repo.ApplyExcelCredentials(ctx, record, account.Credentials, ciphertext, ExcelBPSGrantState(info.ExpiresAt))
 	if err != nil || !changed {
 		return s.failCallback(ctx, record.ID, "account changed while Excel authorization was running", errors.New("excel credential write failed"))
 	}
@@ -252,7 +252,7 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 		}
 		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		changed, err := repo.ReplaceExcelCredentials(persistCtx, account.ID, ciphertext, replacement)
+		changed, err := repo.ReplaceExcelCredentials(persistCtx, account.ID, ciphertext, replacement, ExcelBPSGrantState(info.ExpiresAt))
 		if err != nil || !changed {
 			return "", errors.New("excel credentials changed or could not be saved")
 		}
@@ -322,7 +322,7 @@ func (s *OpenAIGatewayService) getExcelBPSAccessToken(ctx context.Context, accou
 
 // Reject only the grant actually used by this request. A late 401 must not
 // remove a concurrently rotated Excel token or quarantine the Codex account.
-func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Context, id int64, token string) error {
+func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Context, id int64, token string, failureCode ...string) error {
 	repo, ok := s.repo.(OpenAIExcelOAuthRepository)
 	if !ok || token == "" {
 		return nil
@@ -342,7 +342,11 @@ func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Contex
 	if reauthMapString(credentials, "access_token") != token {
 		return nil
 	}
-	return repo.DeleteExcelCredentials(ctx, id, ciphertext)
+	code := ""
+	if len(failureCode) > 0 {
+		code = failureCode[0]
+	}
+	return repo.DeleteExcelCredentials(ctx, id, ciphertext, ExcelBPSGrantFailure(code))
 }
 
 // Missing grants are not necessarily queued. Read only the Excel task so a
