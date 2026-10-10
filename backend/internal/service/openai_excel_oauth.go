@@ -22,9 +22,9 @@ type OpenAIExcelOAuthRepository interface {
 	GetLatestExcelTask(context.Context, int64) (*OpenAIOAuthReauthTaskRecord, error)
 	PrepareMissingExcelRoutes(context.Context) error
 	GetExcelCredentials(context.Context, int64) (string, error)
-	ApplyExcelCredentials(context.Context, *OpenAIOAuthReauthTaskRecord, map[string]any, string) (bool, error)
-	ReplaceExcelCredentials(context.Context, int64, string, string) (bool, error)
-	DeleteExcelCredentials(context.Context, int64, string) error
+	ApplyExcelCredentials(context.Context, *OpenAIOAuthReauthTaskRecord, map[string]any, string, ...ExcelBPSCredentialState) (bool, error)
+	ReplaceExcelCredentials(context.Context, int64, string, string, ...ExcelBPSCredentialState) (bool, error)
+	DeleteExcelCredentials(context.Context, int64, string, ...ExcelBPSCredentialState) error
 	ListMissingExcelAuthorizations(context.Context, int) ([]int64, error)
 }
 
@@ -105,7 +105,7 @@ func (s *OpenAIOAuthReauthService) applyExcelReauthCredentials(ctx context.Conte
 	if err != nil {
 		return s.failCallback(ctx, record.ID, "failed to encrypt Excel credentials", err)
 	}
-	changed, err := repo.ApplyExcelCredentials(ctx, record, account.Credentials, ciphertext)
+	changed, err := repo.ApplyExcelCredentials(ctx, record, account.Credentials, ciphertext, ExcelBPSGrantState(info.ExpiresAt))
 	if err != nil || !changed {
 		return s.failCallback(ctx, record.ID, "account changed while Excel authorization was running", errors.New("excel credential write failed"))
 	}
@@ -300,7 +300,7 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 		}
 		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		changed, err := repo.ReplaceExcelCredentials(persistCtx, account.ID, ciphertext, replacement)
+		changed, err := repo.ReplaceExcelCredentials(persistCtx, account.ID, ciphertext, replacement, ExcelBPSGrantState(info.ExpiresAt))
 		if err != nil {
 			return "", errors.New("excel credentials could not be saved")
 		}
@@ -317,7 +317,10 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 // An invalid_grant may refer to an old RT consumed by another writer. Read
 // current storage before classifying failure; never expose an unsaved token.
 func (s *OpenAIOAuthReauthService) recoverExcelRefreshRace(ctx context.Context, account *Account, expected string) (string, bool, error) {
-	repo := s.repo.(OpenAIExcelOAuthRepository)
+	repo, ok := s.repo.(OpenAIExcelOAuthRepository)
+	if !ok {
+		return "", false, errors.New("excel credential storage is unavailable")
+	}
 	current, err := repo.GetExcelCredentials(ctx, account.ID)
 	if err != nil {
 		return "", false, errors.New("failed to reread Excel credentials; retry later")
@@ -330,7 +333,7 @@ func (s *OpenAIOAuthReauthService) recoverExcelRefreshRace(ctx context.Context, 
 		return "", true, err
 	}
 	if credentials[excelAccessTokenRejectedKey] == true {
-		return "", true, errors.New("Excel credentials changed and still need refresh; retry later")
+		return "", true, errors.New("excel credentials changed and still need refresh; retry later")
 	}
 	token, err := validatedExcelAccessToken(fresh, credentials)
 	return token, true, err
@@ -435,9 +438,9 @@ func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Contex
 	if err != nil {
 		return errors.New("failed to encrypt rejected Excel access token")
 	}
-	// CAS losing to a refreshed/replaced grant is a no-op: the old token's 401
-	// provides no evidence about the new grant.
-	_, err = repo.ReplaceExcelCredentials(ctx, id, ciphertext, replacement)
+	// Resource-server rejection describes the AT, not the RT. Keep diagnostics
+	// at auth_failed until refresh determines whether this grant can recover.
+	_, err = repo.ReplaceExcelCredentials(ctx, id, ciphertext, replacement, ExcelBPSGrantFailure(""))
 	return err
 }
 

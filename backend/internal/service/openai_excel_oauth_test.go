@@ -18,6 +18,7 @@ type excelReauthTestRepo struct {
 	mu sync.Mutex
 	*reauthTestRepo
 	ciphertext string
+	diagnosis  ExcelBPSCredentialState
 	replaceErr error
 	applied    bool
 	ids        []int64
@@ -35,7 +36,7 @@ func (r *excelReauthTestRepo) GetExcelCredentials(context.Context, int64) (strin
 	defer r.mu.Unlock()
 	return r.ciphertext, nil
 }
-func (r *excelReauthTestRepo) ApplyExcelCredentials(_ context.Context, record *OpenAIOAuthReauthTaskRecord, _ map[string]any, ciphertext string) (bool, error) {
+func (r *excelReauthTestRepo) ApplyExcelCredentials(_ context.Context, record *OpenAIOAuthReauthTaskRecord, _ map[string]any, ciphertext string, _ ...ExcelBPSCredentialState) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.replaceErr != nil {
@@ -47,7 +48,7 @@ func (r *excelReauthTestRepo) ApplyExcelCredentials(_ context.Context, record *O
 	r.task.Stage = OpenAIOAuthReauthStageSucceeded
 	return true, nil
 }
-func (r *excelReauthTestRepo) ReplaceExcelCredentials(_ context.Context, _ int64, expected, replacement string) (bool, error) {
+func (r *excelReauthTestRepo) ReplaceExcelCredentials(_ context.Context, _ int64, expected, replacement string, diagnosis ...ExcelBPSCredentialState) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.replaceErr != nil {
@@ -57,9 +58,12 @@ func (r *excelReauthTestRepo) ReplaceExcelCredentials(_ context.Context, _ int64
 		return false, nil
 	}
 	r.ciphertext = replacement
+	if len(diagnosis) > 0 {
+		r.diagnosis = diagnosis[0]
+	}
 	return true, nil
 }
-func (r *excelReauthTestRepo) DeleteExcelCredentials(_ context.Context, _ int64, expected string) error {
+func (r *excelReauthTestRepo) DeleteExcelCredentials(_ context.Context, _ int64, expected string, _ ...ExcelBPSCredentialState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.ciphertext == expected {
@@ -275,6 +279,7 @@ func TestExcelOAuth401RefreshesOnlyUsedGrant(t *testing.T) {
 	require.Equal(t, previous, repo.ciphertext)
 	gateway.handleExcelBPSUnauthorized(context.Background(), reader.account, http.StatusUnauthorized, http.Header{}, []byte(`{}`), reauthMapString(credentials, "access_token"))
 	require.NotEmpty(t, repo.ciphertext, "401 must preserve the refresh token")
+	require.Equal(t, "auth_failed", repo.diagnosis.Status)
 	plain, err := svc.encryptor.Decrypt(repo.ciphertext)
 	require.NoError(t, err)
 	require.Contains(t, plain, credentials["refresh_token"])
@@ -286,6 +291,7 @@ func TestExcelOAuth401RefreshesOnlyUsedGrant(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fresh["access_token"], token)
 	require.Equal(t, 1, client.calls)
+	require.Equal(t, "not_expired", repo.diagnosis.Status)
 	require.Equal(t, credentials["refresh_token"], client.refreshToken)
 	require.Equal(t, openai.ExcelClientID, client.clientID)
 	// A late 401 from the old access token cannot reject the rotated grant.
