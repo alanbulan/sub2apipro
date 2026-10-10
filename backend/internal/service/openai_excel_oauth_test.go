@@ -201,41 +201,52 @@ func (c *excelRefreshTestClient) RefreshTokenWithClientID(_ context.Context, rt,
 	return &openai.TokenResponse{AccessToken: reauthMapString(c.credentials, "access_token"), RefreshToken: reauthMapString(c.credentials, "refresh_token"), IDToken: reauthMapString(c.credentials, "id_token"), ExpiresIn: 3600}, nil
 }
 func TestExcelOAuthRefreshIsIndependentAndConcurrent(t *testing.T) {
-	svc, reader, repo, _, _ := newExcelReauthTestService(t)
-	before := cloneReauthMap(reader.account.Credentials)
-	stale := excelTestCredentials("expired", time.Now().Add(-time.Hour))
-	storeExcelTestCredentials(t, svc, repo, stale)
-	fresh := excelTestCredentials("fresh", time.Now().Add(time.Hour))
-	client := &excelRefreshTestClient{credentials: fresh}
-	svc.oauth.oauthClient = client
-	var wg sync.WaitGroup
-	results := make(chan string, 12)
-	errs := make(chan error, 12)
-	for i := 0; i < 12; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			token, err := svc.ExcelAccessToken(context.Background(), reader.account, nil)
-			results <- token
-			errs <- err
-		}()
+	for name, rejected := range map[string]bool{"expired": false, "rejected before expiry": true} {
+		t.Run(name, func(t *testing.T) {
+			svc, reader, repo, _, _ := newExcelReauthTestService(t)
+			before := cloneReauthMap(reader.account.Credentials)
+			expiry := time.Now().Add(-time.Hour)
+			if rejected {
+				expiry = time.Now().Add(time.Hour)
+			}
+			stale := excelTestCredentials("old", expiry)
+			storeExcelTestCredentials(t, svc, repo, stale)
+			if rejected {
+				require.NoError(t, svc.invalidateExcelAccessToken(context.Background(), reader.account.ID, reauthMapString(stale, "access_token")))
+			}
+			fresh := excelTestCredentials("fresh", time.Now().Add(time.Hour))
+			client := &excelRefreshTestClient{credentials: fresh}
+			svc.oauth.oauthClient = client
+			var wg sync.WaitGroup
+			results := make(chan string, 12)
+			errs := make(chan error, 12)
+			for i := 0; i < 12; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					token, err := svc.ExcelAccessToken(context.Background(), reader.account, nil)
+					results <- token
+					errs <- err
+				}()
+			}
+			wg.Wait()
+			close(results)
+			close(errs)
+			for err := range errs {
+				require.NoError(t, err)
+			}
+			for token := range results {
+				require.Equal(t, fresh["access_token"], token)
+			}
+			require.Equal(t, 1, client.calls)
+			require.Equal(t, openai.ExcelClientID, client.clientID)
+			require.Equal(t, stale["refresh_token"], client.refreshToken)
+			require.Equal(t, before, reader.account.Credentials)
+			plain, err := svc.encryptor.Decrypt(repo.ciphertext)
+			require.NoError(t, err)
+			require.Contains(t, plain, fresh["refresh_token"])
+		})
 	}
-	wg.Wait()
-	close(results)
-	close(errs)
-	for err := range errs {
-		require.NoError(t, err)
-	}
-	for token := range results {
-		require.Equal(t, fresh["access_token"], token)
-	}
-	require.Equal(t, 1, client.calls)
-	require.Equal(t, openai.ExcelClientID, client.clientID)
-	require.Equal(t, stale["refresh_token"], client.refreshToken)
-	require.Equal(t, before, reader.account.Credentials)
-	plain, err := svc.encryptor.Decrypt(repo.ciphertext)
-	require.NoError(t, err)
-	require.Contains(t, plain, fresh["refresh_token"])
 }
 func TestExcelOAuthRefreshFailureDoesNotReturnUnsavedToken(t *testing.T) {
 	svc, reader, repo, _, _ := newExcelReauthTestService(t)
@@ -249,24 +260,41 @@ func TestExcelOAuthRefreshFailureDoesNotReturnUnsavedToken(t *testing.T) {
 	require.Equal(t, previous, repo.ciphertext)
 	require.Equal(t, "old-access", reader.account.GetCredential("access_token"))
 }
-func TestExcelOAuth401InvalidatesOnlyUsedGrant(t *testing.T) {
+func TestExcelOAuth401RefreshesOnlyUsedGrant(t *testing.T) {
 	svc, reader, repo, _, _ := newExcelReauthTestService(t)
 	credentials := excelTestCredentials("fresh", time.Now().Add(time.Hour))
 	storeExcelTestCredentials(t, svc, repo, credentials)
 	gateway := openAIClientToolsTestService(nil)
 	authRepo, _ := setupExcelBPSAuth(gateway)
 	gateway.excelOAuthReauth = svc
+	fresh := excelTestCredentials("refreshed", time.Now().Add(time.Hour))
+	client := &excelRefreshTestClient{credentials: fresh}
+	svc.oauth.oauthClient = client
+	previous := repo.ciphertext
 	gateway.handleExcelBPSUnauthorized(context.Background(), reader.account, http.StatusUnauthorized, http.Header{}, []byte(`{}`), "old-excel-token")
-	require.NotEmpty(t, repo.ciphertext)
+	require.Equal(t, previous, repo.ciphertext)
 	gateway.handleExcelBPSUnauthorized(context.Background(), reader.account, http.StatusUnauthorized, http.Header{}, []byte(`{}`), reauthMapString(credentials, "access_token"))
-	require.Empty(t, repo.ciphertext)
+	require.NotEmpty(t, repo.ciphertext, "401 must preserve the refresh token")
+	plain, err := svc.encryptor.Decrypt(repo.ciphertext)
+	require.NoError(t, err)
+	require.Contains(t, plain, credentials["refresh_token"])
+	require.Zero(t, client.calls, "401 handling must not block on an OAuth request")
 	require.Zero(t, authRepo.errorCalls+authRepo.tempCalls)
 	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(reader.account))
 	require.Equal(t, "old-access", reader.account.GetCredential("access_token"))
 	token, err := gateway.getExcelBPSAccessToken(context.Background(), reader.account)
-	require.Error(t, err)
-	require.Empty(t, token)
-	require.True(t, IsExcelAuthorizationError(err))
+	require.NoError(t, err)
+	require.Equal(t, fresh["access_token"], token)
+	require.Equal(t, 1, client.calls)
+	require.Equal(t, credentials["refresh_token"], client.refreshToken)
+	require.Equal(t, openai.ExcelClientID, client.clientID)
+	// A late 401 from the old access token cannot reject the rotated grant.
+	gateway.handleExcelBPSUnauthorized(context.Background(), reader.account, http.StatusUnauthorized, http.Header{}, []byte(`{}`), reauthMapString(credentials, "access_token"))
+	token, err = gateway.getExcelBPSAccessToken(context.Background(), reader.account)
+	require.NoError(t, err)
+	require.Equal(t, fresh["access_token"], token)
+	require.Equal(t, 1, client.calls)
+	require.Nil(t, repo.task, "refresh must not create a password login task")
 }
 
 type excelRefreshLockTestCache struct {
@@ -321,3 +349,70 @@ func (r *excelReauthTestRepo) GetLatestExcelTask(context.Context, int64) (*OpenA
 }
 
 func (r *excelReauthTestRepo) PrepareMissingExcelRoutes(context.Context) error { return nil }
+
+func TestExcelOAuthRejectedTokenRefreshFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		err          error
+		invalidGrant bool
+	}{
+		{name: "transport", err: errors.New("connection reset")},
+		{name: "rate limited", err: errors.New("HTTP 429")},
+		{name: "upstream unavailable", err: errors.New("HTTP 503")},
+		{name: "invalid refresh token", err: errors.New("invalid_grant"), invalidGrant: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, reader, repo, _, _ := newExcelReauthTestService(t)
+			credentials := excelTestCredentials("rejected", time.Now().Add(time.Hour))
+			storeExcelTestCredentials(t, svc, repo, credentials)
+			client := &excelRefreshTestClient{err: tc.err}
+			svc.oauth.oauthClient = client
+			require.NoError(t, svc.invalidateExcelAccessToken(context.Background(), reader.account.ID, reauthMapString(credentials, "access_token")))
+			marked := repo.ciphertext
+			// Repeated 401s must not rewrite the grant while refresh is in flight.
+			require.NoError(t, svc.invalidateExcelAccessToken(context.Background(), reader.account.ID, reauthMapString(credentials, "access_token")))
+			require.Equal(t, marked, repo.ciphertext)
+			token, err := svc.ExcelAccessToken(context.Background(), reader.account, nil)
+			require.Error(t, err)
+			require.Empty(t, token, "never return an access token rejected by BPS")
+			require.Equal(t, 1, client.calls)
+			require.Equal(t, "old-refresh", reader.account.GetCredential("refresh_token"))
+			if tc.invalidGrant {
+				require.Empty(t, repo.ciphertext)
+				require.ErrorContains(t, err, "reauthorization")
+				return
+			}
+			require.Equal(t, marked, repo.ciphertext)
+			require.NotContains(t, err.Error(), "reauthoriz")
+			// A later request recovers using the retained RT, without a login task.
+			client.err = nil
+			client.credentials = excelTestCredentials("recovered", time.Now().Add(time.Hour))
+			token, err = svc.ExcelAccessToken(context.Background(), reader.account, nil)
+			require.NoError(t, err)
+			require.Equal(t, client.credentials["access_token"], token)
+			require.Equal(t, credentials["refresh_token"], client.refreshToken)
+			require.Nil(t, repo.task)
+		})
+	}
+}
+
+func TestExcelOAuthRejectedTokenUsesRefreshLock(t *testing.T) {
+	svc, reader, repo, _, _ := newExcelReauthTestService(t)
+	credentials := excelTestCredentials("rejected", time.Now().Add(time.Hour))
+	storeExcelTestCredentials(t, svc, repo, credentials)
+	require.NoError(t, svc.invalidateExcelAccessToken(context.Background(), reader.account.ID, reauthMapString(credentials, "access_token")))
+	marked := repo.ciphertext
+	client := &excelRefreshTestClient{credentials: excelTestCredentials("rotated", time.Now().Add(time.Hour))}
+	svc.oauth.oauthClient = client
+	cache := &excelRefreshLockTestCache{granted: false}
+	token, err := svc.ExcelAccessToken(context.Background(), reader.account, cache)
+	require.Error(t, err)
+	require.Empty(t, token)
+	require.Zero(t, client.calls)
+	require.Equal(t, marked, repo.ciphertext)
+	cache.granted = true
+	token, err = svc.ExcelAccessToken(context.Background(), reader.account, cache)
+	require.NoError(t, err)
+	require.Equal(t, client.credentials["access_token"], token)
+	require.Equal(t, 1, client.calls)
+}
