@@ -38,7 +38,11 @@ func (s *OpenAIGatewayService) handleExcelBPSUnauthorized(ctx context.Context, a
 		if len(tokens) > 0 {
 			stateCtx, cancel := openAIAccountStateContext(ctx)
 			defer cancel()
-			if err := s.excelOAuthReauth.invalidateExcelAccessToken(stateCtx, account.ID, tokens[0], extractUpstreamErrorCode(raw)); err != nil {
+			var cache OpenAITokenCache
+			if s.openAITokenProvider != nil {
+				cache = s.openAITokenProvider.tokenCache
+			}
+			if err := s.excelOAuthReauth.invalidateExcelAccessToken(stateCtx, account.ID, tokens[0], cache); err != nil {
 				logger.LegacyPrintf("service.openai_excel_bps", "Excel grant invalidation failed: account_id=%d", account.ID)
 			}
 		}
