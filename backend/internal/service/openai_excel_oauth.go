@@ -158,6 +158,50 @@ var excelOAuthRefreshLocks sync.Map
 // token, not necessarily the refresh token; refresh it on the next token read.
 const excelAccessTokenRejectedKey = "_access_token_rejected"
 
+// Both the refresh writer and 401 marker use the same local/distributed lock.
+// A 401 never waits behind a refresh or modifies its snapshot: the refresh
+// already owns recovery, and a failed attempt remains due for the next request.
+func lockExcelCredentials(ctx context.Context, id int64, tokenCache OpenAITokenCache, wait bool) (func(), error) {
+	key := fmt.Sprintf("openai:excel:account:%d", id)
+	actual, _ := excelOAuthRefreshLocks.LoadOrStore(key, newContextMutex())
+	mu, ok := actual.(*contextMutex)
+	if !ok {
+		return nil, errors.New("excel refresh lock is unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if wait {
+		if err := mu.Lock(ctx); err != nil {
+			return nil, err
+		}
+	} else {
+		select {
+		case mu.token <- struct{}{}:
+		default:
+			return nil, nil // Refresh owns the grant; do not change its CAS snapshot.
+		}
+	}
+	// Fail closed on distributed-lock errors: Excel refresh tokens rotate.
+	if tokenCache != nil {
+		acquired, err := tokenCache.AcquireRefreshLock(ctx, key, 60*time.Second)
+		if err != nil || !acquired {
+			mu.Unlock()
+			if err == nil && !wait {
+				return nil, nil
+			}
+			return nil, errors.New("excel credential refresh is busy or unavailable")
+		}
+		return func() {
+			defer mu.Unlock()
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			defer cancel()
+			_ = tokenCache.ReleaseRefreshLock(cleanup, key)
+		}, nil
+	}
+	return mu.Unlock, nil
+}
+
 func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account *Account, tokenCache OpenAITokenCache) (string, error) {
 	repo, ok := s.repo.(OpenAIExcelOAuthRepository)
 	if !ok {
@@ -179,28 +223,16 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 	if cached[excelAccessTokenRejectedKey] != true && claims.Exp > time.Now().Add(openAITokenRefreshSkew).Unix() {
 		return validatedExcelAccessToken(fresh, cached)
 	}
-	key := fmt.Sprintf("openai:excel:account:%d", account.ID)
-	actual, _ := excelOAuthRefreshLocks.LoadOrStore(key, newContextMutex())
-	mu, ok := actual.(*contextMutex)
-	if !ok {
-		return "", errors.New("excel refresh lock is unavailable")
-	}
-	if err := mu.Lock(ctx); err != nil {
+	unlock, err := lockExcelCredentials(ctx, account.ID, tokenCache, true)
+	if err != nil {
 		return "", err
 	}
-	defer mu.Unlock()
-	// Fail closed on distributed-lock errors: Excel refresh tokens rotate.
-	if tokenCache != nil {
-		acquired, err := tokenCache.AcquireRefreshLock(ctx, key, 60*time.Second)
-		if err != nil || !acquired {
-			return "", errors.New("excel credential refresh is busy or unavailable")
-		}
-		defer func() {
-			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-			defer cancel()
-			_ = tokenCache.ReleaseRefreshLock(cleanup, key)
-		}()
-	}
+	defer unlock()
+	// Leave time for detached persistence (5s) and lock release (2s) within
+	// the 60s lease, including the reread and the token endpoint call.
+	lockedCtx, cancelLocked := context.WithTimeout(ctx, 50*time.Second)
+	defer cancelLocked()
+	ctx = lockedCtx
 	ciphertext, credentials, fresh, err := s.readExcelGrant(ctx, account)
 	if err != nil {
 		return "", err
@@ -228,7 +260,18 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 			if isInvalidGrantError(err) {
 				cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				defer cancel()
-				_ = repo.DeleteExcelCredentials(cleanup, account.ID, ciphertext)
+				if token, changed, recoverErr := s.recoverExcelRefreshRace(cleanup, account, ciphertext); changed || recoverErr != nil {
+					return token, recoverErr
+				}
+				if err := repo.DeleteExcelCredentials(cleanup, account.ID, ciphertext); err != nil {
+					return "", errors.New("failed to clear invalid Excel credentials; retry later")
+				}
+				// Reauthorization can replace the grant after our first reread.
+				// Conditional deletion preserves it; recover it instead of lying
+				// to this caller that a new login is required.
+				if token, changed, recoverErr := s.recoverExcelRefreshRace(cleanup, account, ciphertext); changed || recoverErr != nil {
+					return token, recoverErr
+				}
 				return "", errors.New("excel OAuth refresh token is invalid; automatic reauthorization is required")
 			}
 			return "", errors.New("excel OAuth refresh failed; credentials were retained, retry later")
@@ -258,11 +301,39 @@ func (s *OpenAIOAuthReauthService) ExcelAccessToken(ctx context.Context, account
 		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		changed, err := repo.ReplaceExcelCredentials(persistCtx, account.ID, ciphertext, replacement)
-		if err != nil || !changed {
+		if err != nil {
+			return "", errors.New("excel credentials could not be saved")
+		}
+		if !changed {
+			if token, replaced, recoverErr := s.recoverExcelRefreshRace(persistCtx, account, ciphertext); replaced || recoverErr != nil {
+				return token, recoverErr
+			}
 			return "", errors.New("excel credentials changed or could not be saved")
 		}
 	}
 	return validatedExcelAccessToken(fresh, credentials)
+}
+
+// An invalid_grant may refer to an old RT consumed by another writer. Read
+// current storage before classifying failure; never expose an unsaved token.
+func (s *OpenAIOAuthReauthService) recoverExcelRefreshRace(ctx context.Context, account *Account, expected string) (string, bool, error) {
+	repo := s.repo.(OpenAIExcelOAuthRepository)
+	current, err := repo.GetExcelCredentials(ctx, account.ID)
+	if err != nil {
+		return "", false, errors.New("failed to reread Excel credentials; retry later")
+	}
+	if current == "" || current == expected {
+		return "", false, nil
+	}
+	_, credentials, fresh, err := s.readExcelGrant(ctx, account)
+	if err != nil {
+		return "", true, err
+	}
+	if credentials[excelAccessTokenRejectedKey] == true {
+		return "", true, errors.New("Excel credentials changed and still need refresh; retry later")
+	}
+	token, err := validatedExcelAccessToken(fresh, credentials)
+	return token, true, err
 }
 
 func validatedExcelAccessToken(account *Account, credentials map[string]any) (string, error) {
@@ -327,11 +398,19 @@ func (s *OpenAIGatewayService) getExcelBPSAccessToken(ctx context.Context, accou
 
 // Reject only the access token actually used by this request. Preserve its RT
 // for the normal refresh flow, and never overwrite a concurrently rotated grant.
-func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Context, id int64, token string) error {
+func (s *OpenAIOAuthReauthService) invalidateExcelAccessToken(ctx context.Context, id int64, token string, cache OpenAITokenCache) error {
 	repo, ok := s.repo.(OpenAIExcelOAuthRepository)
 	if !ok || token == "" {
 		return nil
 	}
+	unlock, err := lockExcelCredentials(ctx, id, cache, false)
+	if err != nil {
+		return err
+	}
+	if unlock == nil {
+		return nil
+	}
+	defer unlock()
 	ciphertext, err := repo.GetExcelCredentials(ctx, id)
 	if err != nil || ciphertext == "" {
 		return err
