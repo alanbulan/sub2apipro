@@ -23,6 +23,7 @@ import (
 // Each settings revision gets a fresh pool. In-flight requests finish against
 // their snapshot; removed candidates cannot re-populate the new pool.
 type astraRoutingUpstream struct {
+	tickets         service.AstraTicketLifecycle
 	rotationCache   astraRotationCache
 	listNodes       func() ([]mihomo.AstraNode, error)
 	pinNode         func(context.Context, mihomo.AstraNode) (string, func(), error)
@@ -36,6 +37,13 @@ type astraRoutingUpstream struct {
 	revision        string
 	pool            *codexGatewayPinUpstream
 	historyRecorder func(service.AstraGatewayHistoryRecord, bool)
+}
+
+func (s *astraRoutingUpstream) SetAstraTicketLifecycle(provider service.AstraTicketLifecycle) {
+	s.tickets = provider
+}
+func (s *astraRoutingUpstream) unifiedTickets(ctx context.Context) bool {
+	return s.tickets != nil && s.tickets.UnifiedAstraTicketsEnabled(ctx)
 }
 
 func (s *astraRoutingUpstream) SetAstraGatewayHistoryRecorder(fn func(service.AstraGatewayHistoryRecord, bool)) {
@@ -68,7 +76,27 @@ func (s *astraRoutingUpstream) Do(r *http.Request, p string, a int64, n int) (*h
 	return s.DoWithTLS(r, p, a, n, nil)
 }
 func (s *astraRoutingUpstream) DoWithTLS(r *http.Request, p string, a int64, n int, f *tlsfingerprint.Profile) (*http.Response, error) {
+	if r != nil && service.IsBoundAstraTicketRequest(r.Context()) {
+		return s.delegate.DoWithTLS(r, p, a, n, f)
+	}
 	if r != nil && !service.IsOpenAICodexStateProbeRequest(r.Context()) && codexGatewayPinRequest(r) {
+		if s.unifiedTickets(r.Context()) {
+			settings := s.cfg.AstraRouting(r.Context())
+			if slices.Contains(settings.CookiePool.TargetAccountIDs, a) && codexGatewayPinAstra(r) {
+				proxy, release, err := s.tickets.ApplyStoredAstraTarget(r.Context(), r.Header, a, "sse")
+				if err != nil {
+					return nil, err
+				}
+				r = astraFreshRequest(r.Clone(service.WithHTTPUpstreamRedirectsDisabled(r.Context())))
+				r.Close = true
+				resp, err := s.delegate.DoWithTLS(r, proxy, a, n, f)
+				if resp != nil {
+					resp.Request = r
+				}
+				return attachAstraLease(resp, err, release)
+			}
+			return s.delegate.DoWithTLS(r, p, a, n, f)
+		}
 		if pool := s.current(r.Context()); pool != nil {
 			if slices.Contains(pool.config.TargetAccountIDs, a) && codexGatewayPinAstra(r) {
 				cookie, _, effectiveProxy, release, err := s.targetRoute(r, p, a, n, f)
@@ -118,6 +146,9 @@ func (s *astraRoutingUpstream) SetAstraGatewayPreparer(fn func(context.Context, 
 	s.prepareMu.Unlock()
 }
 func (s *astraRoutingUpstream) PrepareAstraGateway(ctx context.Context) error {
+	if s.unifiedTickets(ctx) {
+		return s.tickets.PrepareStoredAstraSources(ctx)
+	}
 	if !s.prepareMu.TryLock() {
 		return errors.New("preparation_in_progress")
 	}
@@ -176,6 +207,9 @@ func (s *astraRoutingUpstream) PrepareAstraGateway(ctx context.Context) error {
 	return errors.New("no_qualified_source_route")
 }
 func (s *astraRoutingUpstream) AstraGatewaySnapshot(ctx context.Context) service.AstraGatewayRuntime {
+	if s.unifiedTickets(ctx) {
+		return s.tickets.StoredAstraSnapshot(ctx)
+	}
 	settings := s.cfg.AstraRouting(ctx)
 	result := service.AstraGatewayRuntime{GeneratedAt: time.Now(), Revision: settings.Revision, Sources: []service.AstraRouteStatus{}, Targets: []service.AstraRouteStatus{}, WS: []service.AstraWSStatus{}, Preparing: s.preparing.Load()}
 	pool := s.current(ctx)

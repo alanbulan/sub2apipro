@@ -170,12 +170,22 @@ func (s *astraRoutingUpstream) targetRouteOnce(req *http.Request, proxy string, 
 type astraForceProbeKey struct{}
 
 func (s *astraRoutingUpstream) VerifyAstraGatewayTarget(ctx context.Context, req *http.Request, proxy string, id int64, n int) error {
+	if s.unifiedTickets(ctx) {
+		return s.tickets.VerifyStoredAstraTarget(ctx, id)
+	}
 	req = req.Clone(context.WithValue(ctx, astraForceProbeKey{}, true))
 	_, _, _, release, err := s.targetRoute(req, proxy, id, n, nil)
 	release()
 	return err
 }
 func (s *astraRoutingUpstream) CodexGatewayPinWSRequest(ctx context.Context, headers http.Header, proxy string, id int64, n int) (string, string, func(), error) {
+	if s.unifiedTickets(ctx) {
+		if !containsTarget(s.cfg.AstraRouting(ctx).CookiePool.TargetAccountIDs, id) {
+			return "", proxy, func() {}, nil
+		}
+		effective, release, err := s.tickets.ApplyStoredAstraTarget(ctx, headers, id, "websocket")
+		return "", effective, release, err
+	}
 	pool := s.current(ctx)
 	if pool == nil || !containsTarget(pool.config.TargetAccountIDs, id) {
 		return "", proxy, func() {}, nil

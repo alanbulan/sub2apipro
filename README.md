@@ -37,6 +37,10 @@ git clone https://github.com/alanbulan/sub2apipro.git
 cd sub2apipro
 ```
 
+Astra 的网关快速复用、单号自采与后台补票如何共用票库，请阅读[门票获取与复用](docs/astra-ticket-acquisition.md)。
+
+Mihomo 支持从订阅节点或动态代理单条、批量添加为静态代理，再给账号分别选择固定节点，详见[操作说明](docs/mihomo-static-node-proxies.md)。
+
 ### 首次初始化管理员
 
 全新自动安装时，`ADMIN_EMAIL` 和 `ADMIN_PASSWORD` 留空会生成随机登录邮箱和密码，可从首次启动日志中的 `Generated admin` 获取。显式指定时，邮箱必须符合登录格式，密码必须为 8–72 字节。已有管理员或已有用户的部署跳过创建与此项校验。详细配置见 [部署说明](deploy/README.md)。

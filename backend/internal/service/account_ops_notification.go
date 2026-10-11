@@ -39,7 +39,11 @@ func (s *AccountOpsService) notificationMessage(e *AccountOpsEvent) accountOpsMe
 		}
 		action = "本记录表示恢复时的有效数据，请以最新账号数据判断当前状态。"
 	}
-	fields := [][2]string{{"账号", fmt.Sprintf("%s（#%d）", e.AccountName, e.AccountID)}, {"提醒原因", reason}}
+	accountLabel := e.AccountName
+	if e.GroupName != "" && !strings.HasPrefix(e.GroupID, "account:") {
+		accountLabel = e.GroupName
+	}
+	fields := [][2]string{{"账号", fmt.Sprintf("%s（#%d）", accountLabel, e.AccountID)}, {"提醒原因", reason}}
 	if e.Details != nil {
 		d := e.Details
 		if d.UsedPercent != nil {
@@ -102,6 +106,9 @@ func (s *AccountOpsService) notificationMessage(e *AccountOpsEvent) accountOpsMe
 
 func (s *AccountOpsService) compactRobotMessage(e *AccountOpsEvent, title string) accountOpsMessage {
 	account := strings.Join(strings.Fields(e.AccountName), " ")
+	if e.GroupName != "" && !strings.HasPrefix(e.GroupID, "account:") {
+		account = strings.Join(strings.Fields(e.GroupName), " ")
+	}
 	if account == "" {
 		account = "未命名账号"
 	}
