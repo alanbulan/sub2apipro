@@ -3,6 +3,8 @@
 FRONTEND_CRITICAL_VITEST := \
 	src/__tests__/rememberMePro.spec.ts \
 	src/__tests__/useAppTheme.spec.ts \
+	src/api/__tests__/groupCacheTest.spec.ts \
+	src/views/admin/__tests__/GroupCacheTestView.spec.ts \
 	src/components/account/__tests__/OpenAIRequestTimezoneField.spec.ts \
 	src/components/admin/__tests__/HarvestGatewayBorrowPanel.spec.ts \
 	src/components/admin/__tests__/AstraGatewayRuntime.spec.ts \

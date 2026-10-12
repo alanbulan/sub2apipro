@@ -49,7 +49,7 @@ export default {
           storageEntries: 'Stored images per process',
           ttlMinutes: 'Link lifetime (minutes)',
           retentionHint: 'Supports PNG, JPEG, GIF and WebP with a fixed 64-megapixel safety limit. Counts and decoded sizes include all inline images in the request, including history, tool screenshots and repeated items. Saved limits apply to new conversions. Link lifetime starts at the last submission; existing links keep their expiry until resubmitted. Lowering storage limits preserves live images and blocks new conversions while over quota. Anyone with a valid link can read the image.',
-          capacityHint: 'Request admission limits cover OpenAI/Composite Responses, Chat and Messages HTTP requests, including text-only requests. Larger requests allow less concurrency; excess requests receive 503 without being queued in memory. Raising the budget increases memory pressure.',
+          capacityHint: 'Request admission applies only to Responses HTTP requests forwarded to OAuth accounts with the Excel / BPS protocol enabled; requests served by other accounts, including text-only requests, are not limited. Larger requests allow less concurrency; when the budget is full the request switches to another account and receives 503 only if none is available, without being queued in memory. Raising the budget increases memory pressure.',
           invalidBaseUrl: 'Enter a valid HTTPS origin without a path, credentials, query or fragment.',
           invalidCapacity: 'Set a body limit of 1–{bodyMiB} MiB, a shared budget of {minBudgetMiB}–{budgetMiB} MiB at least eight times the body limit, and 1–{requests} in-flight requests.',
         },

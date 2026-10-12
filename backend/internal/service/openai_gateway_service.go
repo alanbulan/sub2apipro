@@ -468,6 +468,7 @@ type OpenAIGatewayService struct {
 	excelBPSWarmStopped    bool
 	excelBPSImagesMu       sync.Mutex
 	excelBPSImages         *basispoints.ImageRelay
+	excelBPSImageAdmission excelBPSImageAdmission
 	excelBPSAttachments    basispoints.AttachmentCache
 	excelBPSIPPoolMu       sync.Mutex
 	excelBPSIPPoolSyncedAt time.Time
@@ -550,6 +551,9 @@ type OpenAIGatewayService struct {
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
 	// openaiCodexTickets: accountID\x00model → *openAICodexTicket，292 长度门票。
+	astraCandyMu                   sync.Mutex
+	astraCandySeen                 map[[32]byte]time.Time
+	astraCandyRunning              int
 	openaiCodexTickets             sync.Map
 	openaiCodexTicketStateMu       sync.Mutex
 	openaiCodexTicketCursors       sync.Map // codexHarvestTier -> *atomic.Uint64
