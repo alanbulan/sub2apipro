@@ -18,12 +18,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: backend/go.mod
+          # Scan the toolchain shipped in production; go.mod retains the
+          # compatibility baseline used by the separate regression jobs.
+          go-version: '1.27.2'
           check-latest: false
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.27.0'
+          go version | grep -q 'go1.27.2'
       - name: Run govulncheck
         working-directory: backend
         run: |
