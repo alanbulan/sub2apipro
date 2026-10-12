@@ -122,8 +122,9 @@
 `231_white_label_legacy_defaults.sql` 和 `234_conversation_logs.sql`。
 会话记录模块继续独立于上游 request capture 保存与读取原有记录。
 
-`Build and Deploy` 调用 `deploy/action-deploy.sh`：先下载镜像，再排空应用请求，
-保存 PostgreSQL 完整 dump、应用 data、原 .env、原 Compose、Redis RDB 和数据计数，
-仅以 `--no-build --no-deps` 更新应用。健康及核心记录检查通过后保存新 Compose
-和固定的 APP_IMAGE；失败启动旧镜像，保留新数据库，不自动恢复旧数据库快照。
-备份位于部署目录的 `backups/action-*`，包含敏感信息，不上传 GitHub。
+`Build and Deploy` 调用 `deploy/action-deploy.sh`：自动升级不创建任何数据或配置
+备份。下载前检查部署目录和 Docker 数据目录至少有 2 GiB 可用空间，下载后
+至少保留 1 GiB，并检查可用 inode；不足时保持旧应用运行。镜像准备好后才排空
+请求，仅以 `--no-build --no-deps` 更新应用。原配置和核心记录计数保存在内存中，
+健康及记录检查通过后固定新 Compose 和 APP_IMAGE；失败启动旧镜像，保留当前
+数据库。成功后清理未使用的旧 Pro SHA 镜像标签，不清理数据卷或其他服务镜像。

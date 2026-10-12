@@ -23,6 +23,7 @@ jobs:
           sh -n deploy/cron/upstream-sync
           bash -n scripts/check-upstream.sh
           bash -n .github/scripts/report-ci-failure.sh
+          python3 -m unittest discover -s deploy/tests -p 'test_action_deploy.py'
           node --test deploy/tests/upstream-sync-ci.test.cjs 2>&1 | tee sync-test.log
       - name: Report sync automation failure
         if: failure() && steps.sync.outcome == 'failure'

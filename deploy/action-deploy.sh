@@ -23,14 +23,15 @@ flock -n 9 || { echo 'Another deployment is active.' >&2; exit 1; }
 project=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' sub2api)
 previous_image=$(docker inspect --format '{{.Config.Image}}' sub2api)
 test -n "$project"
-backup_dir="$deploy_path/backups/action-$(date -u +%Y%m%dT%H%M%SZ)-${app_image##*:}"
-mkdir -p "$backup_dir"
-cp -p .env "$backup_dir/env"
-cp -p "$compose_name" "$backup_dir/compose.yml"
-printf '%s\n' "$previous_image" > "$backup_dir/previous-image"
-printf '%s\n' "$app_image" > "$backup_dir/new-image"
+# Keep only small configuration values in memory for failure recovery.
+# The sentinel preserves trailing newlines through command substitution.
+original_env=$(cat .env; printf '.')
+original_env=${original_env%.}
+original_compose=$(cat "$compose_name"; printf '.')
+original_compose=${original_compose%.}
 stopped=0
 completed=0
+persisting=0
 
 compose_new() {
   APP_IMAGE="$app_image" docker compose --project-directory "$deploy_path" -p "$project" -f "$staged_compose" "$@"
@@ -41,13 +42,13 @@ recover() {
   trap - EXIT
   if [ "$completed" = 0 ] && [ "$stopped" = 1 ]; then
     echo 'Deployment failed; restarting the previous application with the existing database.' >&2
-    # These upgrades are additive. Never restore a database automatically:
-    # doing so could discard transactions committed after the backup.
-    cp -p "$backup_dir/compose.yml" "$compose_name"
-    cp -p "$backup_dir/env" .env
+    if [ "$persisting" = 1 ]; then
+      printf '%s' "$original_compose" > "$compose_name"
+      printf '%s' "$original_env" > .env
+    fi
     APP_IMAGE="$previous_image" docker compose --project-directory "$deploy_path" -p "$project" -f "$compose_name" up -d --no-build --no-deps sub2api || true
-    echo "Recovery snapshot retained at $backup_dir" >&2
   fi
+  rm -f .compose.action-next .env.action-next
   exit "$status"
 }
 trap recover EXIT
@@ -57,35 +58,37 @@ sql() {
 }
 counts_sql="SELECT 'users', count(*) FROM users UNION ALL SELECT 'accounts', count(*) FROM accounts UNION ALL SELECT 'api_keys', count(*) FROM api_keys UNION ALL SELECT 'groups', count(*) FROM groups ORDER BY 1;"
 
+check_space() {
+  local path=$1 required_kib=$2 available_kib available_inodes
+  available_kib=$(df -Pk "$path" | awk 'NR == 2 {print $4}')
+  available_inodes=$(df -Pi "$path" | awk 'NR == 2 {print $4}')
+  if ! [[ "$available_kib" =~ ^[0-9]+$ && "$available_inodes" =~ ^[0-9]+$ ]]; then
+    echo "Unable to determine free disk space at $path; leaving the application running." >&2
+    return 1
+  fi
+  if (( available_kib < required_kib || available_inodes < 1024 )); then
+    echo "Insufficient disk space at $path: ${available_kib} KiB, ${available_inodes} inodes available; require ${required_kib} KiB and 1024 inodes. Application has not been stopped." >&2
+    return 1
+  fi
+}
+
 # Validate and download before interrupting traffic. Dependencies remain running.
 compose_new config --quiet
+docker_root=$(docker info --format '{{.DockerRootDir}}')
+test -n "$docker_root"
+# Reserve 2 GiB before downloading, and 1 GiB for runtime/migrations afterwards.
+check_space "$deploy_path" 2097152
+check_space "$docker_root" 2097152
 compose_new pull sub2api
-db_bytes=$(sql 'SELECT pg_database_size(current_database());')
-data_kib=$(du -sk data | awk '{print $1}')
-available_kib=$(df -Pk "$deploy_path" | awk 'NR == 2 {print $4}')
-required_kib=$((db_bytes / 1024 + data_kib + 524288))
-if [ "$available_kib" -lt "$required_kib" ]; then
-  echo 'Insufficient space for a complete pre-upgrade backup.' >&2
-  exit 1
-fi
+check_space "$deploy_path" 1048576
+check_space "$docker_root" 1048576
 
-echo 'Image ready; draining application requests before the consistent backup.'
+echo 'Image ready; draining application requests. No upgrade snapshots are created.'
 stopped=1
 docker stop --time 90 sub2api
-sql "$counts_sql" > "$backup_dir/core-counts-before.tsv"
-sql 'SELECT filename, checksum FROM schema_migrations ORDER BY filename;' > "$backup_dir/migrations-before.tsv"
-echo 'Saving full PostgreSQL backup, application files, configuration, and Redis snapshot.'
-docker exec sub2api-postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -Z1' > "$backup_dir/database.dump.partial"
-test -s "$backup_dir/database.dump.partial"
-docker exec -i sub2api-postgres pg_restore --list < "$backup_dir/database.dump.partial" > "$backup_dir/database-contents.txt"
-mv "$backup_dir/database.dump.partial" "$backup_dir/database.dump"
-tar -czf "$backup_dir/app-data.tar.gz" data
-docker exec sub2api-redis sh -c 'REDISCLI_AUTH="${REDIS_PASSWORD:-}" redis-cli SAVE'
-docker cp sub2api-redis:/data/dump.rdb "$backup_dir/redis.rdb"
-sha256sum "$backup_dir/database.dump" "$backup_dir/app-data.tar.gz" "$backup_dir/redis.rdb" > "$backup_dir/SHA256SUMS"
-printf '%s\n' 'Backup complete; database and Redis services were not restarted.' > "$backup_dir/backup-complete"
+counts_before=$(sql "$counts_sql")
 
-echo 'Backup complete; starting the new application against the existing data.'
+echo 'Starting the new application against the existing data.'
 compose_new up -d --no-build --no-deps sub2api
 healthy=0
 for attempt in $(seq 1 60); do
@@ -96,18 +99,34 @@ for attempt in $(seq 1 60); do
 done
 [ "$healthy" = 1 ] || { echo 'New application did not become healthy.' >&2; exit 1; }
 [ "$(docker inspect --format '{{.Config.Image}}' sub2api)" = "$app_image" ]
-sql "$counts_sql" > "$backup_dir/core-counts-after.tsv"
-diff -u "$backup_dir/core-counts-before.tsv" "$backup_dir/core-counts-after.tsv"
-sql 'SELECT filename, checksum FROM schema_migrations ORDER BY filename;' > "$backup_dir/migrations-after.tsv"
+counts_after=$(sql "$counts_sql")
+[ "$counts_before" = "$counts_after" ] || { echo 'Core record counts changed during deployment.' >&2; exit 1; }
 
 # Promote the validated manifest and persist the exact image for future restarts.
 cp "$staged_compose" .compose.action-next
 chmod --reference="$compose_name" .compose.action-next
 chown --reference="$compose_name" .compose.action-next
+persisting=1
 mv .compose.action-next "$compose_name"
 awk -v image="$app_image" '!/^APP_IMAGE=/ {print} END {print "APP_IMAGE=" image}' .env > .env.action-next
 chmod --reference=.env .env.action-next
 chown --reference=.env .env.action-next
 mv .env.action-next .env
 completed=1
-echo "Deployment healthy; core records retained. Recovery snapshot: $backup_dir"
+echo 'Deployment healthy; core records retained. No upgrade snapshots were created.'
+
+# Remove only obsolete Pro image tags. Docker refuses removal of images in use.
+# Keep the previous image until all validation and configuration updates succeed.
+if image_tags=$(docker image ls ghcr.io/alanbulan/sub2apipro --format '{{.Repository}}:{{.Tag}}'); then
+  while IFS= read -r image_tag; do
+    case "$image_tag" in
+      ghcr.io/alanbulan/sub2apipro:sha-*)
+        if [ "$image_tag" != "$app_image" ]; then
+          docker image rm "$image_tag" || echo "Could not remove obsolete image $image_tag; continuing." >&2
+        fi
+        ;;
+    esac
+  done <<< "$image_tags"
+else
+  echo 'Could not list obsolete application images; continuing.' >&2
+fi

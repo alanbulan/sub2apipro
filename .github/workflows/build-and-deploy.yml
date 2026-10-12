@@ -173,7 +173,7 @@ jobs:
           printf '%s' "$DEPLOY_REGISTRY_TOKEN" | ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "docker login ghcr.io --username '$DEPLOY_REGISTRY_USERNAME' --password-stdin"
 
-      - name: Back up data and deploy application
+      - name: Deploy application without backups
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
