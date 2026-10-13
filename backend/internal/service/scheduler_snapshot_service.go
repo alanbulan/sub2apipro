@@ -125,6 +125,7 @@ type SchedulerSnapshotService struct {
 	accountRepo                  AccountRepository
 	groupRepo                    GroupRepository
 	cfg                          *config.Config
+	localSnapshotReader          LocalSchedulerSnapshotReader
 	stopCh                       chan struct{}
 	stopOnce                     sync.Once
 	wg                           sync.WaitGroup
@@ -166,6 +167,17 @@ func NewSchedulerSnapshotService(
 		stopCh:        make(chan struct{}),
 		fallbackLimit: newFallbackLimiter(maxQPS),
 	}
+}
+
+// SetLocalSnapshotReader must be called before starting workers or serving requests.
+// SetLocalSnapshotReader enables the regional request path. Once configured,
+// ListSchedulableAccounts treats the local view as authoritative and does not
+// fall back to the primary database on miss or expiry.
+func (s *SchedulerSnapshotService) SetLocalSnapshotReader(reader LocalSchedulerSnapshotReader) {
+	if s == nil {
+		return
+	}
+	s.localSnapshotReader = reader
 }
 
 func (s *SchedulerSnapshotService) Start() {
@@ -216,6 +228,20 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	canPublish := false
 	if err := ctx.Err(); err != nil {
 		return nil, useMixed, err
+	}
+
+	if s.localSnapshotReader != nil {
+		cached, hit, err := s.localSnapshotReader.GetLocalSnapshot(ctx, bucket)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, useMixed, ctxErr
+		}
+		if err != nil {
+			return nil, useMixed, err
+		}
+		if !hit {
+			return nil, useMixed, ErrLocalSchedulerSnapshotUnavailable
+		}
+		return derefAccounts(cached), useMixed, nil
 	}
 
 	if s.cache != nil {
