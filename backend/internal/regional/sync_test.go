@@ -257,3 +257,34 @@ func TestSyncConcurrentUpdatesKeepHighestRevision(t *testing.T) {
 		t.Fatalf("lost monotonic update: %v %v", s.Revision, err)
 	}
 }
+
+func TestSyncPublishNextSurvivesRestartAndConcurrentPublish(t *testing.T) {
+	r, c, n := replicaFixture(t)
+	ctx := context.Background()
+	if err := r.PublishNext(ctx, "key1", time.Minute, []byte(`{"ids":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := OpenReplica(r.path, r.cfg, r.kind, c, testPayload, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored.now = func() time.Time { return n.Add(time.Minute) }
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := restored.PublishNext(ctx, "key1", time.Minute, []byte(`{"ids":[]}`)); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	s, err := restored.Current()
+	if err != nil || s.Revision != 11 {
+		t.Fatalf("durable sequence: %d %v", s.Revision, err)
+	}
+	if err := restored.PublishNext(ctx, "key1", 2*time.Minute, []byte(`{"ids":[]}`)); err == nil {
+		t.Fatal("overlong lifetime accepted")
+	}
+}

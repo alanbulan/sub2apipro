@@ -106,16 +106,17 @@ type PayloadValidator func([]byte) error
 // snapshot and revision together before making it visible. Missing files require
 // explicit bootstrap; normal restarts fail closed if state was lost or corrupted.
 type Replica struct {
-	mu       sync.RWMutex
-	cfg      Config
-	kind     SnapshotKind
-	codec    *Codec
-	path     string
-	validate PayloadValidator
-	now      func() time.Time
-	current  *Snapshot
-	wire     []byte
-	failed   bool
+	publishMu sync.Mutex
+	mu        sync.RWMutex
+	cfg       Config
+	kind      SnapshotKind
+	codec     *Codec
+	path      string
+	validate  PayloadValidator
+	now       func() time.Time
+	current   *Snapshot
+	wire      []byte
+	failed    bool
 }
 
 func OpenReplica(path string, cfg Config, kind SnapshotKind, codec *Codec, validate PayloadValidator, bootstrap bool) (*Replica, error) {
@@ -329,4 +330,27 @@ func (r *Replica) Pull(ctx context.Context, endpoint string, transport http.Roun
 		return err
 	}
 	return r.Accept(ctx, wire)
+}
+
+// PublishNext allocates the next revision from the persisted stream floor, even
+// when the previous view expired. Only one producer process may own the file.
+// A failed publish may consume a revision on disk; reopen before further use.
+func (r *Replica) PublishNext(ctx context.Context, keyID string, lifetime time.Duration, payload []byte) error {
+	r.publishMu.Lock()
+	defer r.publishMu.Unlock()
+	if lifetime <= 0 || lifetime > time.Duration(r.cfg.MaxSnapshotAgeSeconds)*time.Second {
+		return errors.New("invalid publication lifetime")
+	}
+	r.mu.RLock()
+	revision := uint64(1)
+	if r.current != nil {
+		revision = r.current.Revision + 1
+	}
+	failed := r.failed
+	r.mu.RUnlock()
+	if failed || revision == 0 {
+		return ErrSyncUnavailable
+	}
+	now := r.now()
+	return r.Publish(ctx, keyID, revision, now, now.Add(lifetime), payload)
 }

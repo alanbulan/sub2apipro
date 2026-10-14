@@ -21,6 +21,14 @@ type LocalSchedulerSnapshotReader interface {
 	GetLocalSnapshot(context.Context, SchedulerBucket) ([]*Account, bool, error)
 }
 
+// LocalSchedulerDetailReader serves complete credentials and group policy from
+// the same authenticated stream as candidates. A candidate-only reader must
+// fail closed when a caller needs details, never fall back to the primary.
+type LocalSchedulerDetailReader interface {
+	GetLocalAccounts(context.Context, []int64) (map[int64]*Account, error)
+	GetLocalGroup(context.Context, int64) (*Group, error)
+}
+
 type localSchedulerSnapshot struct {
 	revision  uint64
 	expiresAt time.Time
