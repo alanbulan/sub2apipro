@@ -37,9 +37,43 @@ git clone https://github.com/alanbulan/sub2apipro.git
 cd sub2apipro
 ```
 
-Astra 的网关快速复用、单号自采与后台补票如何共用票库，请阅读[门票获取与复用](docs/astra-ticket-acquisition.md)。
+新人部署、官方版替换、Excel / BPS 配置和质量运维步骤，请阅读[新人入门文档](docs/新人入门.md)。
+
+账号检测、失败处置和自动恢复，请阅读[质量运维](docs/account-quality-operations.md)；BPS OAuth 登录、工具兼容和 403 恢复配置，请阅读[Excel / BPS 协议](docs/excel-bps.md)。
 
 Mihomo 支持从订阅节点或动态代理单条、批量添加为静态代理，再给账号分别选择固定节点，详见[操作说明](docs/mihomo-static-node-proxies.md)。
+
+已经托管账号或完成部署，想在 Codex 中使用？请阅读[新人入门：使用 Sub2API 接入 Codex](docs/新人入门-使用Sub2API.md)，按步骤创建 API Key、配置 Cockpit Tools 并验证调用。
+
+
+## 本仓库的维护方向
+
+本副本跟踪 `ranxi2001/sub2api` 的 `production` 分支，并保留本地主题、界面文案和同步流程。上游维护的功能方向包括：
+
+- **DeepSeek 与 Codex 适配**：支持 Responses 到 Chat Completions 的转换、工具调用历史和上下文压缩兼容。配置模型映射后，可通过切换 API Key 分组使用 DeepSeek，沿用客户端配置。[操作教程](https://tosky.io/docs/?doc=deepseek-switch-group)
+- **账号质量运维**：维护定时答题检测、判题记录、失败处置和自动恢复，支持按模型隔离及全部检测模型失败时移出指定分组。检测结果以实际回答和判题证据为准，不以票据形态判断质量。
+- **Mihomo 出口管理**：维护订阅、动态代理、节点状态和账号业务出口；支持从订阅节点或动态代理单条、批量添加为静态代理，再给账号分别选择固定节点。[操作说明](docs/mihomo-static-node-proxies.md)
+- **Excel / Basispoints**：维护模型级 BPS 路由、内嵌图片 HTTPS 中转、磁盘和并发保护、结构化输出校验，以及工具历史和 transport 恢复。路由遵循账号与模型配置；不支持的托管工具可按策略回退原生 Codex，或保持 BPS 并省略工具，具体边界见 [BPS 配置说明](docs/excel-bps.md)。
+- **上游修复维护**：持续跟踪上游 Codex、Responses、工具调用、密文恢复和限流修复；先确认与本 fork 的行为差异，再按提交级别移植并补充回归测试。
+- **发布与升级**：上游 Release、安装资源和容器镜像来自 `ranxi2001/sub2api`，版本变更见 [更新说明](https://github.com/ranxi2001/sub2api/releases)。本副本由自己的 CI 验证与发布；上游产物不保证包含本地修改，Release 成功也不代表生产服务已经部署。
+
+贡献代码时，请在独立分支中说明影响的请求路径、账号类型、配置默认值和兼容边界。涉及生产分支的修复应先进入原 PR head，通过 CI 后再合并；不要提交 Token、OAuth 导出、ticket、代理凭据或生产配置。
+
+## 项目概述
+
+Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
+
+## 核心功能
+
+- **多账号管理** - 支持多种上游账号类型（OAuth、API Key）
+- **API Key 分发** - 为用户生成和管理 API Key
+- **精确计费** - Token 级别的用量追踪和成本计算
+- **智能调度** - 智能账号选择，支持粘性会话
+- **并发控制** - 用户级、账号级和 API Key 级并发限制，支持可配置的 Key 等待队列
+- **速率限制** - 可配置的请求和 Token 速率限制
+- **内置支付系统** - 支持 EasyPay 易支付、支付宝官方、微信官方、Stripe，用户自助充值，无需独立部署支付服务（[配置指南](docs/PAYMENT_CN.md)）
+- **管理后台** - Web 界面进行监控和管理
+- **外部系统集成** - 支持通过 iframe 嵌入外部系统（如工单等），扩展管理后台功能
 
 ### 首次初始化管理员
 
@@ -72,6 +106,19 @@ gateway:
 
 之后按照[中文部署文档](./README_CN.md)或[完整英文文档](./README_UPSTREAM.md)核对环境、安装方式、数据存储和配置。镜像、二进制、一键安装脚本可能指向上游发布渠道；使用前检查来源，不能假设它们包含本副本的独立修改。
 
+## 技术栈
+
+| 组件 | 技术 |
+|------|------|
+| 后端 | Go 1.27.2, Gin, Ent |
+| 前端 | Vue 3.4+, Vite 5+, TailwindCSS |
+| 数据库 | PostgreSQL 15+ |
+| 缓存/队列 | Redis 7+ |
+| API 协议 | OpenAI Responses / Chat Completions、Anthropic Messages、Gemini、SSE、WebSocket |
+| 调度与可靠性 | 粘性会话、并发控制、限流、故障转移、模型隔离与冷却 |
+| 观测与运维 | 结构化日志、请求分段耗时、健康检查、Mihomo 出口与 systemd |
+| 交付与质量 | Docker Compose、GitHub Actions、Go 单元测试、前端类型检查与构建 |
+
 ```mermaid
 flowchart LR
     Client[API 客户端] --> Gateway[Go API Gateway]
@@ -88,6 +135,8 @@ flowchart LR
 ```
 
 该图说明组件关系，不是对生产可用性、吞吐量或账号安全的测试结论。接入凭据只应存放在适当的 Secret 或受保护配置中，不提交到 Git。
+
+欢迎围绕协议兼容、账号调度、质量运维、支付计费、管理后台和运维观测提交改进。高质量贡献应尽量保持边界清晰，并在 PR 中说明请求路径、状态变化、兼容性影响和验证证据。
 
 ## 来源与差异
 

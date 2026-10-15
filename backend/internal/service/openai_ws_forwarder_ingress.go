@@ -564,6 +564,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	firstClientMessage []byte,
 	hooks *OpenAIWSIngressHooks,
 ) (returnErr error) {
+	ctx = s.withRequestTimezoneEgress(ctx, account)
 	if s == nil {
 		return errors.New("service is nil")
 	}
