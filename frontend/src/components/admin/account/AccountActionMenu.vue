@@ -46,6 +46,10 @@
               <Icon name="download" size="sm" class="text-sky-500" />
               {{ t('admin.accounts.sessionExport.title') }}
             </button>
+            <button v-if="isOpenAIOAuthParent" @click="$emit('configure-session', account); $emit('close')" class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm">
+              <Icon name="shield" size="sm" />
+              {{ t('admin.accounts.sessionExport.settings') }}
+            </button>
             <button v-if="isOpenAIOAuthParent" @click="$emit('create-spark-shadow', account); $emit('close')" class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm">
               <Icon name="sparkles" size="sm" class="text-amber-500 dark:text-amber-400" />
               {{ t('admin.accounts.createSparkShadow') }}
@@ -78,7 +82,7 @@ import { Icon } from '@/components/icons'
 import type { Account } from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; anchorRect: DOMRect | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'iq-test', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'export-session'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'iq-test', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'export-session', 'configure-session'])
 const { t } = useI18n()
 const menuRef = ref<HTMLElement | null>(null)
 const { width: viewportWidth, height: viewportHeight } = useWindowSize()

@@ -163,13 +163,15 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	notificationEmailService := service.NewNotificationEmailService(settingRepository, emailService)
 	balanceNotifyService := service.ProvideBalanceNotifyService(emailService, settingRepository, accountRepository, notificationEmailService)
 	gatewayService := service.NewGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelService, modelPricingResolver, compositeRouteResolver, balanceNotifyService, serviceUserPlatformQuotaRepository)
+	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	regionalMetering, err := repository.ProvideRegionalMetering(db, configConfig, concurrencyCache, redisClient)
 	if err != nil {
 		return nil, err
 	}
 	openAIOAuthClient := repository.NewOpenAIOAuthClient()
 	privacyClientFactory := providePrivacyClientFactory()
-	openAIOAuthService := service.ProvideOpenAIOAuthService(proxyRepository, openAIOAuthClient, privacyClientFactory)
+	openAISessionCookieRepository := repository.NewOpenAISessionCookieRepository(db)
+	openAIOAuthService := service.ProvideOpenAIOAuthService(proxyRepository, openAIOAuthClient, privacyClientFactory, openAISessionCookieRepository, secretEncryptor, configConfig)
 	openAITokenProvider := service.ProvideOpenAITokenProvider(accountRepository, geminiTokenCache, openAIOAuthService, oAuthRefreshAPI)
 	grokOAuthClient := repository.NewGrokOAuthClient()
 	grokOAuthService := service.ProvideGrokOAuthService(proxyRepository, grokOAuthClient, configConfig, redisClient)
@@ -177,7 +179,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	codexHarvestNodeRepository := repository.NewCodexHarvestNodeRepository(db)
 	codexHarvestFlowRepository := repository.NewCodexHarvestFlowRepository(db)
 	codexHarvestService := service.ProvideCodexHarvestService(codexHarvestNodeRepository, settingRepository, configConfig, codexHarvestFlowRepository)
-	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	openAIGatewayDependencies := service.OpenAIGatewayDependencies{
 		TimezoneProber:   proxyExitInfoProber,
 		RegionalMetering: regionalMetering,
