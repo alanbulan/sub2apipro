@@ -1124,7 +1124,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		w.finalizeCapture()
 		observeAutoConfigRequest(c, ops, w, requestStart)
 
-		if _, rejected := middleware2.GetIngressRejectReason(c); rejected {
+		if reason, rejected := middleware2.GetIngressRejectReason(c); rejected {
+			if reason == middleware2.IngressRejectSubagentsBlocked {
+				logOpsSubagentRejection(c, ops)
+			}
 			return
 		}
 
@@ -2304,14 +2307,17 @@ func classifyOpsErrorLog(c *gin.Context, errType, message, code string, status i
 	if clientBusinessLimited && !upstreamError && !routingCapacityLimited && !localModelConfiguration {
 		phase = "auth"
 	}
-	if routingCapacityLimited {
+	if routingCapacityLimited && !localModelConfiguration {
 		phase = "routing"
 	}
 	msg := strings.ToLower(message)
 	effectiveUpstreamError := upstreamError && !localModelConfiguration
 	localClientAuthError := !effectiveUpstreamError && phase == "auth" && isOpsClientAuthError(code, msg)
 	localBusinessLimited := !effectiveUpstreamError && classifyOpsIsBusinessLimited(errType, phase, code, status, message, localClientAuthError)
-	isBusinessLimited = localModelConfiguration || routingCapacityLimited || (clientBusinessLimited && !effectiveUpstreamError) || localBusinessLimited
+	// An exhausted account pool is a platform capacity failure, even if the
+	// request also carries an earlier user-limit marker. Explicit local model
+	// configuration rejections still take precedence.
+	isBusinessLimited = localModelConfiguration || (!routingCapacityLimited && ((clientBusinessLimited && !effectiveUpstreamError) || localBusinessLimited))
 	errorOwner = classifyOpsErrorOwner(phase, message)
 	errorSource = classifyOpsErrorSource(phase, message)
 	return phase, isBusinessLimited, errorOwner, errorSource
