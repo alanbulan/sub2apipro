@@ -298,7 +298,7 @@ const totpCode = ref('')
 const totpError = ref('')
 const totpUserEmailMasked = ref('')
 const props = withDefaults(defineProps<{ provider?: 'linuxdo' | 'feishu' }>(), { provider: 'linuxdo' })
-const providerName = props.provider === 'feishu' ? '飞书' : 'LinuxDo'
+const providerName = props.provider === 'feishu' ? t('profile.authBindings.providers.feishu') : 'LinuxDo'
 const authKey = (key: string) => `auth.${props.provider}.${key}`
 const createAccountAllowed = ref(true)
 

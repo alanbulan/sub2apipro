@@ -33,10 +33,12 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import QRCode from 'qrcode'
+import { useAppStore } from '@/stores'
 import Toggle from '@/components/common/Toggle.vue'
 import { getFeishuSettings, setFeishuEnabled, startFeishuSetup, pollFeishuSetup, type FeishuSettings, type FeishuSetup } from '@/api/admin/feishu'
 
 const { t } = useI18n()
+const appStore = useAppStore()
 const settings = ref<FeishuSettings | null>(null)
 const setup = ref<FeishuSetup | null>(null)
 const qr = ref('')
@@ -61,7 +63,9 @@ function schedule(id: string, interval: number, current: number) {
       if (current !== generation) return
       if (result.status === 'submitted') {
         settings.value = result.settings ?? settings.value
-        submitted.value = true; stop(); setup.value = null; qr.value = ''; return
+        submitted.value = true; stop(); setup.value = null; qr.value = ''
+        void appStore.fetchPublicSettings(true)
+        return
       }
       schedule(id, result.interval, current)
     } catch (e) {
@@ -92,7 +96,7 @@ function resume() {
 }
 async function toggle(enabled: boolean) {
   busy.value = true; error.value = ''
-  try { settings.value = await setFeishuEnabled(enabled) } catch (e) { error.value = message(e) }
+  try { settings.value = await setFeishuEnabled(enabled); void appStore.fetchPublicSettings(true) } catch (e) { error.value = message(e) }
   finally { busy.value = false }
 }
 onMounted(async () => { try { settings.value = await getFeishuSettings() } catch (e) { error.value = message(e) } })

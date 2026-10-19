@@ -3,6 +3,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 import FeishuSettings from './FeishuSettings.vue'
 import * as api from '@/api/admin/feishu'
 
+const refreshPublicSettings = vi.hoisted(() => vi.fn().mockResolvedValue(null))
+vi.mock('@/stores', () => ({ useAppStore: () => ({ fetchPublicSettings: refreshPublicSettings }) }))
 vi.mock('@/api/admin/feishu', () => ({ getFeishuSettings: vi.fn(), setFeishuEnabled: vi.fn(), startFeishuSetup: vi.fn(), pollFeishuSetup: vi.fn() }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,qr') } }))
@@ -26,6 +28,7 @@ describe('Feishu QR configuration', () => {
     await vi.advanceTimersByTimeAsync(5000); await flushPromises()
     expect(api.pollFeishuSetup).toHaveBeenCalledWith('opaque-id')
     expect(wrapper.text()).toContain('feishu.submitted')
+    expect(refreshPublicSettings).toHaveBeenCalledWith(true)
     expect(wrapper.text()).toContain('Company')
     expect(wrapper.find('input[type="password"]').exists()).toBe(false)
     wrapper.unmount()
