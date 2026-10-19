@@ -96,7 +96,7 @@ func (c *Client) request(ctx context.Context, stage, method, endpoint, token str
 			return &Error{stage, code}
 		}
 	}
-	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && !(pendingPoll && resp.StatusCode == http.StatusBadRequest) {
+	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && (!pendingPoll || resp.StatusCode != http.StatusBadRequest) {
 		return &Error{stage, "http_" + strconv.Itoa(resp.StatusCode)}
 	}
 	if json.Unmarshal(raw, out) != nil {
