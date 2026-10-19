@@ -47,7 +47,9 @@ func ValidateFeishuRedirect(raw string) error {
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != feishu.CallbackPath || u.RawPath != "" || u.Opaque != "" || u.ForceQuery {
 		return infraerrors.BadRequest("FEISHU_REDIRECT_INVALID", "Feishu callback must be an absolute URL ending with "+feishu.CallbackPath)
 	}
-	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1")) {
+	secure := u.Scheme == "https"
+	loopback := u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1")
+	if !secure && !loopback {
 		return infraerrors.BadRequest("FEISHU_REDIRECT_INVALID", "Feishu callback must use HTTPS")
 	}
 	return nil

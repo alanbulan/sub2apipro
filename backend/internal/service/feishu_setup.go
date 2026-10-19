@@ -55,7 +55,7 @@ type FeishuSetupResult struct {
 
 func (s *FeishuSetupService) crypt() (cipher.AEAD, error) {
 	if s.settings.cfg == nil || s.settings.cfg.JWT.Secret == "" {
-		return nil, fmt.Errorf("Feishu setup encryption unavailable")
+		return nil, fmt.Errorf("feishu setup encryption unavailable")
 	}
 	key := sha256.Sum256([]byte("sub2apipro/feishu-setup/v1/" + s.settings.cfg.JWT.Secret))
 	block, err := aes.NewCipher(key[:])
@@ -246,7 +246,7 @@ func (s *FeishuSetupService) Poll(ctx context.Context, id string, owner int64) (
 			return result, nil
 		}
 		if registration.ClientID == "" || registration.ClientSecret == "" {
-			return nil, fmt.Errorf("Feishu registration returned incomplete credentials")
+			return nil, fmt.Errorf("feishu registration returned incomplete credentials")
 		}
 		st.Config.AppID = registration.ClientID
 		st.Config.AppSecret = registration.ClientSecret

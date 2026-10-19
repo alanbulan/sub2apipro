@@ -92,3 +92,7 @@ provider 校验、schema 验证器、pending 配置重验、TOTP 分支及 CI �
 CI 应包含官方 API 契约、tenant 隔离、state 校验、未验证邮箱不合并、TOTP、配置指纹变更、
 扫码凭证不泄漏、轮询/重试/过期、系统设置、现有 OAuth、rememberMePro、主题与文案完整性，
 并在 GitHub 上完成前端生产构建及后端 embed 构建。禁止在同步机本地执行。
+
+后续上游迁移若重建 provider/signup_source 约束并遗漏 feishu，须追加在其后执行的新迁移，
+同时保留上游新增 provider；不得改写已应用的 SQL。`TestLatestAuthProviderConstraintsPreserveFeishu`
+会在 Actions 检查最后一版约束，防止无冲突合并后静默丢失飞书支持。

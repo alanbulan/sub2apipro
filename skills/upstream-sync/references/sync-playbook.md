@@ -126,3 +126,7 @@ Preserve tenant isolation, app-scoped open_id identity, no email auto-merge, TOT
 pending-config validation, encrypted QR credentials and server-side polling limits.
 Keep the new SQL migration immutable and the Feishu checks in GitHub Actions;
 never run builds/tests locally on the sync host.
+
+后续上游迁移若重建 provider/signup_source 约束并遗漏 feishu，须追加在其后执行的新迁移，
+同时保留上游新增 provider；不得改写已应用的 SQL。`TestLatestAuthProviderConstraintsPreserveFeishu`
+会在 Actions 检查最后一版约束，防止无冲突合并后静默丢失飞书支持。

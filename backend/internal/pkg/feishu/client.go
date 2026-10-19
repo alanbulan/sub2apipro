@@ -92,7 +92,8 @@ func (c *Client) request(ctx context.Context, stage, method, endpoint, token str
 			return &Error{stage, "provider_error"}
 		}
 	}
-	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && !(stage == "registration_poll" && (envelope.Error == "authorization_pending" || envelope.Error == "slow_down")) {
+	pendingPoll := stage == "registration_poll" && (envelope.Error == "authorization_pending" || envelope.Error == "slow_down")
+	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && !pendingPoll {
 		return &Error{stage, "http_" + strconv.Itoa(resp.StatusCode)}
 	}
 	if json.Unmarshal(raw, out) != nil {

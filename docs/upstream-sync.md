@@ -136,3 +136,7 @@
 飞书专用文件按保护清单保留；共享认证、设置、路由、Wire、schema 和前端仍合并上游，
 不能整文件锁定而错过安全更新。只增加新迁移，保留已应用 SQL。
 新增契约测试与前端扫码测试必须留在 Actions 检查中，继续检查“记住我”和 24 个主题。
+
+后续上游迁移若重建 provider/signup_source 约束并遗漏 feishu，须追加在其后执行的新迁移，
+同时保留上游新增 provider；不得改写已应用的 SQL。`TestLatestAuthProviderConstraintsPreserveFeishu`
+会在 Actions 检查最后一版约束，防止无冲突合并后静默丢失飞书支持。
