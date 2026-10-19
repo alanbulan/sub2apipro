@@ -121,7 +121,7 @@ func (s *FeishuSetupService) load(ctx context.Context, id string, owner int64) (
 // All setup and manual writes share a distributed lock. A stale QR cannot replace
 // settings edited after it was generated, including from another replica/admin.
 func (s *FeishuSetupService) Lock(ctx context.Context) (func(), error) { return s.store.Lock(ctx) }
-func (s *FeishuSetupService) Start(ctx context.Context, owner int64) (*FeishuSetupResult, error) {
+func (s *FeishuSetupService) Start(ctx context.Context, owner int64, browserOrigin ...string) (*FeishuSetupResult, error) {
 	release, err := s.Lock(ctx)
 	if err != nil {
 		return nil, err
@@ -142,9 +142,12 @@ func (s *FeishuSetupService) Start(ctx context.Context, owner int64) (*FeishuSet
 		return nil, err
 	}
 	base := strings.TrimRight(s.settings.GetFrontendURL(ctx), "/")
+	if base == "" && len(browserOrigin) > 0 {
+		base = strings.TrimRight(strings.TrimSpace(browserOrigin[0]), "/")
+	}
 	callback := base + feishu.CallbackPath
 	if err = ValidateFeishuRedirect(callback); err != nil {
-		return nil, infraerrors.BadRequest("FEISHU_SITE_URL_REQUIRED", "Save the public HTTPS frontend URL in system settings first")
+		return nil, infraerrors.BadRequest("FEISHU_SITE_URL_REQUIRED", "A public HTTPS site origin is required for Feishu callbacks")
 	}
 	name, _ := s.settings.settingRepo.GetValue(ctx, SettingKeySiteName)
 	name = strings.TrimSpace(name)
@@ -207,7 +210,9 @@ func (s *FeishuSetupService) Poll(ctx context.Context, id string, owner int64) (
 	if err != nil {
 		return nil, err
 	}
-	if st.Stage == 4 && current.Fingerprint() == st.Config.Fingerprint() {
+	completedConfig := st.Config
+	completedConfig.Enabled = true
+	if st.Stage == 4 && current.Fingerprint() == completedConfig.Fingerprint() {
 		st.Stage = 5
 		result.Status = "submitted"
 		result.Settings = current
@@ -237,8 +242,11 @@ func (s *FeishuSetupService) Poll(ctx context.Context, id string, owner int64) (
 		if registration.Error == "authorization_pending" {
 			return result, nil
 		}
+		if registration.ClientID == "" && registration.ClientSecret == "" {
+			return result, nil
+		}
 		if registration.ClientID == "" || registration.ClientSecret == "" {
-			return nil, fmt.Errorf("Feishu registration returned no credentials")
+			return nil, fmt.Errorf("Feishu registration returned incomplete credentials")
 		}
 		st.Config.AppID = registration.ClientID
 		st.Config.AppSecret = registration.ClientSecret

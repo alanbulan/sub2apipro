@@ -33,7 +33,7 @@ describe('Feishu QR configuration', () => {
   it('stops polling after cancellation or unmount', async () => {
     const wrapper = await opened()
     await wrapper.get('button').trigger('click'); await flushPromises()
-    const cancel = wrapper.findAll('button').find(b => b.text() === 'common.cancel')!
+    const cancel = wrapper.findAll('button').find(b => b.text() === 'feishu.stopWaiting')!
     await cancel.trigger('click')
     await vi.advanceTimersByTimeAsync(20000)
     expect(api.pollFeishuSetup).not.toHaveBeenCalled()

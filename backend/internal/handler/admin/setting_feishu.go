@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/feishu"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -50,9 +52,22 @@ func (h *SettingHandler) StartFeishuSetup(c *gin.Context) {
 		response.Unauthorized(c, "Authentication required")
 		return
 	}
-	v, err := h.feishuSetup.Start(c.Request.Context(), subject.UserID)
+	var req struct {
+		SiteOrigin string `json:"site_origin"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request")
+		return
+	}
+	// Browsers supply Origin independently of the JSON body. Configuration falls
+	// back to the current browser site only if the canonical frontend URL is unset.
+	if origin := c.GetHeader("Origin"); origin != "" && origin != req.SiteOrigin {
+		response.BadRequest(c, "Site origin mismatch")
+		return
+	}
+	v, err := h.feishuSetup.Start(c.Request.Context(), subject.UserID, req.SiteOrigin)
 	if err != nil {
-		response.BadRequest(c, err.Error())
+		respondFeishuSetupError(c, err)
 		return
 	}
 	response.Success(c, v)
@@ -65,8 +80,17 @@ func (h *SettingHandler) PollFeishuSetup(c *gin.Context) {
 	}
 	v, err := h.feishuSetup.Poll(c.Request.Context(), c.Param("id"), subject.UserID)
 	if err != nil {
-		response.BadRequest(c, err.Error())
+		respondFeishuSetupError(c, err)
 		return
 	}
 	response.Success(c, v)
+}
+
+func respondFeishuSetupError(c *gin.Context, err error) {
+	var providerErr *feishu.Error
+	if errors.As(err, &providerErr) {
+		response.BadRequest(c, providerErr.Error())
+		return
+	}
+	response.ErrorFrom(c, err)
 }

@@ -34,3 +34,5 @@ frontend/src/components/auth/FeishuOAuthSection.vue
 frontend/src/views/auth/FeishuCallbackView.vue
 frontend/src/i18n/locales/en/feishu.ts
 frontend/src/i18n/locales/zh/feishu.ts
+backend/internal/repository/feishu_setup_store_test.go
+backend/migrations/feishu_provider_migration_test.go

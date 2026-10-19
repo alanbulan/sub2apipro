@@ -5,7 +5,7 @@
         <h2 id="settings-section-feishu" tabindex="-1" class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('feishu.title') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('feishu.description') }}</p>
       </div>
-      <Toggle :model-value="settings?.enabled ?? false" :disabled="busy || !settings?.app_secret_configured" @update:model-value="toggle" />
+      <Toggle :aria-label="t('feishu.title')" :model-value="settings?.enabled ?? false" :disabled="busy || !settings?.app_secret_configured" @update:model-value="toggle" />
     </div>
     <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('feishu.tenantOnly') }}</p>
     <dl v-if="settings?.app_id" class="grid gap-2 text-sm sm:grid-cols-2">
@@ -13,13 +13,14 @@
       <div><dt class="text-gray-500">App ID</dt><dd class="break-all">{{ settings.app_id }}</dd></div>
       <div class="sm:col-span-2"><dt class="text-gray-500">{{ t('feishu.callback') }}</dt><dd class="break-all">{{ settings.redirect_url }}</dd></div>
     </dl>
+    <a v-if="settings?.app_id" :href="`https://open.feishu.cn/app/${encodeURIComponent(settings.app_id)}`" target="_blank" rel="noopener noreferrer" class="text-sm text-primary-600 underline">{{ t('feishu.manageApp') }}</a>
     <button type="button" class="btn btn-primary" :disabled="busy || polling" @click="start">{{ busy ? t('common.processing') : settings?.app_id ? t('feishu.reconfigure') : t('feishu.scanSetup') }}</button>
     <div v-if="setup?.verification_url && polling" class="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-dark-600">
       <p class="text-sm">{{ t('feishu.scanHint') }}</p>
       <img v-if="qr" :src="qr" :alt="t('feishu.qrAlt')" class="h-56 w-56 rounded-lg bg-white" />
       <a :href="setup.verification_url" target="_blank" rel="noopener noreferrer" class="text-sm text-primary-600 underline">{{ t('feishu.openOfficial') }}</a>
       <p class="text-sm text-gray-500" role="status">{{ t('feishu.waiting') }}</p>
-      <button type="button" class="btn btn-secondary" @click="stop">{{ t('common.cancel') }}</button>
+      <button type="button" class="btn btn-secondary" @click="stop">{{ t('feishu.stopWaiting') }}</button>
     </div>
     <p v-if="submitted" role="status" class="rounded-lg bg-green-50 p-3 text-sm text-green-800 dark:bg-green-900/20 dark:text-green-300">{{ t('feishu.submitted') }}</p>
     <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>

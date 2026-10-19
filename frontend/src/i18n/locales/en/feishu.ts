@@ -11,8 +11,10 @@ export default {
   openOfficial: 'Open official Feishu authorization page',
   waiting: 'Waiting for scanning and official authorization. Keep this page open.',
   submitted: 'Configuration saved, login enabled and app publication submitted. If your enterprise requires approval, complete it on the Feishu platform before using login. Submission does not mean approval.',
-  savedSeparately: 'These settings save separately. Save your public HTTPS frontend URL first. Enterprise authorization and review still require confirmation on Feishu. Reconfiguration replaces the login app; existing app bindings are not migrated automatically.',
+  savedSeparately: 'These settings save separately. The callback uses the configured frontend URL, or the current browser origin when no URL is configured. Enterprise authorization and review still require confirmation on Feishu. Reconfiguration replaces the login app; existing app bindings are not migrated automatically.',
   expired: 'QR code expired. Start a new setup.',
   failed: 'Configuration failed. Please retry.',
+  manageApp: 'View app and approval status in Feishu',
+  stopWaiting: 'Stop waiting',
   retry: 'Continue configuring this app'
 }

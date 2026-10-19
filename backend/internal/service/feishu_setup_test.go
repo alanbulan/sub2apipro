@@ -173,3 +173,13 @@ func TestFeishuRedirectAndIdentityIsolation(t *testing.T) {
 	valid.AppID = "cli_../x"
 	require.Error(t, valid.Validate())
 }
+
+func TestFeishuSetupDerivesCallbackWithoutManualSiteConfiguration(t *testing.T) {
+	svc, _, repo, _ := newFeishuSetupTest(t)
+	repo.values[SettingKeyFrontendURL] = ""
+	result, err := svc.Start(context.Background(), 42, "https://public.example")
+	require.NoError(t, err)
+	state, err := svc.load(context.Background(), result.ID, 42)
+	require.NoError(t, err)
+	require.Equal(t, "https://public.example"+feishu.CallbackPath, state.Config.RedirectURL)
+}

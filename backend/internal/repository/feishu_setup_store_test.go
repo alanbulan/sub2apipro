@@ -1,0 +1,41 @@
+//go:build unit
+
+package repository
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+)
+
+func TestFeishuSetupStoreLockAcrossReplicasAndExpiry(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer func() { _ = client.Close() }()
+	first := NewFeishuSetupStore(client)
+	second := NewFeishuSetupStore(client)
+	ctx := context.Background()
+	release, err := first.Lock(ctx)
+	require.NoError(t, err)
+	_, err = second.Lock(ctx)
+	require.Error(t, err)
+	// An expired lock's owner cannot release a subsequent owner's lease.
+	server.FastForward(3 * time.Minute)
+	next, err := second.Lock(ctx)
+	require.NoError(t, err)
+	release()
+	_, err = first.Lock(ctx)
+	require.Error(t, err)
+	next()
+	require.NoError(t, first.Set(ctx, "opaque", []byte("encrypted-state"), time.Minute))
+	value, err := second.Get(ctx, "opaque")
+	require.NoError(t, err)
+	require.Equal(t, []byte("encrypted-state"), value)
+	server.FastForward(2 * time.Minute)
+	_, err = first.Get(ctx, "opaque")
+	require.Error(t, err)
+}

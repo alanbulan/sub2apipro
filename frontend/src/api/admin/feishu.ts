@@ -24,7 +24,7 @@ export async function setFeishuEnabled(enabled: boolean): Promise<FeishuSettings
   return (await apiClient.put<FeishuSettings>(base, { enabled })).data
 }
 export async function startFeishuSetup(): Promise<FeishuSetup> {
-  return (await apiClient.post<FeishuSetup>(`${base}/setup/start`)).data
+  return (await apiClient.post<FeishuSetup>(`${base}/setup/start`, { site_origin: window.location.origin })).data
 }
 export async function pollFeishuSetup(id: string): Promise<FeishuSetup> {
   return (await apiClient.post<FeishuSetup>(`${base}/setup/${encodeURIComponent(id)}/poll`)).data
