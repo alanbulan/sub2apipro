@@ -36,7 +36,13 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 	providerKey := current.IdentityKey()
 	grantPlan := s.resolveSignupGrantPlan(ctx, "feishu")
 	defaultRPM := s.settingService.GetDefaultUserRPMLimit(ctx)
-	backendMode := s.settingService.IsBackendModeEnabled(ctx)
+	// Read the current settings, as the shared login handler does. Provisioning
+	// must not rely on the process-wide backend-mode fallback cache.
+	settings, err := s.settingService.GetPublicSettings(ctx)
+	if err != nil || settings == nil {
+		return nil, ErrServiceUnavailable
+	}
+	backendMode := settings.BackendModeEnabled
 
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
