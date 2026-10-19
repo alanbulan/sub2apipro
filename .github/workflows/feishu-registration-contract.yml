@@ -1,0 +1,39 @@
+name: Feishu registration contract
+
+on:
+  push:
+    paths:
+      - 'backend/internal/pkg/feishu/**'
+      - '.github/workflows/feishu-registration-contract.yml'
+  pull_request:
+    paths:
+      - 'backend/internal/pkg/feishu/**'
+      - '.github/workflows/feishu-registration-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registration:
+    name: Check live Feishu registration protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Request private challenge and verify pending response
+        id: probe
+        working-directory: backend
+        shell: bash
+        env:
+          FEISHU_LIVE_REGISTRATION: '1'
+        run: |
+          set -o pipefail
+          go test -tags=integration -run '^TestLiveRegistrationContract$' -count=1 -timeout=60s -v ./internal/pkg/feishu 2>&1 | tee feishu-registration-test.log
+      - name: Report registration contract failure
+        if: failure() && steps.probe.outcome == 'failure'
+        run: bash .github/scripts/report-ci-failure.sh backend/feishu-registration-test.log

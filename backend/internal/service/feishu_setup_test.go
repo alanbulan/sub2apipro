@@ -67,7 +67,7 @@ func newFeishuSetupTest(t *testing.T) (*FeishuSetupService, *feishuMemoryStore, 
 		case "/oauth/v1/app/registration":
 			require.NoError(t, r.ParseForm())
 			if r.Form.Get("action") == "begin" {
-				body = `{"device_code":"private-device","verification_uri_complete":"https://accounts.feishu.cn/verify","interval":5,"expire_in":600}`
+				body = `{"device_code":"private-device","verification_uri_complete":"https://open.feishu.cn/page/launcher?user_code=ABCD-EFGH","interval":5,"expires_in":3600}`
 			} else {
 				body = `{"client_id":"cli_test","client_secret":"private-secret","user_info":{"tenant_brand":"feishu"}}`
 			}
@@ -127,6 +127,40 @@ func TestFeishuSetupNeverReplacesSettingsChangedAfterQR(t *testing.T) {
 	require.Len(t, *calls, 1)
 	require.Equal(t, "another-company", repo.values[SettingKeyFeishuConnectTenantKey])
 }
+
+func TestFeishuSetupKeepsWaitingOnOfficialPendingResponse(t *testing.T) {
+	svc, _, repo, _ := newFeishuSetupTest(t)
+	ctx := context.Background()
+	start, err := svc.Start(ctx, 42)
+	require.NoError(t, err)
+	require.Contains(t, start.URL, "https://open.feishu.cn/page/launcher?")
+	state, err := svc.load(ctx, start.ID, 42)
+	require.NoError(t, err)
+	state.NextPoll = 0
+	require.NoError(t, svc.save(ctx, start.ID, state))
+	original := svc.api.HTTP.Transport
+	svc.api.HTTP.Transport = feishuTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/oauth/v1/app/registration" {
+			return &http.Response{StatusCode: http.StatusBadRequest, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":"authorization_pending","error_description":"","code":20094}`))}, nil
+		}
+		return original.RoundTrip(r)
+	})
+	result, err := svc.Poll(ctx, start.ID, 42)
+	require.NoError(t, err)
+	require.Equal(t, "pending", result.Status)
+	require.Nil(t, result.Settings)
+	require.Empty(t, repo.values[SettingKeyFeishuConnectAppID])
+	state, err = svc.load(ctx, start.ID, 42)
+	require.NoError(t, err)
+	require.Zero(t, state.Stage)
+	state.NextPoll = 0
+	require.NoError(t, svc.save(ctx, start.ID, state))
+	svc.api.HTTP.Transport = original
+	result, err = svc.Poll(ctx, start.ID, 42)
+	require.NoError(t, err)
+	require.Equal(t, "submitted", result.Status)
+}
+
 func TestFeishuSetupFailurePreservesOldConfigAndCredentialsForRetry(t *testing.T) {
 	svc, _, repo, _ := newFeishuSetupTest(t)
 	ctx := context.Background()

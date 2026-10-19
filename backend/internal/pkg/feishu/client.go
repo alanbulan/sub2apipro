@@ -74,16 +74,11 @@ func (c *Client) request(ctx context.Context, stage, method, endpoint, token str
 	if strings.HasPrefix(endpoint, APIURL+"/") && len(envelope.Code) == 0 {
 		return &Error{stage, "missing_result_code"}
 	}
-	if len(envelope.Code) > 0 {
-		code := strings.Trim(string(envelope.Code), "\"")
-		if code != "0" {
-			if _, err := strconv.Atoi(code); err != nil {
-				code = "provider_error"
-			}
-			return &Error{stage, code}
-		}
-	}
-	if envelope.Error != "" && envelope.Error != "authorization_pending" && envelope.Error != "slow_down" {
+	// Registration uses OAuth protocol errors alongside numeric diagnostic
+	// codes. A pending poll is a control response, even with code=20094.
+	pendingPoll := stage == "registration_poll" && endpoint == RegistrationURL &&
+		(envelope.Error == "authorization_pending" || envelope.Error == "slow_down")
+	if envelope.Error != "" && !pendingPoll {
 		// Only return known protocol errors; never expose arbitrary provider text.
 		switch envelope.Error {
 		case "access_denied", "expired_token", "invalid_client", "invalid_grant":
@@ -92,8 +87,16 @@ func (c *Client) request(ctx context.Context, stage, method, endpoint, token str
 			return &Error{stage, "provider_error"}
 		}
 	}
-	pendingPoll := stage == "registration_poll" && (envelope.Error == "authorization_pending" || envelope.Error == "slow_down")
-	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && !pendingPoll {
+	if len(envelope.Code) > 0 && !pendingPoll {
+		code := strings.Trim(string(envelope.Code), "\"")
+		if code != "0" {
+			if _, err := strconv.Atoi(code); err != nil {
+				code = "provider_error"
+			}
+			return &Error{stage, code}
+		}
+	}
+	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && !(pendingPoll && resp.StatusCode == http.StatusBadRequest) {
 		return &Error{stage, "http_" + strconv.Itoa(resp.StatusCode)}
 	}
 	if json.Unmarshal(raw, out) != nil {
@@ -163,12 +166,21 @@ type Registration struct {
 
 func (c *Client) BeginRegistration(ctx context.Context, name string) (*Registration, error) {
 	form := url.Values{"action": {"begin"}, "archetype": {"PersonalAgent"}, "auth_method": {"client_secret"}, "request_user_info": {"open_id"}}
-	var out Registration
-	if err := c.request(ctx, "registration_begin", http.MethodPost, RegistrationURL, "", strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", &out); err != nil {
+	var response struct {
+		Registration
+		ExpiresIn *int `json:"expires_in"`
+	}
+	if err := c.request(ctx, "registration_begin", http.MethodPost, RegistrationURL, "", strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", &response); err != nil {
 		return nil, err
 	}
+	out := response.Registration
+	// The live endpoint uses expires_in; older SDKs use expire_in. Keep the
+	// existing internal field and accept both, preferring the current protocol.
+	if response.ExpiresIn != nil {
+		out.ExpireIn = *response.ExpiresIn
+	}
 	u, err := url.Parse(out.VerificationURL)
-	if err != nil || u.Scheme != "https" || u.Host != "accounts.feishu.cn" || u.User != nil || out.DeviceCode == "" {
+	if err != nil || u.Scheme != "https" || (u.Host != "accounts.feishu.cn" && u.Host != "open.feishu.cn") || u.User != nil || out.DeviceCode == "" {
 		return nil, &Error{"registration_begin", "invalid_response"}
 	}
 	// Match the official scene/registration SDK. The minimal base avoids

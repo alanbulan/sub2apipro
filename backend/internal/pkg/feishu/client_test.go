@@ -53,7 +53,7 @@ func TestRegistrationUsesMinimalTemplate(t *testing.T) {
 		require.Equal(t, "begin", r.Form.Get("action"))
 		require.Equal(t, "PersonalAgent", r.Form.Get("archetype"))
 		require.Equal(t, "open_id", r.Form.Get("request_user_info"))
-		return `{"device_code":"private-device","verification_uri_complete":"https://accounts.feishu.cn/oauth/verify?ticket=x","interval":2,"expire_in":300}`
+		return `{"device_code":"private-device","user_code":"ABCD-EFGH","verification_uri":"https://open.feishu.cn/page/launcher","verification_uri_complete":"https://open.feishu.cn/page/launcher?user_code=ABCD-EFGH","interval":2,"expires_in":300}`
 	})
 	registration, err := api.BeginRegistration(context.Background(), "Enterprise login")
 	require.NoError(t, err)
@@ -61,6 +61,9 @@ func TestRegistrationUsesMinimalTemplate(t *testing.T) {
 	require.Equal(t, 300, registration.ExpireIn)
 	u, err := url.Parse(registration.VerificationURL)
 	require.NoError(t, err)
+	require.Equal(t, "open.feishu.cn", u.Host)
+	require.Equal(t, "/page/launcher", u.Path)
+	require.Equal(t, "ABCD-EFGH", u.Query().Get("user_code"))
 	require.Equal(t, "true", u.Query().Get("createOnly"))
 	raw, err := base64.RawURLEncoding.DecodeString(u.Query().Get("addons"))
 	require.NoError(t, err)
@@ -78,6 +81,29 @@ func TestRegistrationUsesMinimalTemplate(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &addons))
 	require.False(t, addons.Preset)
 	require.ElementsMatch(t, []string{"application:application:patch", "tenant:tenant:readonly"}, addons.Scopes.Tenant)
+}
+
+func TestRegistrationAcceptsCurrentAndLegacyExpiryFields(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		uri    string
+		expiry string
+		want   int
+	}{
+		{"current", "https://open.feishu.cn/page/launcher?user_code=ABCD-EFGH", `"expires_in":120`, 120},
+		{"live_response_capped_to_setup_ttl", "https://open.feishu.cn/page/launcher?user_code=ABCD-EFGH", `"expires_in":3600`, 600},
+		{"legacy_sdk", "https://accounts.feishu.cn/oauth/verify?ticket=x", `"expire_in":300`, 300},
+		{"current_takes_precedence", "https://open.feishu.cn/page/launcher?user_code=ABCD-EFGH", `"expires_in":90,"expire_in":300`, 90},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := testClient(func(*http.Request) string {
+				return `{"device_code":"private-device","verification_uri_complete":"` + tc.uri + `",` + tc.expiry + `}`
+			})
+			registration, err := api.BeginRegistration(context.Background(), "Enterprise login")
+			require.NoError(t, err)
+			require.Equal(t, tc.want, registration.ExpireIn)
+		})
+	}
 }
 func TestUserInfoRejectsInactiveMembersAndMissingTenant(t *testing.T) {
 	for _, body := range []string{`{"code":20021,"data":{"open_id":"ou_x","tenant_key":"tenant"}}`, `{"code":20022}`, `{"code":0,"data":{"open_id":"ou_x"}}`, `{"data":{"open_id":"ou_x","tenant_key":"tenant"}}`} {
@@ -137,7 +163,7 @@ func TestProviderErrorsNeverLeakResponseCredentials(t *testing.T) {
 	}
 }
 func TestRegistrationRejectsForeignVerificationHostsAndLark(t *testing.T) {
-	for _, uri := range []string{"http://accounts.feishu.cn/x", "https://evil.example/x", "https://accounts.feishu.cn.evil.example/x", "https://user@accounts.feishu.cn/x"} {
+	for _, uri := range []string{"http://accounts.feishu.cn/x", "https://evil.example/x", "https://accounts.feishu.cn.evil.example/x", "https://user@accounts.feishu.cn/x", "http://open.feishu.cn/page/launcher", "https://open.feishu.cn.evil.example/page/launcher", "https://user@open.feishu.cn/page/launcher", "https://open.feishu.cn:8443/page/launcher"} {
 		api := testClient(func(*http.Request) string {
 			raw, _ := json.Marshal(map[string]any{"device_code": "secret", "verification_uri_complete": uri})
 			return string(raw)
@@ -166,12 +192,39 @@ func TestTenantQueryRequiresEnterpriseAndNeverUsesDisplayID(t *testing.T) {
 	require.Equal(t, "company", tenant.Key)
 }
 func TestDevicePollingHandlesProtocolPendingOverHTTP400(t *testing.T) {
-	for _, code := range []string{"authorization_pending", "slow_down"} {
-		api := &Client{HTTP: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(`{"error":"` + code + `"}`)), Header: make(http.Header)}, nil
-		})}}
-		result, err := api.PollRegistration(context.Background(), "device")
-		require.NoError(t, err)
-		require.Equal(t, code, result.Error)
+	for _, protocolError := range []string{"authorization_pending", "slow_down"} {
+		for _, numericCode := range []string{"", `,"code":20094`, `,"code":"20094"`} {
+			for _, status := range []int{http.StatusOK, http.StatusBadRequest} {
+				api := &Client{HTTP: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(`{"error":"` + protocolError + `"` + numericCode + `}`)), Header: make(http.Header)}, nil
+				})}}
+				result, err := api.PollRegistration(context.Background(), "device")
+				require.NoError(t, err)
+				require.Equal(t, protocolError, result.Error)
+			}
+		}
 	}
+}
+
+func TestDevicePollingPreservesTerminalErrors(t *testing.T) {
+	for _, protocolError := range []string{"access_denied", "expired_token"} {
+		api := testClient(func(*http.Request) string {
+			return `{"error":"` + protocolError + `","code":20094,"error_description":"private-provider-details"}`
+		})
+		_, err := api.PollRegistration(context.Background(), "device")
+		require.EqualError(t, err, "feishu registration_poll failed ("+protocolError+")")
+	}
+	api := &Client{HTTP: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader(`{"error":"authorization_pending","code":20094}`)), Header: make(http.Header)}, nil
+	})}}
+	_, err := api.PollRegistration(context.Background(), "device")
+	require.EqualError(t, err, "feishu registration_poll failed (http_503)")
+
+	api = testClient(func(*http.Request) string { return `{"code":20094}` })
+	_, err = api.PollRegistration(context.Background(), "device")
+	require.EqualError(t, err, "feishu registration_poll failed (20094)")
+
+	api = testClient(func(*http.Request) string { return `{"error":"authorization_pending","code":20094}` })
+	_, err = api.BeginRegistration(context.Background(), "Enterprise login")
+	require.EqualError(t, err, "feishu registration_begin failed (provider_error)")
 }

@@ -1,6 +1,6 @@
 # 飞书企业登录与扫码配置
 
-更新于 2026-10-19。实现位于独立 feature 分支；是否部署和 CI 结果以交付记录为准。
+更新于 2026-10-19。实现已合入 main；后续修复的部署和 CI 结果以交付记录为准。
 本机不运行测试、构建、代码生成或安装依赖。没有真实企业凭证时，CI 验证官方协议契约，
 最终企业授权与发布审批须在管理员扫码时由飞书平台执行，不能宣称已完成真实租户联调。
 
@@ -40,6 +40,13 @@
 只申请 `application:application:patch`（配置自己的应用）及 `tenant:tenant:readonly`（识别企业）。
 不申请文档、聊天、通讯录、邮箱、手机或 offline_access 权限。应用能力/权限是否允许创建及
 审批要求由官方和企业决定；平台返回错误时设置页提供重试，原有效配置保持不变。
+
+二维码地址仅接受 HTTPS 的 `open.feishu.cn` 和 `accounts.feishu.cn`，不允许用户信息、其他域名或额外端口。
+实际注册响应使用 `https://open.feishu.cn/page/launcher?user_code=…` 及 `expires_in`；兼容旧 SDK 的
+`expire_in`，但本站二维码状态最多保留 10 分钟。轮询的 `authorization_pending` / `slow_down`
+可能与 HTTP 400、非零诊断 `code` 同时返回，按 OAuth 状态处理；其他错误仍终止流程。
+专用 Actions 工作流调用真实官方接口验证申请和未授权轮询，不打印设备码、二维码地址或凭证，
+不扫码、不创建企业应用，也不代替真实企业授权验证。
 
 回调为站点前端地址加 `/api/v1/auth/oauth/feishu/callback`，前端落地页为
 `/auth/feishu/callback`。生产使用 HTTPS，开发仅允许 loopback HTTP。
