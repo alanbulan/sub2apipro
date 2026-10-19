@@ -3125,6 +3125,8 @@
             </div>
           </div>
 
+          <FeishuSettings />
+
           <!-- DingTalk Connect OAuth 登录 -->
           <div class="card">
             <div
@@ -9408,6 +9410,7 @@ import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vu
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import RequestTimezoneSettings from "@/components/settings/RequestTimezoneSettings.vue";
+import FeishuSettings from "@/components/settings/FeishuSettings.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";

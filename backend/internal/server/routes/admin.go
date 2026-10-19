@@ -87,6 +87,7 @@ func RegisterAdminRoutes(
 
 		// 系统设置
 		registerSettingsRoutes(admin, h)
+		registerFeishuSettingsRoutes(admin, h, stepUpAuth)
 		if h.Admin.RequestCapture != nil {
 			captures := admin.Group("/request-captures")
 			captures.Use(h.Admin.RequestCapture.Gate)
@@ -1119,4 +1120,12 @@ func channelMonitorModeGuard(settingService *service.SettingService, allowed fun
 		}
 		c.Next()
 	}
+}
+
+func registerFeishuSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUp middleware.StepUpAuthMiddleware) {
+	settings := admin.Group("/settings/feishu")
+	settings.GET("", h.Admin.Setting.GetFeishuSettings)
+	settings.PUT("", gin.HandlerFunc(stepUp), h.Admin.Setting.UpdateFeishuSettings)
+	settings.POST("/setup/start", gin.HandlerFunc(stepUp), h.Admin.Setting.StartFeishuSetup)
+	settings.POST("/setup/:id/poll", gin.HandlerFunc(stepUp), h.Admin.Setting.PollFeishuSetup)
 }

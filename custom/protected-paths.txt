@@ -1,4 +1,4 @@
-# One glob per line. Preserve only fork-owned UI, copy, and sync/CI automation.
+# One glob per line. Preserve fork-owned UI, copy, sync/CI, and dedicated Feishu integration.
 # Deployment manifests and deployment helpers follow upstream by default.
 custom/
 skills/upstream-sync/
@@ -16,3 +16,21 @@ frontend/src/__tests__/rememberMePro.spec.ts
 frontend/public/logo.svg
 deploy/action-deploy.sh
 deploy/install-action-deploy.sh
+
+# Dedicated Feishu files; shared auth/settings/routes must continue merging upstream fixes.
+backend/internal/pkg/feishu/
+backend/internal/service/setting_feishu.go
+backend/internal/service/feishu_setup.go
+backend/internal/service/feishu_setup_test.go
+backend/internal/repository/feishu_setup_store.go
+backend/internal/handler/auth_feishu_oauth.go
+backend/internal/handler/auth_feishu_oauth_test.go
+backend/internal/handler/admin/setting_feishu.go
+backend/migrations/291_add_feishu_provider.sql
+frontend/src/api/admin/feishu.ts
+frontend/src/components/settings/FeishuSettings.vue
+frontend/src/components/settings/FeishuSettings.spec.ts
+frontend/src/components/auth/FeishuOAuthSection.vue
+frontend/src/views/auth/FeishuCallbackView.vue
+frontend/src/i18n/locales/en/feishu.ts
+frontend/src/i18n/locales/zh/feishu.ts

@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/feishu"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -19,6 +20,7 @@ import (
 
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
+	feishuClient         *feishu.Client
 	cfg                  *config.Config
 	authService          *service.AuthService
 	userService          *service.UserService
@@ -369,6 +371,10 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 			return
 		}
 
+		if err := h.validateFeishuPending(c.Request.Context(), pendingSession); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
 		decision, err := h.ensurePendingOAuthAdoptionDecision(c, pendingSession.ID, oauthAdoptionDecisionRequest{})
 		if err != nil {
 			response.ErrorFrom(c, err)

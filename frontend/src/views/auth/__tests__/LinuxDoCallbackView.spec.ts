@@ -96,6 +96,19 @@ describe('LinuxDoCallbackView', () => {
     sessionStorage.clear()
   })
 
+  it('uses Feishu pending identity without accepting legacy token fragments', async () => {
+    window.location.hash = '#access_token=untrusted-fragment'
+    exchangePendingOAuthCompletion.mockResolvedValue({ step: 'choose_account_action_required', create_account_allowed: false })
+    const wrapper = mount(LinuxDoCallbackView, { props: { provider: 'feishu' }, global: { stubs: { AuthLayout: { template: '<div><slot /></div>' }, RouterLink: true } } })
+    await flushPromises()
+    expect(exchangePendingOAuthCompletion).toHaveBeenCalled()
+    expect(setToken).not.toHaveBeenCalled()
+    expect(setPendingAuthSession).toHaveBeenCalledWith(expect.objectContaining({ provider: 'feishu' }))
+    expect(wrapper.text()).toContain('auth.oauthFlow.bindExistingAccount')
+    expect(wrapper.findAll('button').some(b => b.text().includes('auth.oauthFlow.createAccount'))).toBe(false)
+    wrapper.unmount()
+  })
+
   it('accepts the legacy fragment token success callback without pending-session exchange', async () => {
     window.location.hash =
       '#access_token=legacy-access-token&refresh_token=legacy-refresh-token&expires_in=3600&token_type=Bearer&redirect=%2Flegacy-dashboard'

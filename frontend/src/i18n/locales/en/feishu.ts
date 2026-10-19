@@ -1,0 +1,18 @@
+export default {
+  title: 'Feishu enterprise login',
+  description: 'Scan to create an app, obtain credentials, identify your enterprise and configure the login callback.',
+  tenantOnly: 'Only members of this Feishu enterprise can sign in. First-time users can bind an existing account or verify their email and register under this site’s rules.',
+  enterprise: 'Enterprise',
+  callback: 'Login callback URL',
+  scanSetup: 'Configure Feishu by scanning',
+  reconfigure: 'Scan to create and configure a replacement app',
+  scanHint: 'Scan with your enterprise Feishu account, then confirm the app name, permissions and creation on the official Feishu page.',
+  qrAlt: 'Official Feishu app registration QR code',
+  openOfficial: 'Open official Feishu authorization page',
+  waiting: 'Waiting for scanning and official authorization. Keep this page open.',
+  submitted: 'Configuration saved, login enabled and app publication submitted. If your enterprise requires approval, complete it on the Feishu platform before using login. Submission does not mean approval.',
+  savedSeparately: 'These settings save separately. Save your public HTTPS frontend URL first. Enterprise authorization and review still require confirmation on Feishu. Reconfiguration replaces the login app; existing app bindings are not migrated automatically.',
+  expired: 'QR code expired. Start a new setup.',
+  failed: 'Configuration failed. Please retry.',
+  retry: 'Continue configuring this app'
+}

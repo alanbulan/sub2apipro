@@ -424,6 +424,9 @@ func (h *AuthHandler) legacyCompleteRegistrationSessionStatus(
 		return nil, false, infraerrors.BadRequest("PENDING_AUTH_SESSION_INVALID", "pending auth registration context is invalid")
 	}
 
+	if session.ProviderType == "feishu" {
+		return nil, false, infraerrors.BadRequest("PENDING_AUTH_PROVIDER_MISMATCH", "Use the shared Feishu account completion flow")
+	}
 	payload := normalizePendingOAuthCompletionResponse(mergePendingCompletionResponse(session, nil))
 	if step := pendingSessionStringValue(payload, "step"); step != "" {
 		return session, true, nil
@@ -1474,6 +1477,10 @@ func readPendingOAuthBrowserSession(c *gin.Context, h *AuthHandler) (*service.Au
 		return nil, nil, clearCookies, err
 	}
 
+	if err := h.validateFeishuPending(c.Request.Context(), session); err != nil {
+		clearCookies()
+		return nil, nil, clearCookies, err
+	}
 	return svc, session, clearCookies, nil
 }
 
@@ -1934,6 +1941,11 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 		return
 	}
 
+	if err := h.validateFeishuPending(c.Request.Context(), session); err != nil {
+		clearCookies()
+		response.ErrorFrom(c, err)
+		return
+	}
 	payload, ok := readCompletionResponse(session.LocalFlowState)
 	if !ok {
 		clearCookies()
@@ -1967,6 +1979,15 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
+	}
+	if session.ProviderType == "feishu" && canIssueTokenPair && loginUser.TotpEnabled && h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) {
+		temp, err := h.totpService.CreatePendingOAuthBindLoginSession(c.Request.Context(), loginUser.ID, loginUser.Email, session.SessionToken, session.BrowserSessionKey)
+		if err != nil {
+			response.InternalError(c, "Failed to create 2FA session")
+			return
+		}
+		response.Success(c, TotpLoginResponse{Requires2FA: true, TempToken: temp, UserEmailMasked: service.MaskEmail(loginUser.Email)})
+		return
 	}
 	skipAdoptionPrompt, err := h.shouldSkipPendingOAuthAdoptionPrompt(c.Request.Context(), session, payload)
 	if err != nil {

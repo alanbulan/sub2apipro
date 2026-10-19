@@ -1,6 +1,7 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/components/settings/FeishuSettings.spec.ts \
 	src/__tests__/rememberMePro.spec.ts \
 	src/__tests__/useAppTheme.spec.ts \
 	src/components/account/__tests__/OpenAISessionExportDialog.spec.ts \

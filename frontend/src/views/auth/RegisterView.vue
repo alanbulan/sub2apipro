@@ -323,7 +323,13 @@
           @start="handleOAuthStart"
         />
 
-        <LinuxDoOAuthSection
+        <FeishuOAuthSection
+            v-if="feishuOAuthEnabled"
+            :disabled="registrationActionDisabled"
+            :show-divider="false"
+            @start="handleOAuthStart"
+          />
+          <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
@@ -369,6 +375,7 @@ import { computed, ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
+import FeishuOAuthSection from '@/components/auth/FeishuOAuthSection.vue'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
@@ -441,6 +448,7 @@ const aliyunCaptchaSceneId = ref<string>('')
 const aliyunCaptchaPrefix = ref<string>('')
 const aliyunCaptchaRegion = ref<string>('cn')
 const siteName = ref<string>('')
+const feishuOAuthEnabled = ref(false)
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
@@ -527,7 +535,7 @@ const validationToastMessage = computed(() =>
 
 const showOAuthLogin = computed(
   () =>
-    linuxdoOAuthEnabled.value ||
+    feishuOAuthEnabled.value || linuxdoOAuthEnabled.value ||
     wechatOAuthEnabled.value ||
     oidcOAuthEnabled.value ||
     githubOAuthEnabled.value ||
@@ -578,6 +586,7 @@ onMounted(async () => {
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     siteName.value = settings.site_name || ''
+    feishuOAuthEnabled.value = settings.feishu_oauth_enabled ?? false
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled

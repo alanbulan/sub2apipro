@@ -73,6 +73,15 @@ func RegisterAuthRoutes(
 		auth.POST("/reset-password", rateLimiter.LimitWithOptions("reset-password", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.ResetPassword)
+		auth.GET("/oauth/feishu/start", h.Auth.FeishuOAuthStart)
+		auth.POST("/oauth/feishu/start", rateLimiter.LimitWithOptions("oauth-feishu-start", 20, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}), h.Auth.FeishuOAuthStart)
+		auth.GET("/oauth/feishu/bind/start", func(c *gin.Context) {
+			q := c.Request.URL.Query()
+			q.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = q.Encode()
+			h.Auth.FeishuOAuthStart(c)
+		})
+		auth.GET("/oauth/feishu/callback", h.Auth.FeishuOAuthCallback)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
 		auth.POST("/oauth/linuxdo/start", rateLimiter.LimitWithOptions("oauth-linuxdo-start", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,

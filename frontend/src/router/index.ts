@@ -81,6 +81,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/auth/feishu/callback',
+    name: 'FeishuOAuthCallback',
+    component: () => import('@/views/auth/FeishuCallbackView.vue'),
+    meta: { requiresAuth: false, title: 'Feishu Login', titleKey: 'auth.feishu.callbackTitle' }
+  },
+  {
     path: '/auth/linuxdo/callback',
     name: 'LinuxDoOAuthCallback',
     component: () => import('@/views/auth/LinuxDoCallbackView.vue'),
@@ -865,6 +871,7 @@ let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
 const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
+  '/auth/feishu/callback',
   '/auth/linuxdo/callback',
   '/auth/dingtalk/callback',
   '/auth/dingtalk/email-completion',

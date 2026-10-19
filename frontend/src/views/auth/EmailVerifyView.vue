@@ -494,6 +494,8 @@ function shouldBypassRegistrationEmailPolicy(): boolean {
 
 function resolvePendingOAuthCallbackRoute(provider: string): string {
   switch (provider.trim().toLowerCase()) {
+    case 'feishu':
+      return '/auth/feishu/callback'
     case 'linuxdo':
       return '/auth/linuxdo/callback'
     case 'oidc':

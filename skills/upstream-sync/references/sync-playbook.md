@@ -114,3 +114,15 @@ single handler created with `h.Gateway.ConversationCaptureWithHandler(protocol,
 handler)`. This keeps capture around the endpoint execution while retaining
 the allowlist between authentication and composite routing. Keep the same
 capture middleware on Codex Responses and Gemini generation routes.
+
+## Feishu Enterprise Login
+
+The owner requested QR application registration and Feishu-only enterprise login.
+Preserve the dedicated files listed in `custom/protected-paths.txt` and the behavior
+contract in `custom/feishu-login-plan.md`. Shared authentication/settings/routes,
+Wire providers, schema validators, public settings, profile binding and completion
+UI must continue accepting upstream changes while retaining Feishu integration.
+Preserve tenant isolation, app-scoped open_id identity, no email auto-merge, TOTP,
+pending-config validation, encrypted QR credentials and server-side polling limits.
+Keep the new SQL migration immutable and the Feishu checks in GitHub Actions;
+never run builds/tests locally on the sync host.

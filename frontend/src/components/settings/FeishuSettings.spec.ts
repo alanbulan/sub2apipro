@@ -1,0 +1,53 @@
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import FeishuSettings from './FeishuSettings.vue'
+import * as api from '@/api/admin/feishu'
+
+vi.mock('@/api/admin/feishu', () => ({ getFeishuSettings: vi.fn(), setFeishuEnabled: vi.fn(), startFeishuSetup: vi.fn(), pollFeishuSetup: vi.fn() }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,qr') } }))
+const empty = { enabled: false, app_id: '', app_secret_configured: false, tenant_key: '', tenant_name: '', redirect_url: '' }
+const configured = { ...empty, enabled: true, app_id: 'cli_test', app_secret_configured: true, tenant_key: 'company', tenant_name: 'Company', redirect_url: 'https://example.com/api/v1/auth/oauth/feishu/callback' }
+beforeEach(() => {
+  vi.useFakeTimers(); vi.clearAllMocks()
+  vi.mocked(api.getFeishuSettings).mockResolvedValue(empty)
+  vi.mocked(api.startFeishuSetup).mockResolvedValue({ id: 'opaque-id', verification_url: 'https://accounts.feishu.cn/verify', expires_at: Math.floor(Date.now() / 1000) + 600, interval: 5, status: 'pending' })
+})
+afterEach(() => { vi.useRealTimers() })
+async function opened() { const wrapper = mount(FeishuSettings, { global: { stubs: { Toggle: true } } }); await flushPromises(); return wrapper }
+describe('Feishu QR configuration', () => {
+  it('needs no manual credentials and waits for server poll intervals', async () => {
+    const wrapper = await opened()
+    expect(wrapper.find('input').exists()).toBe(false)
+    await wrapper.get('button').trigger('click'); await flushPromises()
+    expect(wrapper.get('img').attributes('src')).toContain('data:image/png')
+    expect(api.pollFeishuSetup).not.toHaveBeenCalled()
+    vi.mocked(api.pollFeishuSetup).mockResolvedValue({ status: 'submitted', interval: 5, settings: configured })
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(api.pollFeishuSetup).toHaveBeenCalledWith('opaque-id')
+    expect(wrapper.text()).toContain('feishu.submitted')
+    expect(wrapper.text()).toContain('Company')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('stops polling after cancellation or unmount', async () => {
+    const wrapper = await opened()
+    await wrapper.get('button').trigger('click'); await flushPromises()
+    const cancel = wrapper.findAll('button').find(b => b.text() === 'common.cancel')!
+    await cancel.trigger('click')
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(api.pollFeishuSetup).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('keeps a failed setup available for retry and preserves the old settings', async () => {
+    vi.mocked(api.getFeishuSettings).mockResolvedValue(configured)
+    vi.mocked(api.pollFeishuSetup).mockRejectedValue(new Error('configuration temporarily unavailable'))
+    const wrapper = await opened()
+    await wrapper.get('button').trigger('click'); await flushPromises()
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(wrapper.text()).toContain('configuration temporarily unavailable')
+    expect(wrapper.text()).toContain('Company')
+    expect(wrapper.text()).toContain('feishu.retry')
+    wrapper.unmount()
+  })
+})
