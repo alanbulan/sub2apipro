@@ -85,6 +85,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/settings/ServerlessSettings.spec.ts \
 	src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts \
+	src/views/admin/__tests__/MiniMaxH3VideoPricing.spec.ts \
 	src/views/admin/__tests__/HarvestFlowView.spec.ts \
 	src/views/admin/settings/MihomoSettings.spec.ts \
 	src/views/admin/settings/MihomoCountryFilter.spec.ts \
