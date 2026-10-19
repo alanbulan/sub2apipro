@@ -27,5 +27,5 @@ export async function startFeishuSetup(): Promise<FeishuSetup> {
   return (await apiClient.post<FeishuSetup>(`${base}/setup/start`, { site_origin: window.location.origin })).data
 }
 export async function pollFeishuSetup(id: string): Promise<FeishuSetup> {
-  return (await apiClient.post<FeishuSetup>(`${base}/setup/${encodeURIComponent(id)}/poll`)).data
+  return (await apiClient.post<FeishuSetup>(`${base}/setup/${encodeURIComponent(id)}/poll`, undefined, { timeout: 100000 })).data
 }

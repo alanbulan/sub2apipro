@@ -74,7 +74,7 @@ func newFeishuSetupTest(t *testing.T) (*FeishuSetupService, *feishuMemoryStore, 
 		case "/open-apis/auth/v3/tenant_access_token/internal":
 			body = `{"code":0,"tenant_access_token":"tenant-token"}`
 		case "/open-apis/tenant/v2/tenant/query":
-			body = `{"code":0,"data":{"tenant":{"tenant_key":"company_1","name":"Company"}}}`
+			body = `{"code":0,"data":{"tenant":{"tenant_key":"company_1","name":"Company","tenant_tag":0}}}`
 		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 	})}}

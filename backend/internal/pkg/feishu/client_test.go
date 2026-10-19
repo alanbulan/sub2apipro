@@ -151,3 +151,27 @@ func TestRegistrationRejectsForeignVerificationHostsAndLark(t *testing.T) {
 	_, err := api.PollRegistration(context.Background(), "device")
 	require.Error(t, err)
 }
+
+func TestTenantQueryRequiresEnterpriseAndNeverUsesDisplayID(t *testing.T) {
+	for _, body := range []string{`{"code":0,"data":{"tenant":{"display_id":"F123","tenant_tag":0}}}`, `{"code":0,"data":{"tenant":{"tenant_key":"personal","tenant_tag":2}}}`, `{"code":0,"data":{"tenant":{"tenant_key":"unknown"}}}`} {
+		api := testClient(func(*http.Request) string { return body })
+		_, err := api.GetTenant(context.Background(), "token")
+		require.Error(t, err)
+	}
+	api := testClient(func(*http.Request) string {
+		return `{"code":0,"data":{"tenant":{"display_id":"F123","tenant_key":"company","tenant_tag":0}}}`
+	})
+	tenant, err := api.GetTenant(context.Background(), "token")
+	require.NoError(t, err)
+	require.Equal(t, "company", tenant.Key)
+}
+func TestDevicePollingHandlesProtocolPendingOverHTTP400(t *testing.T) {
+	for _, code := range []string{"authorization_pending", "slow_down"} {
+		api := &Client{HTTP: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(`{"error":"` + code + `"}`)), Header: make(http.Header)}, nil
+		})}}
+		result, err := api.PollRegistration(context.Background(), "device")
+		require.NoError(t, err)
+		require.Equal(t, code, result.Error)
+	}
+}

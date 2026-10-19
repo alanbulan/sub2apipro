@@ -82,6 +82,7 @@ export interface User {
   identity_bindings?: Partial<Record<UserAuthProvider, boolean | UserAuthBindingStatus>>
   email_bound?: boolean
   linuxdo_bound?: boolean
+  feishu_bound?: boolean
   oidc_bound?: boolean
   wechat_bound?: boolean
   role: 'admin' | 'user' | 'observer' // User role for authorization

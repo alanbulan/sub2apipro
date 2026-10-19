@@ -45,8 +45,8 @@ func TestLatestAuthProviderConstraintsPreserveFeishu(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sql.Write(raw)
-			sql.WriteString("\n")
+			_, _ = sql.Write(raw)
+			_, _ = sql.WriteString("\n")
 		}
 	}
 	for _, name := range []string{"users_signup_source_check", "auth_identities_provider_type_check", "auth_identity_channels_provider_type_check", "pending_auth_sessions_provider_type_check", "user_provider_default_grants_provider_type_check"} {

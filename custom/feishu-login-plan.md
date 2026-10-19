@@ -47,7 +47,7 @@
 当前 v3 confidential client 通过 client_secret 换码；官方授权文档对 PKCE 指向历史 v2
 接口，因此本实现不混用 v3 与未经确认的 PKCE 参数。
 
-tenant_key 来自企业查询 API，不能把企业 display_id 当成 tenant_key。
+tenant_key 来自企业查询 API，不能把企业 display_id 当成 tenant_key；只接受 tenant_tag=0 的企业/团队版，拒绝个人版。
 用户 user_info 每次必须成功且包含 open_id、tenant_key，离职、冻结、缺字段、其他企业均拒绝。
 
 官方依据：

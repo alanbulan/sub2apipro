@@ -246,6 +246,7 @@ func (c *Client) TenantToken(ctx context.Context, appID, secret string) (string,
 type Tenant struct {
 	Key  string `json:"tenant_key"`
 	Name string `json:"name"`
+	Tag  *int   `json:"tenant_tag"`
 }
 
 func (c *Client) GetTenant(ctx context.Context, token string) (*Tenant, error) {
@@ -257,8 +258,11 @@ func (c *Client) GetTenant(ctx context.Context, token string) (*Tenant, error) {
 	if err := c.request(ctx, "tenant_info", http.MethodGet, APIURL+"/tenant/v2/tenant/query", token, nil, "", &out); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(out.Data.Tenant.Key) == "" {
+	if strings.TrimSpace(out.Data.Tenant.Key) == "" || out.Data.Tenant.Tag == nil {
 		return nil, &Error{"tenant_info", "missing_tenant"}
+	}
+	if *out.Data.Tenant.Tag != 0 {
+		return nil, &Error{"tenant_info", "enterprise_tenant_required"}
 	}
 	return &out.Data.Tenant, nil
 }
