@@ -12,7 +12,7 @@ func TestFeishuProviderMigrationExtendsEveryConstraint(t *testing.T) {
 	}
 	sql := string(raw)
 	for _, table := range []string{"users", "auth_identities", "auth_identity_channels", "pending_auth_sessions", "user_provider_default_grants"} {
-		start := strings.Index(sql, "ALTER TABLE "+table+" ")
+		start := strings.Index(sql, "ALTER TABLE "+table)
 		if start < 0 {
 			t.Fatalf("missing table %s", table)
 		}
