@@ -39,3 +39,10 @@ func RegistrationIP(ctx context.Context) (string, bool) {
 	key, enabled := ctx.Value(registrationIPKey{}).(string)
 	return key, enabled
 }
+
+// WithoutRegistrationIP exempts trusted enterprise provisioning from public
+// signup accounting. Call only after verifying the configured tenant membership;
+// request rate limits and credential abuse checks remain in effect.
+func WithoutRegistrationIP(ctx context.Context) context.Context {
+	return context.WithValue(ctx, registrationIPKey{}, struct{}{})
+}

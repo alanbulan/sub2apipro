@@ -215,6 +215,9 @@ const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
 // DingTalkConnectSyntheticEmailDomain 是 DingTalk Connect 用户的合成邮箱后缀（RFC 保留域名）。
 const DingTalkConnectSyntheticEmailDomain = "@dingtalk-connect.invalid"
 
+// FeishuConnectSyntheticEmailDomain is an internal identifier, never a verified email.
+const FeishuConnectSyntheticEmailDomain = "@feishu-connect.invalid"
+
 // Setting keys
 const (
 	// 注册设置

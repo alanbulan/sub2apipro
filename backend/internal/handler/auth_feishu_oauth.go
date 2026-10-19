@@ -132,19 +132,12 @@ func (h *AuthHandler) FeishuOAuthCallback(c *gin.Context) {
 		}
 		target = &uid
 	} else {
-		user, err := h.findOAuthIdentityUser(c.Request.Context(), identity)
+		user, err := h.authService.EnsureFeishuEnterpriseUser(c.Request.Context(), cfg, info)
 		if err != nil {
-			fail("session_error", "Failed to resolve Feishu identity")
+			fail("account_unavailable", "Failed to sign in or create the enterprise account; contact the site administrator")
 			return
 		}
-		if user != nil {
-			target = &user.ID
-		} else {
-			completion["step"] = oauthPendingChoiceStep
-			completion["create_account_allowed"] = h.authService.IsRegistrationEnabled(c.Request.Context())
-			completion["force_email_on_signup"] = true
-			completion["email_binding_required"] = true
-		}
+		target = &user.ID
 	}
 	claims := map[string]any{"app_id": cfg.AppID, "tenant_key": cfg.TenantKey, "config_fingerprint": cfg.Fingerprint(), "suggested_display_name": info.Name, "suggested_avatar_url": info.AvatarURL}
 	if err = h.createOAuthPendingSession(c, oauthPendingSessionPayload{Intent: intent, Identity: identity, TargetUserID: target, RedirectTo: redirect, BrowserSessionKey: browser, UpstreamIdentityClaims: claims, CompletionResponse: completion}); err != nil {

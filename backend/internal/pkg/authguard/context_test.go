@@ -27,3 +27,11 @@ func TestRegistrationOriginNormalization(t *testing.T) {
 	require.True(t, enabled)
 	require.Equal(t, key, stored)
 }
+
+func TestEnterpriseProvisioningDoesNotConsumePublicSignupQuota(t *testing.T) {
+	ctx := WithRegistrationIP(context.Background(), "192.0.2.1")
+	_, enabled := RegistrationIP(WithoutRegistrationIP(ctx))
+	require.False(t, enabled)
+	_, enabled = RegistrationIP(ctx)
+	require.True(t, enabled, "the parent public signup context must stay protected")
+}

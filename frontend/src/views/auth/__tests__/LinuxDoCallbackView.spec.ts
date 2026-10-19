@@ -96,6 +96,29 @@ describe('LinuxDoCallbackView', () => {
     sessionStorage.clear()
   })
 
+  it('signs a newly provisioned Feishu employee in without an account or profile form', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      access_token: 'employee-access-token',
+      refresh_token: 'employee-refresh-token',
+      expires_in: 3600,
+      redirect: '/dashboard',
+      suggested_display_name: '员工张三',
+      suggested_avatar_url: 'https://example.com/avatar.png'
+    })
+    setToken.mockResolvedValue({})
+    const wrapper = mount(LinuxDoCallbackView, {
+      props: { provider: 'feishu' },
+      global: { stubs: { AuthLayout: { template: '<div><slot /></div>' }, RouterLink: true } }
+    })
+    await flushPromises()
+    expect(exchangePendingOAuthCompletion).toHaveBeenCalledTimes(1)
+    expect(setToken).toHaveBeenCalledWith('employee-access-token')
+    expect(replace).toHaveBeenCalledWith('/dashboard')
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(completeLinuxDoOAuthRegistration).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('uses Feishu pending identity without accepting legacy token fragments', async () => {
     window.location.hash = '#access_token=untrusted-fragment'
     exchangePendingOAuthCompletion.mockResolvedValue({ step: 'choose_account_action_required', create_account_allowed: false })

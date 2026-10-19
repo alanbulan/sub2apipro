@@ -124,6 +124,11 @@ Wire providers, schema validators, public settings, profile binding and completi
 UI must continue accepting upstream changes while retaining Feishu integration.
 Preserve tenant isolation, app-scoped open_id identity, no email auto-merge, TOTP,
 pending-config validation, encrypted QR credentials and server-side polling limits.
+Preserve automatic ordinary-user provisioning for verified enterprise members,
+initial Feishu name/avatar, atomic identity creation and once-only signup defaults.
+Exclude Feishu synthetic addresses from email authentication. The public signup/IP
+quota exemption applies only after enterprise membership verification; retain abuse
+checks, backend mode, disabled-account checks and all other providers' protections.
 Keep the new SQL migration immutable and the Feishu checks in GitHub Actions;
 never run builds/tests locally on the sync host.
 

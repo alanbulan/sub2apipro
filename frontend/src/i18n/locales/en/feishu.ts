@@ -1,7 +1,7 @@
 export default {
   title: 'Feishu enterprise login',
   description: 'Scan to create an app, obtain credentials, identify your enterprise and configure the login callback.',
-  tenantOnly: 'Only members of this Feishu enterprise can sign in. First-time users can bind an existing account or verify their email and register under this site’s rules.',
+  tenantOnly: 'Only members of this Feishu enterprise can sign in. New employees automatically receive a regular account using their Feishu name and avatar, with the site’s default new-user benefits. No email or invitation is needed, even when public registration is closed. Existing users can sign in to their original account and bind Feishu in profile settings to keep using it.',
   enterprise: 'Enterprise',
   callback: 'Login callback URL',
   scanSetup: 'Configure Feishu by scanning',
