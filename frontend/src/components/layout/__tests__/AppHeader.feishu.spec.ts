@@ -47,6 +47,7 @@ async function mountHeader(overrides: Partial<User> = {}) {
     global: {
       plugins: [router, i18n],
       stubs: {
+        transition: true,
         AnnouncementBell: true,
         LocaleSwitcher: true,
         ThemeSwitcher: true,
@@ -77,6 +78,7 @@ describe('AppHeader account identity', () => {
     expect(wrapper.html()).not.toContain('feishu-connect.invalid')
     expect(useAuthStore().user?.email).toBe(internalEmail)
     await trigger.trigger('keydown', { key: 'Escape' })
+    expect(trigger.attributes('aria-expanded')).toBe('false')
     expect(wrapper.find('#header-user-menu').exists()).toBe(false)
   })
 
