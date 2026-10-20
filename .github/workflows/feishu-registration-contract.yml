@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - 'backend/internal/pkg/feishu/**'
+      - 'backend/internal/**/*feishu*.go'
       - '.github/workflows/feishu-registration-contract.yml'
   pull_request:
     paths:
       - 'backend/internal/pkg/feishu/**'
+      - 'backend/internal/**/*feishu*.go'
       - '.github/workflows/feishu-registration-contract.yml'
   workflow_dispatch:
 

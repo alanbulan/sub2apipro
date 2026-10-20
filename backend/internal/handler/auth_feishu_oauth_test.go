@@ -18,9 +18,9 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/authguard"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/feishu"
-	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -29,10 +29,20 @@ import (
 type feishuHandlerTransport func(*http.Request) (*http.Response, error)
 
 func (r *oauthPendingFlowUserRepo) FillFeishuContactEmail(ctx context.Context, id int64, email string) (bool, error) {
-	guard := repository.NewUserRepository(r.client, nil).(interface {
-		FillFeishuContactEmail(context.Context, int64, string) (bool, error)
-	})
-	return guard.FillFeishuContactEmail(ctx, id, email)
+	tx := dbent.TxFromContext(ctx)
+	if tx == nil {
+		return false, errors.New("contact import requires a transaction")
+	}
+	client := tx.Client()
+	occupied, err := client.User.Query().Where(dbuser.EmailEQ(email), dbuser.IDNEQ(id)).Exist(ctx)
+	if err != nil {
+		return false, err
+	}
+	if occupied {
+		return false, service.ErrEmailExists
+	}
+	count, err := client.User.Update().Where(dbuser.IDEQ(id), dbuser.SignupSourceEQ("feishu"), dbuser.EmailHasSuffix(service.FeishuConnectSyntheticEmailDomain)).SetEmail(email).Save(ctx)
+	return count > 0, err
 }
 
 func (f feishuHandlerTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

@@ -14,7 +14,7 @@ import (
 func (r *userRepository) FillFeishuContactEmail(ctx context.Context, userID int64, email string) (bool, error) {
 	tx := dbent.TxFromContext(ctx)
 	if tx == nil {
-		return false, fmt.Errorf("Feishu contact import requires a transaction")
+		return false, fmt.Errorf("feishu contact import requires a transaction")
 	}
 	client := tx.Client()
 	release, err := lockRepositoryScopedKeys(ctx, client, txAwareSQLExecutor(ctx, r.sql, r.client), normalizedEmailUniquenessLockKey(email), emailAliasUniquenessLockKey(email))
