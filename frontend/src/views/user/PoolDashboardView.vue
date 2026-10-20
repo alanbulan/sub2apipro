@@ -248,6 +248,10 @@ onUnmounted(() => {
   font-size: 0.875rem;
   padding: 0.5rem 0.75rem;
 }
+.pool-actions :deep(.app-theme-menu-surface) {
+  left: 0;
+  right: auto;
+}
 .pool-pagination :deep(.sm\:flex) {
   flex-wrap: wrap;
   gap: 0.75rem;
