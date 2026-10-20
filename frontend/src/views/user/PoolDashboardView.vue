@@ -243,6 +243,9 @@ onUnmounted(() => {
 .pool-account-grid {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
 }
+.pool-screen :deep(.select-dropdown-portal) {
+  margin: 0;
+}
 .pool-actions :deep(.app-theme-control) {
   min-height: 2.5rem;
   font-size: 0.875rem;
