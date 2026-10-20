@@ -351,6 +351,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.GET("/:id/rpm-status", h.Admin.User.GetUserRPMStatus)
 		users.POST("/batch-concurrency", h.Admin.User.BatchUpdateConcurrency)
 		users.POST("/batch-limits", h.Admin.User.BatchUpdateLimits)
+		users.POST("/batch-recharge", h.Admin.User.BatchRecharge)
 		users.GET("/:id/platform-quotas", h.Admin.User.GetUserPlatformQuotas)
 		users.PUT("/:id/platform-quotas", h.Admin.User.UpdateUserPlatformQuotas)
 		users.POST("/:id/platform-quotas/reset", h.Admin.User.ResetUserPlatformQuotaWindow)
@@ -1123,6 +1124,8 @@ func channelMonitorModeGuard(settingService *service.SettingService, allowed fun
 }
 
 func registerFeishuSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUp middleware.StepUpAuthMiddleware) {
+	admin.GET("/users/feishu-sync", h.Admin.Setting.GetFeishuDirectorySync)
+	admin.POST("/users/feishu-sync", gin.HandlerFunc(stepUp), h.Admin.Setting.StartFeishuDirectorySync)
 	settings := admin.Group("/settings/feishu")
 	settings.GET("", h.Admin.Setting.GetFeishuSettings)
 	settings.PUT("", gin.HandlerFunc(stepUp), h.Admin.Setting.UpdateFeishuSettings)

@@ -52,6 +52,7 @@ func firstNonEmpty(values ...string) string {
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	feishuSetup              *service.FeishuSetupService
+	feishuDirectory          *service.FeishuDirectoryService
 	settingService           *service.SettingService
 	emailService             *service.EmailService
 	turnstileService         *service.TurnstileService

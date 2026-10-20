@@ -243,6 +243,17 @@
               </button>
             </div>
 
+            <FeishuDirectorySync @synced="loadUsers" />
+
+            <!-- Create User Button (full width on mobile, auto width on desktop) -->
+            <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
+              <Icon name="plus" size="md" class="mr-2" />
+              {{ t('admin.users.createUser') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="selectedCount > 0" class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-dark-700">
+          <button class="btn btn-primary" data-test="bulk-recharge-users" @click="showBulkRechargeModal = true">{{ t('admin.users.bulkRecharge.action') }} ({{ selectedCount }})</button>
             <button
               v-if="selectedCount > 0"
               class="btn btn-secondary flex-1 md:flex-initial"
@@ -264,12 +275,6 @@
               {{ t('admin.users.bulkDelete.action', { count: selectedCount }) }}
             </button>
 
-            <!-- Create User Button (full width on mobile, auto width on desktop) -->
-            <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
-              <Icon name="plus" size="md" class="mr-2" />
-              {{ t('admin.users.createUser') }}
-            </button>
-          </div>
         </div>
       </template>
 
@@ -291,16 +296,13 @@
           @sort="handleSort"
           @update:selected-keys="handleSelectedKeysUpdate"
         >
-          <template #cell-email="{ value }">
-            <div class="flex items-center gap-2">
-              <div
-                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
-              >
-                <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
-                  {{ value.charAt(0).toUpperCase() }}
-                </span>
+          <template #cell-email="{ value, row }">
+            <div class="flex min-w-0 items-center gap-2">
+              <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
+                <span class="text-sm font-medium text-primary-700 dark:text-primary-300">{{ (row.username || value).charAt(0).toUpperCase() }}</span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span class="block max-w-[220px] truncate font-medium text-gray-900 dark:text-white" :title="value">{{ shortUserEmail(value) }}</span>
+              <button class="shrink-0 text-gray-400 hover:text-primary-500" :aria-label="t('common.copy')" @click="copyEmail(value)"><Icon name="copy" size="sm" /></button>
             </div>
           </template>
 
@@ -771,6 +773,7 @@
     />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
+    <BulkRechargeUserModal :show="showBulkRechargeModal" :selected-ids="selectedIds" @close="showBulkRechargeModal = false" @success="handleBulkLimitsSuccess" />
     <BulkEditUserModal
       :show="showBulkEditModal"
       :selected-ids="selectedIds"
@@ -800,7 +803,14 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
+import FeishuDirectorySync from '@/components/admin/user/FeishuDirectorySync.vue'
+import BulkRechargeUserModal from '@/components/admin/user/BulkRechargeUserModal.vue'
+import { shortUserEmail } from '@/utils/userEmail'
 
+async function copyEmail(email: string) {
+  try { await navigator.clipboard.writeText(email); appStore.showSuccess(t('common.copied')) }
+  catch { appStore.showError(t('common.error')) }
+}
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
@@ -1328,7 +1338,7 @@ const handleSelectedKeysUpdate = (keys: Array<string | number>) => {
 }
 
 const getUserSelectionLabel = (user: AdminUser) =>
-  t('admin.users.bulkLimits.selectUser', { email: user.email })
+  t('admin.users.bulkLimits.selectUser', { email: user.username || shortUserEmail(user.email) })
 
 // User attribute definitions and values
 const attributeDefinitions = ref<UserAttributeDefinition[]>([])
@@ -1343,6 +1353,7 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
+const showBulkRechargeModal = ref(false)
 const showDeleteDialog = ref(false)
 const bulkDeleteIds = ref<number[]>([])
 const bulkDeleting = ref(false)

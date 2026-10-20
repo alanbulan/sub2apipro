@@ -239,6 +239,9 @@ func ProvideHandlers(
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
+	if adminHandlers != nil && adminHandlers.Setting != nil && authHandler != nil {
+		adminHandlers.Setting.SetFeishuDirectoryAuth(authHandler.authService)
+	}
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,

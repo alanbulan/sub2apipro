@@ -494,6 +494,39 @@ export default {
 
     // Users Management
     users: {
+      bulkRecharge: {
+  "title": "批量充值",
+  "action": "批量充值",
+  "count": "已选择 {count} 个用户",
+  "amount": "每人充值金额（$）",
+  "total": "本次充值总额：${total}",
+  "hint": "所有选中用户使用同一充值金额；余额和充值记录同时保存，失败时整批撤销。",
+  "pending": "上次结果尚未确认。重试将查询同一笔充值，请勿另外重复充值。",
+  "confirm": "为 {count} 个用户每人充值 ${amount}，合计 ${total}？",
+  "success": "已为 {count} 个用户充值",
+  "failed": "批量充值失败，请重试同一笔操作",
+  "sessionRequired": "请重新登录后充值"
+},
+      feishuSync: {
+  "action": "同步飞书用户",
+  "running": "同步中…",
+  "retryStatus": "读取进度失败，点击重试",
+  "confirm": "同步当前飞书企业的在职成员？将自动创建普通用户，补齐姓名、头像及可读取的邮箱；已有余额和权限保留。飞书管理员可能需要在官方页面审批通讯录权限。",
+  "preparing": "正在检查飞书权限…",
+  "reading": "正在读取完整企业通讯录…",
+  "syncing": "同步进度：{processed}/{total}",
+  "succeeded": "完成：新建 {created}，更新 {updated}，跳过 {skipped}",
+  "partial": "部分完成：新建 {created}，更新 {updated}，失败 {failed}，可重新同步",
+  "failed": "同步未完成。",
+  "approval_required": "等待飞书管理员授权。",
+  "errors": {
+    "permission_required": "请在飞书开发者后台批准通讯录读取权限和全员通讯录范围，再重试。",
+    "expired": "任务超时或服务已重启，可重新同步。",
+    "config_changed": "应用配置已变更，请重新同步。",
+    "upstream_error": "飞书接口暂不可用，请稍后重试。",
+    "service_error": "服务暂不可用，请稍后重试。"
+  }
+},
       title: '用户管理',
       description: '管理用户账户和权限',
       createUser: '创建用户',

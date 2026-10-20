@@ -22,18 +22,23 @@ import (
 // Enterprise membership authorizes provisioning independently of public signup.
 // Never match accounts by provider email or display name: neither proves ownership.
 func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *FeishuConnectSettings, info *feishu.UserInfo) (*User, error) {
+	user, _, err := s.ensureFeishuEnterpriseUser(ctx, cfg, info, false)
+	return user, err
+}
+
+func (s *AuthService) ensureFeishuEnterpriseUser(ctx context.Context, cfg *FeishuConnectSettings, info *feishu.UserInfo, synchronizeProfile bool) (*User, bool, error) {
 	if s == nil || s.userRepo == nil || s.entClient == nil || s.settingService == nil {
-		return nil, ErrServiceUnavailable
+		return nil, false, ErrServiceUnavailable
 	}
 	current, err := s.settingService.GetFeishuOAuthConfig(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if cfg == nil || cfg.Fingerprint() != current.Fingerprint() {
-		return nil, infraerrors.BadRequest("FEISHU_CONFIG_CHANGED", "Feishu configuration changed; start sign-in again")
+		return nil, false, infraerrors.BadRequest("FEISHU_CONFIG_CHANGED", "Feishu configuration changed; start sign-in again")
 	}
 	if info == nil || info.TenantKey != current.TenantKey || strings.TrimSpace(info.OpenID) == "" {
-		return nil, infraerrors.Forbidden("FEISHU_TENANT_MISMATCH", "Only verified members of the configured Feishu enterprise can sign in")
+		return nil, false, infraerrors.Forbidden("FEISHU_TENANT_MISMATCH", "Only verified members of the configured Feishu enterprise can sign in")
 	}
 	providerKey := current.IdentityKey()
 	grantPlan := s.resolveSignupGrantPlan(ctx, "feishu")
@@ -42,13 +47,13 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 	// must not rely on the process-wide backend-mode fallback cache.
 	settings, err := s.settingService.GetPublicSettings(ctx)
 	if err != nil || settings == nil {
-		return nil, ErrServiceUnavailable
+		return nil, false, ErrServiceUnavailable
 	}
 	backendMode := settings.BackendModeEnabled
 
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	// Keep the request's abuse/rate checks, but do not count verified employees
@@ -56,7 +61,7 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 	txCtx := dbent.NewTxContext(authguard.WithoutRegistrationIP(ctx), tx)
 	release, err := lockAuthPendingIdentityKeys(txCtx, tx.Client(), "feishu-provision:"+providerKey+":"+info.OpenID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer release()
 	identity, err := tx.Client().AuthIdentity.Query().Where(
@@ -65,34 +70,61 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 		authidentity.ProviderSubjectEQ(info.OpenID),
 	).Only(txCtx)
 	if err != nil && !dbent.IsNotFound(err) {
-		return nil, err
+		return nil, false, err
 	}
 	if identity != nil {
 		user, err := s.userRepo.GetByID(txCtx, identity.UserID)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if !user.IsActive() {
-			return nil, ErrUserNotActive
+			return nil, false, ErrUserNotActive
 		}
 		if err := s.syncFeishuContactEmail(txCtx, user, info); err != nil {
-			return nil, err
+			return nil, false, err
+		}
+		if synchronizeProfile {
+			if user.SignupSource == "feishu" {
+				name := feishuInitialUsername(info.Name, user.Email[:min(12, len(user.Email))])
+				if name != user.Username {
+					user.Username = name
+					if err := s.userRepo.Update(txCtx, user, UserUpdateFields{Username: true}); err != nil {
+						return nil, false, err
+					}
+				}
+				if avatarInput, err := normalizeUserAvatarInput(info.AvatarURL); err == nil && user.AvatarURL != info.AvatarURL {
+					avatar, err := s.userRepo.UpsertUserAvatar(txCtx, user.ID, avatarInput)
+					if err != nil {
+						return nil, false, err
+					}
+					applyUserAvatar(user, avatar)
+				}
+			}
+			metadata := identity.Metadata
+			if metadata == nil {
+				metadata = map[string]any{}
+			}
+			metadata["display_name"] = info.Name
+			metadata["avatar_url"] = info.AvatarURL
+			if _, err := identity.Update().SetMetadata(metadata).Save(txCtx); err != nil {
+				return nil, false, err
+			}
 		}
 		if err := tx.Commit(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return user, nil
+		return user, false, nil
 	}
 	if backendMode {
-		return nil, infraerrors.Forbidden("BACKEND_MODE_ADMIN_ONLY", "Backend mode is active. Only admin or observer login is allowed.")
+		return nil, false, infraerrors.Forbidden("BACKEND_MODE_ADMIN_ONLY", "Backend mode is active. Only admin or observer login is allowed.")
 	}
 	password, err := randomHexString(32)
 	if err != nil {
-		return nil, ErrServiceUnavailable
+		return nil, false, ErrServiceUnavailable
 	}
 	hash, err := s.HashPassword(password)
 	if err != nil {
-		return nil, fmt.Errorf("hash Feishu account password: %w", err)
+		return nil, false, fmt.Errorf("hash Feishu account password: %w", err)
 	}
 	email := feishuSyntheticEmail(providerKey, info.OpenID)
 	name := feishuInitialUsername(info.Name, email[:12])
@@ -102,34 +134,34 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 		Balance: grantPlan.Balance, Concurrency: grantPlan.Concurrency, RPMLimit: defaultRPM,
 	}
 	if err := s.userRepo.Create(txCtx, user); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := s.syncFeishuContactEmail(txCtx, user, info); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if _, err := tx.Client().AuthIdentity.Create().
 		SetUserID(user.ID).SetProviderType("feishu").SetProviderKey(providerKey).
 		SetProviderSubject(info.OpenID).SetVerifiedAt(time.Now().UTC()).
 		SetMetadata(map[string]any{"app_id": current.AppID, "tenant_key": current.TenantKey, "display_name": name, "avatar_url": info.AvatarURL}).
 		Save(txCtx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if avatarInput, err := normalizeUserAvatarInput(info.AvatarURL); err == nil {
 		avatar, err := s.userRepo.UpsertUserAvatar(txCtx, user.ID, avatarInput)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		applyUserAvatar(user, avatar)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	// Defaults run once, only for the transaction that created this identity.
 	s.postAuthUserBootstrap(ctx, user, "feishu", false)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
 	s.bindOAuthAffiliate(ctx, user.ID, "")
-	return user, nil
+	return user, true, nil
 }
 
 // Feishu's email field is an administrator-supplied contact, not proof of

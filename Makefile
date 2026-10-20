@@ -1,6 +1,9 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts \
+	src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts \
+	src/utils/__tests__/userEmail.spec.ts \
 	src/components/settings/FeishuSettings.spec.ts \
 	src/__tests__/rememberMePro.spec.ts \
 	src/__tests__/useAppTheme.spec.ts \

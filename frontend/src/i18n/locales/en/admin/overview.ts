@@ -494,6 +494,39 @@ export default {
 
     // Users
     users: {
+      bulkRecharge: {
+  "title": "Bulk recharge",
+  "action": "Bulk recharge",
+  "count": "{count} users selected",
+  "amount": "Amount per user ($)",
+  "total": "Total recharge: ${total}",
+  "hint": "Credits and ledger entries are saved in one transaction. Any failure rolls back the entire batch.",
+  "pending": "The previous result is unconfirmed. Retry uses the same operation; avoid creating another recharge.",
+  "confirm": "Credit {count} users ${amount} each, ${total} in total?",
+  "success": "Recharged {count} users",
+  "failed": "Recharge failed. Retry the same operation.",
+  "sessionRequired": "Sign in again before recharging"
+},
+      feishuSync: {
+  "action": "Sync Feishu users",
+  "running": "Syncing…",
+  "retryStatus": "Unable to read progress. Retry",
+  "confirm": "Sync active employees from this Feishu enterprise? Create ordinary users and update names, avatars and available emails. Existing balances and roles are preserved. A Feishu administrator may need to approve directory access.",
+  "preparing": "Checking Feishu permissions…",
+  "reading": "Reading the complete enterprise directory…",
+  "syncing": "Progress: {processed}/{total}",
+  "succeeded": "Completed: {created} created, {updated} updated, {skipped} skipped",
+  "partial": "Partially completed: {created} created, {updated} updated, {failed} failed. Sync again to retry.",
+  "failed": "Sync incomplete.",
+  "approval_required": "Awaiting Feishu administrator approval.",
+  "errors": {
+    "permission_required": "Approve read permissions and the full directory range in the Feishu developer console, then retry.",
+    "expired": "Task expired or the service restarted. Sync again.",
+    "config_changed": "App configuration changed. Sync again.",
+    "upstream_error": "Feishu is temporarily unavailable. Retry later.",
+    "service_error": "Service unavailable. Retry later."
+  }
+},
       title: 'User Management',
       description: 'Manage users and their permissions',
       createUser: 'Create User',

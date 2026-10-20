@@ -2,6 +2,7 @@ package admin
 
 import (
 	"errors"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/feishu"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -11,6 +12,25 @@ import (
 
 func (h *SettingHandler) SetFeishuSetupStore(r service.FeishuSetupStore) {
 	h.feishuSetup = service.NewFeishuSetupService(h.settingService, r)
+}
+func (h *SettingHandler) SetFeishuDirectoryAuth(auth *service.AuthService) {
+	h.feishuDirectory = service.NewFeishuDirectoryService(auth, h.feishuSetup)
+}
+func (h *SettingHandler) StartFeishuDirectorySync(c *gin.Context) {
+	job, err := h.feishuDirectory.Start(c.Request.Context())
+	if err != nil {
+		respondFeishuSetupError(c, err)
+		return
+	}
+	response.Success(c, job)
+}
+func (h *SettingHandler) GetFeishuDirectorySync(c *gin.Context) {
+	job, err := h.feishuDirectory.Current(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, job)
 }
 func (h *SettingHandler) GetFeishuSettings(c *gin.Context) {
 	v, err := h.settingService.GetFeishuSettings(c.Request.Context())

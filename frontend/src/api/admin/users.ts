@@ -45,6 +45,13 @@ export interface AdminBoundAuthIdentity {
   channel?: AdminBoundAuthIdentityChannel | null
 }
 
+export interface BatchRechargeRequest { user_ids: number[]; amount: number; notes: string }
+export async function batchRecharge(body: BatchRechargeRequest, key: string): Promise<{ affected: number }> {
+  return (await apiClient.post<{ affected: number }>('/admin/users/batch-recharge', body, {
+    headers: { 'Idempotency-Key': key }, timeout: 70000
+  })).data
+}
+
 export interface BatchUpdateUserLimitsRequest {
   user_ids: number[]
   all?: boolean
@@ -414,6 +421,7 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   batchUpdateLimits,
+  batchRecharge,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,

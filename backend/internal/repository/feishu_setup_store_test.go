@@ -39,3 +39,21 @@ func TestFeishuSetupStoreLockAcrossReplicasAndExpiry(t *testing.T) {
 	_, err = first.Get(ctx, "opaque")
 	require.Error(t, err)
 }
+
+func TestFeishuDirectoryProgressCannotReplaceNewerWorker(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer func() { _ = client.Close() }()
+	store := &feishuSetupStore{redis: client}
+	ctx := context.Background()
+	require.NoError(t, store.Set(ctx, "directory:active", []byte(`{"id":"new","status":"reading"}`), time.Hour))
+	ok, err := store.SaveDirectoryProgress(ctx, "old", []byte(`{"id":"old","status":"succeeded"}`), time.Hour)
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = store.SaveDirectoryProgress(ctx, "new", []byte(`{"id":"new","status":"succeeded"}`), time.Hour)
+	require.NoError(t, err)
+	require.True(t, ok)
+	value, err := store.Get(ctx, "directory:active")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"id":"new","status":"succeeded"}`, string(value))
+}

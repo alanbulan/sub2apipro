@@ -44,3 +44,17 @@ backend/internal/repository/feishu_user_integration_test.go
 backend/internal/repository/feishu_user.go
 backend/internal/repository/feishu_user_test.go
 backend/migrations/feishu_provider_migration_test.go
+
+backend/internal/pkg/feishu/directory.go
+backend/internal/pkg/feishu/directory_test.go
+backend/internal/service/feishu_directory.go
+backend/internal/service/admin_user_recharge.go
+backend/internal/service/admin_user_recharge_test.go
+backend/internal/handler/admin/user_batch_recharge.go
+frontend/src/components/admin/user/FeishuDirectorySync.vue
+frontend/src/components/admin/user/BulkRechargeUserModal.vue
+frontend/src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts
+frontend/src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts
+frontend/src/utils/userEmail.ts
+frontend/src/utils/__tests__/userEmail.spec.ts
+backend/internal/service/feishu_directory_test.go

@@ -32,3 +32,16 @@ export async function startFeishuSetup(): Promise<FeishuSetup> {
 export async function pollFeishuSetup(id: string): Promise<FeishuSetup> {
   return (await apiClient.post<FeishuSetup>(`${base}/setup/${encodeURIComponent(id)}/poll`, undefined, { timeout: 100000 })).data
 }
+
+export interface FeishuDirectoryJob {
+  id: string
+  status: 'preparing' | 'reading' | 'syncing' | 'succeeded' | 'partial' | 'failed' | 'approval_required'
+  total: number; processed: number; created: number; updated: number; skipped: number; failed: number
+  error_code?: string
+}
+export async function getFeishuDirectorySync(): Promise<FeishuDirectoryJob | null> {
+  return (await apiClient.get<FeishuDirectoryJob | null>('/admin/users/feishu-sync')).data
+}
+export async function startFeishuDirectorySync(): Promise<FeishuDirectoryJob> {
+  return (await apiClient.post<FeishuDirectoryJob>('/admin/users/feishu-sync')).data
+}
