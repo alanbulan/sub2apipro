@@ -1,6 +1,9 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/utils/__tests__/embedded-url.spec.ts \
+	src/views/user/__tests__/CustomPageView.spec.ts \
+	src/utils/__tests__/upstreamResponseModel.spec.ts \
 	src/components/common/__tests__/Select.spec.ts \
 	src/views/user/__tests__/PoolDashboardView.spec.ts \
 	src/components/account/__tests__/PoolQuotaCard.spec.ts \
@@ -17,6 +20,10 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/admin/__tests__/modelTrace.spec.ts \
 	src/components/admin/account/__tests__/ModelTracePanel.spec.ts \
 	src/components/admin/account/__tests__/IQTestModal.modelTrace.spec.ts \
+	src/features/security-penalties/__tests__/SecurityRecords.spec.ts \
+	src/views/user/__tests__/ProfileView.spec.ts \
+	src/components/account/__tests__/SIWCAccountSettings.spec.ts \
+	src/features/ip-risk/__tests__/IPRiskSettings.spec.ts \
 	src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts \
 	src/api/__tests__/groupCacheTest.spec.ts \
 	src/views/admin/__tests__/GroupCacheTestView.spec.ts \
@@ -70,6 +77,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/keys.bulkUpdate.spec.ts \
 	src/composables/__tests__/useModelWhitelist.spec.ts \
+	src/components/account/__tests__/UpstreamBillingRateCell.spec.ts \
 	src/components/account/__tests__/OpenAIReferralCell.spec.ts \
 	src/components/account/__tests__/OpenAIReferralCell.transport.spec.ts \
 	src/components/account/__tests__/OpenAIQuotaResetCell.spark_shadow.spec.ts \
