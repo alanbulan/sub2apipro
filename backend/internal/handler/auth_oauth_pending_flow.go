@@ -113,11 +113,15 @@ func generateOAuthPendingBrowserSession() (string, error) {
 }
 
 func setOAuthPendingBrowserCookie(c *gin.Context, sessionKey string, secure bool) {
+	setOAuthPendingBrowserCookieWithMaxAge(c, sessionKey, secure, oauthPendingCookieMaxAgeSec)
+}
+
+func setOAuthPendingBrowserCookieWithMaxAge(c *gin.Context, sessionKey string, secure bool, maxAgeSec int) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     oauthPendingBrowserCookieName,
 		Value:    encodeCookieValue(sessionKey),
 		Path:     oauthPendingBrowserCookiePath,
-		MaxAge:   oauthPendingCookieMaxAgeSec,
+		MaxAge:   maxAgeSec,
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,

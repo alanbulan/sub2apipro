@@ -132,6 +132,33 @@ describe('LinuxDoCallbackView', () => {
     wrapper.unmount()
   })
 
+  it('explains an expired Feishu login and offers a return to the login page', async () => {
+    window.location.hash = '#error=invalid_state&error_message=Invalid+OAuth+state%3B+start+again'
+    const wrapper = mount(LinuxDoCallbackView, {
+      props: { provider: 'feishu' },
+      global: { stubs: { AuthLayout: { template: '<div><slot /></div>' }, RouterLink: { template: '<a href="/login"><slot /></a>' } } }
+    })
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('auth.feishu.invalidState')
+    expect(wrapper.get('a[href="/login"]').text()).toBe('auth.feishu.backToLogin')
+    expect(wrapper.text()).not.toContain('Invalid OAuth state%3B')
+    expect(exchangePendingOAuthCompletion).not.toHaveBeenCalled()
+    expect(setToken).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('displays callback error text after a single fragment decoding pass', async () => {
+    window.location.hash = '#error=access_denied&error_message=Feishu+authorization%3B+please+retry'
+    const wrapper = mount(LinuxDoCallbackView, {
+      props: { provider: 'feishu' },
+      global: { stubs: { AuthLayout: { template: '<div><slot /></div>' }, RouterLink: true } }
+    })
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('Feishu authorization; please retry')
+    expect(exchangePendingOAuthCompletion).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('accepts the legacy fragment token success callback without pending-session exchange', async () => {
     window.location.hash =
       '#access_token=legacy-access-token&refresh_token=legacy-refresh-token&expires_in=3600&token_type=Bearer&redirect=%2Flegacy-dashboard'

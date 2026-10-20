@@ -34,6 +34,30 @@ func TestSanitizeFrontendRedirectPath(t *testing.T) {
 	require.Equal(t, "", sanitizeFrontendRedirectPath(long))
 }
 
+func TestOAuthFragmentMatchesBrowserDecoding(t *testing.T) {
+	values := url.Values{
+		"error":         {"invalid_state"},
+		"error_message": {"Invalid OAuth state; start again"},
+		"description":   {"飞书姓名 A+B & 100% #员工"},
+		"redirect":      {"/dashboard?tab=usage&name=A%2BB"},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/callback", nil)
+	redirectWithFragment(c, "/auth/feishu/callback?view=login#old-fragment", values)
+	require.Equal(t, http.StatusFound, rec.Code)
+	location := rec.Header().Get("Location")
+	// URLSearchParams(window.location.hash.slice(1)) decodes exactly once.
+	_, encodedFragment, ok := strings.Cut(location, "#")
+	require.True(t, ok)
+	decoded, err := url.ParseQuery(encodedFragment)
+	require.NoError(t, err)
+	require.Equal(t, values, decoded)
+	require.NotContains(t, location, "state%253B")
+	require.True(t, strings.HasPrefix(location, "/auth/feishu/callback?view=login#"))
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+}
+
 func TestBuildBearerAuthorization(t *testing.T) {
 	auth, err := buildBearerAuthorization("", "token123")
 	require.NoError(t, err)

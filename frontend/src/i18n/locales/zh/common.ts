@@ -401,6 +401,7 @@ export default {
       completeRegistrationFailed: '注册失败，请检查邀请码后重试。'
     },
     feishu: {
+      invalidState: '登录会话已过期或未匹配。请返回登录页，在同一浏览器重新点击飞书登录并完成授权。',
       signIn: '使用 飞书 登录',
       orContinue: '或使用邮箱密码继续',
       callbackTitle: '正在完成登录',

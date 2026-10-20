@@ -402,6 +402,7 @@ export default {
       completeRegistrationFailed: 'Registration failed. Please check your invitation code and try again.'
     },
     feishu: {
+      invalidState: 'The login session expired or did not match. Return to the login page and sign in with Feishu again in the same browser.',
       signIn: 'Continue with Feishu',
       orContinue: 'or continue with email',
       callbackTitle: 'Signing you in',

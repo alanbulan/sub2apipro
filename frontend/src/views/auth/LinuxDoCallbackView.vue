@@ -10,6 +10,13 @@
         </p>
       </div>
 
+      <div v-if="errorMessage" role="alert" class="space-y-4">
+        <p class="text-sm text-red-600 dark:text-red-400">{{ errorMessage }}</p>
+        <RouterLink to="/login" class="btn btn-primary block w-full text-center">
+          {{ t(authKey('backToLogin')) }}
+        </RouterLink>
+      </div>
+
       <transition name="fade">
         <div
           v-if="
@@ -783,7 +790,9 @@ onMounted(async () => {
     }
 
     if (error) {
-      errorMessage.value = errorDesc || error
+      errorMessage.value = props.provider === 'feishu' && error === 'invalid_state'
+        ? t('auth.feishu.invalidState')
+        : errorDesc || error
       isProcessing.value = false
       return
     }

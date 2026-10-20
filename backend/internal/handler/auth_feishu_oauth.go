@@ -15,7 +15,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const feishuCookiePath = "/api/v1/auth/oauth/feishu"
+const (
+	feishuCookiePath = "/api/v1/auth/oauth/feishu"
+	// Keep the entire browser-bound authorization context alive while employees
+	// complete Feishu sign-in or approval, before creating a short pending session.
+	feishuAuthorizeMaxAgeSec = 30 * 60
+)
 
 func feishuCookie(c *gin.Context, name, value string, age int) {
 	http.SetCookie(c.Writer, &http.Cookie{Name: "feishu_oauth_" + name, Value: encodeCookieValue(value), Path: feishuCookiePath, MaxAge: age, HttpOnly: true, Secure: isRequestHTTPS(c), SameSite: http.SameSiteLaxMode})
@@ -25,6 +30,8 @@ func readFeishuCookie(c *gin.Context, name string) string {
 	return v
 }
 func (h *AuthHandler) FeishuOAuthStart(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	if !h.requireActionCaptchaForOAuthLoginStart(c) {
 		return
 	}
@@ -57,9 +64,9 @@ func (h *AuthHandler) FeishuOAuthStart(c *gin.Context) {
 		}
 	}
 	for k, v := range map[string]string{"state": state, "config": cfg.Fingerprint(), "redirect": redirect, "intent": intent, "bind_user": bind} {
-		feishuCookie(c, k, v, 600)
+		feishuCookie(c, k, v, feishuAuthorizeMaxAgeSec)
 	}
-	setOAuthPendingBrowserCookie(c, browser, isRequestHTTPS(c))
+	setOAuthPendingBrowserCookieWithMaxAge(c, browser, isRequestHTTPS(c), feishuAuthorizeMaxAgeSec)
 	clearOAuthPendingSessionCookie(c, isRequestHTTPS(c))
 	captureOAuthPromoCode(c, isRequestHTTPS(c))
 	respondOAuthStart(c, feishu.BuildAuthorizeURL(cfg.AppID, cfg.RedirectURL, state))
@@ -68,17 +75,18 @@ func (h *AuthHandler) FeishuOAuthCallback(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.Header("Referrer-Policy", "no-referrer")
 	fail := func(code, message string) { redirectOAuthError(c, feishu.FrontendCallbackPath, code, message, "") }
+	expected := readFeishuCookie(c, "state")
+	if expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(c.Query("state"))) != 1 {
+		fail("invalid_state", "Invalid OAuth state; start again")
+		return
+	}
+	// A stale or unrelated callback must not clear a newer login attempt.
 	defer func() {
 		for _, name := range []string{"state", "config", "redirect", "intent", "bind_user"} {
 			feishuCookie(c, name, "", -1)
 		}
 		clearOAuthPromoCodeCookie(c, isRequestHTTPS(c))
 	}()
-	expected := readFeishuCookie(c, "state")
-	if expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(c.Query("state"))) != 1 {
-		fail("invalid_state", "Invalid OAuth state; start again")
-		return
-	}
 	if c.Query("error") != "" {
 		fail("access_denied", "Feishu authorization was not completed")
 		return
@@ -144,6 +152,9 @@ func (h *AuthHandler) FeishuOAuthCallback(c *gin.Context) {
 		fail("session_error", "Failed to continue Feishu login")
 		return
 	}
+	// Give completion/TOTP its full pending-session window even when Feishu
+	// authorization finished near the end of the authorization cookie lifetime.
+	setOAuthPendingBrowserCookie(c, browser, isRequestHTTPS(c))
 	redirectToFrontendCallback(c, feishu.FrontendCallbackPath)
 }
 

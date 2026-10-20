@@ -6,11 +6,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"entgo.io/ent"
 
@@ -39,6 +41,7 @@ func feishuTestStart(t *testing.T, h *AuthHandler) []*http.Cookie {
 	h.FeishuOAuthStart(c)
 	require.Equal(t, 302, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "accounts.feishu.cn")
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 	return rec.Result().Cookies()
 }
 func feishuTestCallback(t *testing.T, h *AuthHandler, cookies []*http.Cookie) *httptest.ResponseRecorder {
@@ -51,6 +54,11 @@ func feishuTestCallback(t *testing.T, h *AuthHandler, cookies []*http.Cookie) *h
 			require.NoError(t, err)
 		}
 	}
+	return feishuTestCallbackWithState(t, h, cookies, state)
+}
+
+func feishuTestCallbackWithState(t *testing.T, h *AuthHandler, cookies []*http.Cookie, state string) *httptest.ResponseRecorder {
+	t.Helper()
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest("GET", "https://example.com"+feishu.CallbackPath+"?code=code&state="+url.QueryEscape(state), nil)
@@ -59,6 +67,93 @@ func feishuTestCallback(t *testing.T, h *AuthHandler, cookies []*http.Cookie) *h
 	}
 	h.FeishuOAuthCallback(c)
 	return rec
+}
+
+func TestFeishuAuthorizationSurvivesEmployeeSignInDelay(t *testing.T) {
+	for _, delay := range []time.Duration{11 * time.Minute, 30*time.Minute - 5*time.Second} {
+		t.Run(delay.String(), func(t *testing.T) {
+			h, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{settingValues: feishuTestSettings()})
+			feishuMockMember(h, "company_1")
+			cookies := feishuTestStart(t, h)
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err)
+			startURL, err := url.Parse("https://example.com/api/v1/auth/oauth/feishu/start")
+			require.NoError(t, err)
+			callbackURL, err := url.Parse("https://example.com" + feishu.CallbackPath)
+			require.NoError(t, err)
+			state := ""
+			for _, cookie := range cookies {
+				if cookie.Name == "feishu_oauth_state" {
+					state, err = decodeCookieValue(cookie.Value)
+					require.NoError(t, err)
+				}
+				if cookie.MaxAge > 0 {
+					// Model elapsed time using the actual Set-Cookie lifetime. The
+					// jar also enforces Secure, host and path matching on callback.
+					cookie.Expires = time.Now().Add(time.Duration(cookie.MaxAge)*time.Second - delay)
+					cookie.MaxAge = 0
+				}
+			}
+			jar.SetCookies(startURL, cookies)
+			callback := feishuTestCallbackWithState(t, h, jar.Cookies(callbackURL), state)
+			require.Equal(t, feishu.FrontendCallbackPath, callback.Header().Get("Location"))
+			count, err := client.User.Query().Count(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, 1, count)
+			refreshedBrowser := false
+			for _, cookie := range callback.Result().Cookies() {
+				if cookie.Name == oauthPendingBrowserCookieName {
+					refreshedBrowser = true
+					require.Equal(t, oauthPendingCookieMaxAgeSec, cookie.MaxAge)
+				}
+			}
+			require.True(t, refreshedBrowser, "completion needs a fresh browser-binding lifetime")
+			jar.SetCookies(callbackURL, callback.Result().Cookies())
+			exchangeURL, err := url.Parse("https://example.com/api/v1/auth/oauth/pending/exchange")
+			require.NoError(t, err)
+			exchange := feishuTestExchange(t, h, jar.Cookies(exchangeURL), callback)
+			require.Equal(t, http.StatusOK, exchange.Code, exchange.Body.String())
+			require.Contains(t, exchange.Body.String(), `"access_token"`)
+		})
+	}
+}
+
+func TestFeishuExpiredAuthorizationStillRejectsCallback(t *testing.T) {
+	h, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{settingValues: feishuTestSettings()})
+	feishuMockMember(h, "company_1")
+	cookies := feishuTestStart(t, h)
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	callbackURL, err := url.Parse("https://example.com" + feishu.CallbackPath)
+	require.NoError(t, err)
+	state := ""
+	for _, cookie := range cookies {
+		if cookie.Name == "feishu_oauth_state" {
+			state, err = decodeCookieValue(cookie.Value)
+			require.NoError(t, err)
+		}
+		if cookie.MaxAge > 0 {
+			cookie.Expires = time.Now().Add(time.Duration(cookie.MaxAge)*time.Second - 31*time.Minute)
+			cookie.MaxAge = 0
+		}
+	}
+	jar.SetCookies(callbackURL, cookies)
+	callback := feishuTestCallbackWithState(t, h, jar.Cookies(callbackURL), state)
+	require.Contains(t, callback.Header().Get("Location"), "invalid_state")
+	count, err := client.User.Query().Count(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, count)
+}
+
+func TestFeishuUnmatchedCallbackDoesNotClearCurrentAttempt(t *testing.T) {
+	h, _ := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{settingValues: feishuTestSettings()})
+	feishuMockMember(h, "company_1")
+	cookies := feishuTestStart(t, h)
+	rejected := feishuTestCallbackWithState(t, h, cookies, "previous-attempt-state")
+	require.Contains(t, rejected.Header().Get("Location"), "invalid_state")
+	require.Empty(t, rejected.Result().Cookies())
+	accepted := feishuTestCallback(t, h, cookies)
+	require.Equal(t, feishu.FrontendCallbackPath, accepted.Header().Get("Location"))
 }
 func feishuMockMember(h *AuthHandler, tenant string) {
 	h.feishuClient = &feishu.Client{HTTP: &http.Client{Transport: feishuHandlerTransport(func(r *http.Request) (*http.Response, error) {

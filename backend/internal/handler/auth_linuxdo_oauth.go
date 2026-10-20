@@ -860,10 +860,13 @@ func redirectWithFragment(c *gin.Context, frontendCallback string, fragment url.
 		c.Redirect(http.StatusFound, linuxDoOAuthDefaultRedirectTo)
 		return
 	}
-	u.Fragment = fragment.Encode()
+	// Values.Encode already escapes the fragment parameters. URL.Fragment expects
+	// decoded text and would escape percent signs again (e.g. %3B becomes %253B).
+	u.Fragment = ""
+	u.RawFragment = ""
 	c.Header("Cache-Control", "no-store")
 	c.Header("Pragma", "no-cache")
-	c.Redirect(http.StatusFound, u.String())
+	c.Redirect(http.StatusFound, u.String()+"#"+fragment.Encode())
 }
 
 func firstNonEmpty(values ...string) string {
