@@ -1,26 +1,15 @@
 <template>
   <div class="space-y-4">
     <button type="button" :disabled="disabled" class="btn btn-secondary w-full" @click="startLogin">
-      <svg
+      <img
+        :src="feishuLogo"
         class="icon mr-2"
-        viewBox="0 0 24 24"
-        xmlns="http://www.w3.org/2000/svg"
         width="20"
         height="20"
+        alt=""
         aria-hidden="true"
         style="flex-shrink: 0"
-      >
-        <circle cx="12" cy="12" r="12" fill="#1677FF" />
-        <text
-          x="12"
-          y="17"
-          font-family="sans-serif"
-          font-size="13"
-          font-weight="bold"
-          fill="white"
-          text-anchor="middle"
-        >F</text>
-      </svg>
+      />
       {{ t('auth.feishu.signIn') }}
     </button>
 
@@ -37,6 +26,8 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+// Official asset: https://lf-package-cn.feishucdn.com/obj/feishu-static/lark/open/website/favicon-logo.svg
+import feishuLogo from '@/assets/icons/feishu.svg'
 import type { OAuthLoginStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
