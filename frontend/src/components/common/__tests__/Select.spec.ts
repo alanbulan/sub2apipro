@@ -66,6 +66,25 @@ afterEach(() => {
 })
 
 describe('Select dropdown viewport constraints', () => {
+  it('renders into an explicit container so dropdowns remain visible in fullscreen', async () => {
+    const target = document.createElement('section')
+    document.body.appendChild(target)
+    const wrapper = mount(Select, {
+      props: {
+        modelValue: null,
+        options: [{ value: 'example', label: 'Example' }],
+        teleportTo: target,
+      },
+    })
+    unmountWrapper = () => wrapper.unmount()
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+    expect(target.querySelector('[role="listbox"]')).not.toBeNull()
+    target.querySelector<HTMLElement>('[role="option"]')!.click()
+    await nextTick()
+    expect(wrapper.emitted('update:modelValue')).toEqual([['example']])
+  })
+
   it('preserves the existing 200px minimum width when space is available', async () => {
     setViewportWidth(1024)
     mockTriggerRect(20, 80)

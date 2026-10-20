@@ -1,6 +1,7 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/components/common/__tests__/Select.spec.ts \
 	src/views/user/__tests__/PoolDashboardView.spec.ts \
 	src/components/account/__tests__/PoolQuotaCard.spec.ts \
 	src/api/__tests__/poolDashboard.spec.ts \
