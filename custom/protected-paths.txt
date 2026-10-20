@@ -58,3 +58,17 @@ frontend/src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts
 frontend/src/utils/userEmail.ts
 frontend/src/utils/__tests__/userEmail.spec.ts
 backend/internal/service/feishu_directory_test.go
+
+backend/internal/service/pool_dashboard.go
+backend/internal/service/pool_dashboard_test.go
+backend/internal/handler/admin/account_pool_dashboard.go
+backend/internal/handler/admin/account_pool_dashboard_test.go
+frontend/src/api/poolDashboard.ts
+frontend/src/api/__tests__/poolDashboard.spec.ts
+frontend/src/components/account/PoolQuotaCard.vue
+frontend/src/components/account/__tests__/PoolQuotaCard.spec.ts
+frontend/src/views/user/PoolDashboardView.vue
+frontend/src/views/user/__tests__/PoolDashboardView.spec.ts
+frontend/src/i18n/locales/en/poolDashboard.ts
+frontend/src/i18n/locales/zh/poolDashboard.ts
+docs/user-account-pool.md

@@ -173,6 +173,7 @@ export default {
 
   // Navigation
   nav: {
+    accountPool: 'My account pool',
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',

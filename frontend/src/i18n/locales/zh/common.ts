@@ -173,6 +173,7 @@ export default {
 
   // Navigation
   nav: {
+    accountPool: '我的账号池',
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',

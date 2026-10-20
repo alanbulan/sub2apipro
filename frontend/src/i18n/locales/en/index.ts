@@ -1,3 +1,4 @@
+import poolDashboard from './poolDashboard'
 import feishu from './feishu'
 import priorityScheduling from './priorityScheduling'
 import qualityOps from './qualityOps'
@@ -22,6 +23,7 @@ import requestTiming from './requestTiming'
 import autoConfig from './autoConfig'
 
 export default {
+  poolDashboard,
   feishu,
   autoConfig,
   priorityScheduling,

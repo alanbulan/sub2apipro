@@ -28,6 +28,9 @@ func RegisterUserRoutes(
 		// 用户接口
 		user := authenticated.Group("/user")
 		{
+			if h.Admin != nil && h.Admin.Account != nil {
+				user.GET("/pool-dashboard", h.Admin.Account.SharedPoolDashboard)
+			}
 			user.GET("/profile", h.User.GetProfile)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
