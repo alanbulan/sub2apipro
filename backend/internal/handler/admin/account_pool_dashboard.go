@@ -88,7 +88,7 @@ func (h *AccountHandler) SharedPoolDashboard(c *gin.Context) {
 					}
 				}
 			}
-			entry = poolQuotaCacheEntry{expires: time.Now().Add(30 * time.Second), accounts: service.BuildPoolQuotaAccounts(accounts, parents, time.Now().UTC())}
+			entry = poolQuotaCacheEntry{expires: time.Now().Add(30 * time.Second), accounts: h.accountUsageService.PoolQuotaAccounts(accounts, parents, time.Now().UTC())}
 			h.poolDashboard.groups[group.ID] = entry
 		}
 		// Group DTOs already expose these public labels to the same authorized user.

@@ -72,3 +72,5 @@ frontend/src/views/user/__tests__/PoolDashboardView.spec.ts
 frontend/src/i18n/locales/en/poolDashboard.ts
 frontend/src/i18n/locales/zh/poolDashboard.ts
 docs/user-account-pool.md
+backend/internal/service/pool_quota_usage.go
+backend/internal/service/pool_quota_usage_test.go
