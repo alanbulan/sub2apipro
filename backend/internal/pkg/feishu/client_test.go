@@ -76,11 +76,45 @@ func TestRegistrationUsesMinimalTemplate(t *testing.T) {
 		Preset bool `json:"preset"`
 		Scopes struct {
 			Tenant []string `json:"tenant"`
+			User   []string `json:"user"`
 		} `json:"scopes"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &addons))
 	require.False(t, addons.Preset)
 	require.ElementsMatch(t, []string{"application:application:patch", "tenant:tenant:readonly"}, addons.Scopes.Tenant)
+	require.ElementsMatch(t, []string{"contact:user.email:readonly", "contact:user.employee:readonly"}, addons.Scopes.User)
+}
+
+func TestGrantedEmailScopesExcludePendingAndUnrelatedPermissions(t *testing.T) {
+	api := testClient(func(r *http.Request) string {
+		if r.URL.Path == "/open-apis/auth/v3/tenant_access_token/internal" {
+			return `{"code":0,"tenant_access_token":"tenant-token"}`
+		}
+		require.Equal(t, "/open-apis/application/v6/scopes", r.URL.Path)
+		require.Equal(t, "Bearer tenant-token", r.Header.Get("Authorization"))
+		return `{"code":0,"data":{"scopes":[{"scope_name":"contact:user.email:readonly","grant_status":1},{"scope_name":"contact:user.employee:readonly","grant_status":2},{"scope_name":"contact:user.phone:readonly","grant_status":1}]}}`
+	})
+	scopes, err := api.GrantedEmailScopes(context.Background(), "cli_test", "secret")
+	require.NoError(t, err)
+	require.Equal(t, []string{"contact:user.email:readonly"}, scopes)
+	u, err := url.Parse(BuildAuthorizeURL("cli_test", "https://example.com"+CallbackPath, "state", scopes...))
+	require.NoError(t, err)
+	require.Equal(t, "contact:user.email:readonly", u.Query().Get("scope"))
+}
+
+func TestEmailScopeUpgradeChangesOnlyCurrentAppUserPermissions(t *testing.T) {
+	api := testClient(func(r *http.Request) string {
+		require.Equal(t, http.MethodPatch, r.Method)
+		require.Equal(t, "/open-apis/application/v7/applications/cli_existing/config", r.URL.Path)
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		require.Equal(t, map[string]any{"scope": map[string]any{"add_scopes": []any{
+			map[string]any{"scope_name": "contact:user.email:readonly", "token_type": "user"},
+			map[string]any{"scope_name": "contact:user.employee:readonly", "token_type": "user"},
+		}}}, payload)
+		return `{"code":0}`
+	})
+	require.NoError(t, api.ConfigureEmailScopes(context.Background(), "tenant-token", "cli_existing"))
 }
 
 func TestRegistrationAcceptsCurrentAndLegacyExpiryFields(t *testing.T) {
@@ -117,12 +151,14 @@ func TestUserInfoRejectsInactiveMembersAndMissingTenant(t *testing.T) {
 		})
 	}
 	api := testClient(func(*http.Request) string {
-		return `{"code":0,"data":{"open_id":"ou_x","tenant_key":"tenant","email":"admin-set@example.com","name":"Member"}}`
+		return `{"code":0,"data":{"open_id":"ou_x","tenant_key":"tenant","email":"admin-set@example.com","enterprise_email":"member@company.example","name":"Member"}}`
 	})
 	info, err := api.GetUserInfo(context.Background(), "token")
 	require.NoError(t, err)
 	require.Equal(t, "tenant", info.TenantKey)
 	require.Equal(t, "ou_x", info.OpenID)
+	require.Equal(t, "admin-set@example.com", info.Email)
+	require.Equal(t, "member@company.example", info.EnterpriseEmail)
 }
 func TestConfigurationAddsCallbackAndPublishesWebApp(t *testing.T) {
 	calls := 0

@@ -548,6 +548,9 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	}
 
 	// 验证密码
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return "", nil, err
+	}
 	if !s.CheckPassword(password, user.PasswordHash) {
 		return "", nil, ErrInvalidCredentials
 	}
@@ -655,6 +658,9 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 		return "", nil, ErrUserNotActive
 	}
 
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return "", nil, err
+	}
 	// 尽力补全：当用户名为空时，使用第三方返回的用户名回填。
 	if user.Username == "" && username != "" {
 		user.Username = username
@@ -860,6 +866,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
 		}
 	}
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return nil, nil, err
+	}
 	if created {
 		user = s.applyOAuthSignupPromoCode(ctx, user, promoCode)
 	}
@@ -1059,6 +1068,9 @@ func (s *AuthService) shouldApplyEmailFirstBindDefaults(
 	identity *dbent.AuthIdentity,
 	created bool,
 ) bool {
+	if identity == nil {
+		return false
+	}
 	source := emailAuthIdentitySource(identity.Metadata)
 	if source == "auth_service_login_backfill" {
 		return false
@@ -1066,7 +1078,7 @@ func (s *AuthService) shouldApplyEmailFirstBindDefaults(
 	if created {
 		return true
 	}
-	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
+	if s == nil || s.entClient == nil || userID <= 0 || identity.UserID != userID {
 		return false
 	}
 	if source != "auth_service_dual_write" {
@@ -1149,6 +1161,9 @@ func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User, s
 	}
 
 	if !existed {
+		if user.SignupSource == "feishu" {
+			return nil, false
+		}
 		if err = client.AuthIdentity.Create().
 			SetUserID(user.ID).
 			SetProviderType("email").
@@ -1560,6 +1575,9 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	}
 
 	// Check if user is active
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return "", "", false
+	}
 	if !user.IsActive() {
 		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user: %s", email)
 		return "", "", false
@@ -1658,6 +1676,9 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	}
 
 	// Hash new password
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return ErrInvalidResetToken
+	}
 	hashedPassword, err := s.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)

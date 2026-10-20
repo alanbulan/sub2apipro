@@ -37,8 +37,9 @@
 | 用户身份 | GET `https://open.feishu.cn/open-apis/authen/v1/user_info` |
 
 扫码模板 `archetype=PersonalAgent`、`auth_method=client_secret`，addons 禁用默认大权限预设，
-只申请 `application:application:patch`（配置自己的应用）及 `tenant:tenant:readonly`（识别企业）。
-不申请文档、聊天、通讯录、邮箱、手机或 offline_access 权限。应用能力/权限是否允许创建及
+应用身份申请 `application:application:patch`（配置自己的应用）及 `tenant:tenant:readonly`（识别企业）；
+用户身份申请 `contact:user.email:readonly` 与 `contact:user.employee:readonly`，读取当前员工的
+联系方式邮箱及飞书企业邮箱。不申请文档、聊天、手机号或 offline_access 权限。应用能力/权限是否允许创建及
 审批要求由官方和企业决定；平台返回错误时设置页提供重试，原有效配置保持不变。
 
 网页能力配置显式传 `pc_new_page_open_mode=browser`。官方文档虽标为可选，真实扫码新建应用
@@ -62,6 +63,12 @@ OpenAPI 的 `error` 为诊断对象，OAuth 的 `error` 为字符串，必须分
 tenant_key 来自企业查询 API，不能把企业 display_id 当成 tenant_key；只接受 tenant_tag=0 的企业/团队版，拒绝个人版。
 用户 user_info 每次必须成功且包含 open_id、tenant_key，离职、冻结、缺字段、其他企业均拒绝。
 
+邮箱自动补齐：优先 `enterprise_email`（企业须启用飞书邮箱），其次 `email`。
+已有应用可在系统设置点击“升级当前应用的邮箱读取权限”：只追加两项用户权限并提交发布，
+不新建应用、不替换凭证、不改变 `open_id` 绑定。企业审批仍须在飞书官方页面完成。
+登录开始时通过 `/application/v6/scopes` 查询已授权权限，只把已批准的邮箱权限加入 OAuth
+scope，避免待审权限导致已有登录报 20027；查询失败则继续基础登录。
+
 官方依据：
 
 - [官方 SDK 一键注册](https://github.com/larksuite/oapi-sdk-go#one-click-app-registration)
@@ -84,8 +91,14 @@ tenant_key 来自企业查询 API，不能把企业 display_id 当成 tenant_key
   原请求的限流、封禁和防暴力尝试检查继续生效，其他登录提供方不受此豁免影响。
 - 账号、飞书身份和头像在同一事务创建，按应用/企业/open_id 加进程锁及 PostgreSQL 事务锁，
   并发首次登录只创建一个账号、发放一次新用户默认权益；失败回滚，不留下无身份的账号。
-  账号内部使用身份摘要加 `@feishu-connect.invalid` 满足历史字段要求，该地址不属于真实邮箱，
-  不建立 email 身份，不可用于邮箱注册/验证或重置密码，也不算已绑定邮箱。无须新增飞书邮箱权限。
+  没有有效、可用的飞书邮箱时，账号使用身份摘要加 `@feishu-connect.invalid` 满足历史字段要求。
+  有邮箱时自动写入 `users.email`；已有占位邮箱在下次飞书登录时补齐。已是真实邮箱的账号保持原值。
+  补齐只改邮箱、不改密码、姓名、余额、权限或默认权益；邮箱及收件箱别名被占用时继续原账号登录，
+  不自动合并账号。数据库按邮箱/收件箱身份锁查重，并以占位邮箱条件更新，避免覆盖并发的验证绑定。
+  官方说明 `email` 为管理员导入、未实时验证的联系方式，因此导入邮箱不建立 email 身份；
+  登录记录和普通资料更新也不能补写 email 身份。不接受该资料邮箱的密码登录、密码找回或跨提供方
+  邮箱自动合并，且不能据此解绑唯一飞书登录。员工可在已登录状态下验证邮箱并设置本地密码，
+  完成后才建立 email 身份、启用原有邮箱认证和找回流程；飞书扫码登录全程不要求邮箱验证。
 - 已有本站账号的员工应先登录原账号，在个人设置中绑定飞书；目标来自已登录用户的签名 cookie，
   不按同名或未验证的飞书邮箱自动合并账号。本站已停用或已删除账号不能通过重新扫码恢复。
 - 已绑定账号也检查本站状态、后台模式和 TOTP，再签发本站 token。
@@ -108,6 +121,7 @@ tenant_key 来自企业查询 API，不能把企业 display_id 当成 tenant_key
 合并时保留：登录/注册入口、系统设置卡片、公开配置、profile 绑定、路由、Wire 注入、
 provider 校验、schema 验证器、pending 配置重验、TOTP 分支及 CI 测试入口。
 保留员工自动开户、保留域名的邮箱身份排除、仅已验证企业员工的注册 IP 额度豁免；
+保留飞书联系方式邮箱不自动转换成邮箱登录身份的资料更新/登录回填/找回/合并防护及显式验证绑定入口；
 共享注册防护代码仍合并上游安全修复，不可把企业豁免扩大到其他提供方。
 共享 LinuxDoCallbackView 的 provider 参数继续兼容默认 LinuxDo 行为，飞书拒绝旧 fragment token 流程。
 

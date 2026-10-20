@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -66,15 +68,18 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 		return nil, err
 	}
 	if identity != nil {
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-		user, err := s.userRepo.GetByID(ctx, identity.UserID)
+		user, err := s.userRepo.GetByID(txCtx, identity.UserID)
 		if err != nil {
 			return nil, err
 		}
 		if !user.IsActive() {
 			return nil, ErrUserNotActive
+		}
+		if err := s.syncFeishuContactEmail(txCtx, user, info); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
 		}
 		return user, nil
 	}
@@ -97,6 +102,9 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 		Balance: grantPlan.Balance, Concurrency: grantPlan.Concurrency, RPMLimit: defaultRPM,
 	}
 	if err := s.userRepo.Create(txCtx, user); err != nil {
+		return nil, err
+	}
+	if err := s.syncFeishuContactEmail(txCtx, user, info); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Client().AuthIdentity.Create().
@@ -122,6 +130,86 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
 	s.bindOAuthAffiliate(ctx, user.ID, "")
 	return user, nil
+}
+
+// Feishu's email field is an administrator-supplied contact, not proof of
+// mailbox ownership. Store it as profile data without creating an email login.
+func (s *AuthService) syncFeishuContactEmail(ctx context.Context, user *User, info *feishu.UserInfo) error {
+	if user.SignupSource != "feishu" || !strings.HasSuffix(strings.ToLower(user.Email), FeishuConnectSyntheticEmailDomain) {
+		return nil
+	}
+	email := feishuContactEmail(info)
+	if email == "" {
+		return nil
+	}
+	guard, ok := s.userRepo.(interface {
+		FillFeishuContactEmail(context.Context, int64, string) (bool, error)
+	})
+	if !ok {
+		return ErrServiceUnavailable
+	}
+	updated, err := guard.FillFeishuContactEmail(ctx, user.ID, email)
+	if err != nil {
+		if errors.Is(err, ErrEmailExists) {
+			return nil
+		}
+		return err
+	}
+	if updated {
+		user.Email = email
+	}
+	return nil
+}
+
+func feishuContactEmail(info *feishu.UserInfo) string {
+	if info == nil {
+		return ""
+	}
+	for _, raw := range []string{info.EnterpriseEmail, info.Email} {
+		email := strings.ToLower(strings.TrimSpace(raw))
+		address, err := mail.ParseAddress(email)
+		if err == nil && address.Address == email && len(email) <= 255 && !strings.HasSuffix(email, ".invalid") {
+			return email
+		}
+	}
+	return ""
+}
+
+// Imported contact details must not become login, recovery or automatic account
+// adoption credentials. An authenticated member can verify/bind email normally.
+func (s *AuthService) emailAuthenticationAllowed(ctx context.Context, user *User) (bool, error) {
+	if user == nil {
+		return false, ErrUserNotFound
+	}
+	if user.SignupSource != "feishu" {
+		return true, nil
+	}
+	if isReservedEmail(user.Email) {
+		return false, nil
+	}
+	if s.entClient == nil {
+		return false, ErrServiceUnavailable
+	}
+	client := s.entClient
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
+	}
+	return client.AuthIdentity.Query().Where(
+		authidentity.UserIDEQ(user.ID), authidentity.ProviderTypeEQ("email"),
+		authidentity.ProviderKeyEQ("email"), authidentity.ProviderSubjectEQ(strings.ToLower(strings.TrimSpace(user.Email))),
+		authidentity.VerifiedAtNotNil(),
+	).Exist(ctx)
+}
+
+func (s *AuthService) requireEmailAuthentication(ctx context.Context, user *User) error {
+	allowed, err := s.emailAuthenticationAllowed(ctx, user)
+	if err != nil {
+		return ErrServiceUnavailable
+	}
+	if !allowed {
+		return ErrInvalidCredentials
+	}
+	return nil
 }
 
 func feishuSyntheticEmail(providerKey, openID string) string {

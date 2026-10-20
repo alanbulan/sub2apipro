@@ -128,6 +128,30 @@ func TestFeishuSetupNeverReplacesSettingsChangedAfterQR(t *testing.T) {
 	require.Equal(t, "another-company", repo.values[SettingKeyFeishuConnectTenantKey])
 }
 
+func TestFeishuEmailUpgradeRetainsAppCredentialsAndBindings(t *testing.T) {
+	svc, _, repo, calls := newFeishuSetupTest(t)
+	for key, value := range map[string]string{
+		SettingKeyFeishuConnectEnabled: "true", SettingKeyFeishuConnectAppID: "cli_existing", SettingKeyFeishuConnectAppSecret: "existing-secret",
+		SettingKeyFeishuConnectTenantKey: "company_1", SettingKeyFeishuConnectRedirectURL: "https://example.com" + feishu.CallbackPath,
+	} {
+		repo.values[key] = value
+	}
+	ctx := context.Background()
+	before, err := svc.settings.GetFeishuSettings(ctx)
+	require.NoError(t, err)
+	after, err := svc.EnableEmailSync(ctx)
+	require.NoError(t, err)
+	require.Equal(t, before.Fingerprint(), after.Fingerprint())
+	require.Equal(t, []string{
+		"/open-apis/auth/v3/tenant_access_token/internal",
+		"/open-apis/application/v7/applications/cli_existing/config",
+		"/open-apis/application/v7/applications/cli_existing/publish",
+	}, *calls)
+	saved, err := svc.settings.GetFeishuSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, before.Fingerprint(), saved.Fingerprint())
+}
+
 func TestFeishuSetupKeepsWaitingOnOfficialPendingResponse(t *testing.T) {
 	svc, _, repo, _ := newFeishuSetupTest(t)
 	ctx := context.Background()

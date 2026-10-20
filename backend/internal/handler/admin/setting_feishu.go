@@ -20,6 +20,14 @@ func (h *SettingHandler) GetFeishuSettings(c *gin.Context) {
 	}
 	response.Success(c, v)
 }
+func (h *SettingHandler) EnableFeishuEmailSync(c *gin.Context) {
+	v, err := h.feishuSetup.EnableEmailSync(c.Request.Context())
+	if err != nil {
+		respondFeishuSetupError(c, err)
+		return
+	}
+	response.Success(c, v)
+}
 func (h *SettingHandler) UpdateFeishuSettings(c *gin.Context) {
 	var req struct {
 		Enabled bool `json:"enabled"`

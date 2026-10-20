@@ -23,6 +23,9 @@ export async function getFeishuSettings(): Promise<FeishuSettings> {
 export async function setFeishuEnabled(enabled: boolean): Promise<FeishuSettings> {
   return (await apiClient.put<FeishuSettings>(base, { enabled })).data
 }
+export async function enableFeishuEmailSync(): Promise<FeishuSettings> {
+  return (await apiClient.post<FeishuSettings>(`${base}/email-sync`, undefined, { timeout: 70000 })).data
+}
 export async function startFeishuSetup(): Promise<FeishuSetup> {
   return (await apiClient.post<FeishuSetup>(`${base}/setup/start`, { site_origin: window.location.origin })).data
 }

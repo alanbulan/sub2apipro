@@ -1126,6 +1126,7 @@ func registerFeishuSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 	settings := admin.Group("/settings/feishu")
 	settings.GET("", h.Admin.Setting.GetFeishuSettings)
 	settings.PUT("", gin.HandlerFunc(stepUp), h.Admin.Setting.UpdateFeishuSettings)
+	settings.POST("/email-sync", gin.HandlerFunc(stepUp), h.Admin.Setting.EnableFeishuEmailSync)
 	settings.POST("/setup/start", gin.HandlerFunc(stepUp), h.Admin.Setting.StartFeishuSetup)
 	settings.POST("/setup/:id/poll", gin.HandlerFunc(stepUp), h.Admin.Setting.PollFeishuSetup)
 }

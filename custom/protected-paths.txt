@@ -22,6 +22,7 @@ backend/internal/pkg/feishu/
 backend/internal/service/setting_feishu.go
 backend/internal/service/auth_feishu_auto.go
 backend/internal/service/auth_feishu_auto_test.go
+backend/internal/service/auth_feishu_email_test.go
 backend/internal/service/feishu_setup.go
 backend/internal/service/feishu_setup_test.go
 backend/internal/repository/feishu_setup_store.go
@@ -40,4 +41,6 @@ frontend/src/i18n/locales/en/feishu.ts
 frontend/src/i18n/locales/zh/feishu.ts
 backend/internal/repository/feishu_setup_store_test.go
 backend/internal/repository/feishu_user_integration_test.go
+backend/internal/repository/feishu_user.go
+backend/internal/repository/feishu_user_test.go
 backend/migrations/feishu_provider_migration_test.go

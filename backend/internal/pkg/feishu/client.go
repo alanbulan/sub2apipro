@@ -125,10 +125,11 @@ func (c *Client) jsonRequest(ctx context.Context, stage, method, endpoint, token
 	return c.request(ctx, stage, method, endpoint, token, bytes.NewReader(raw), "application/json; charset=utf-8", out)
 }
 
-func BuildAuthorizeURL(appID, redirect, state string) string {
+func BuildAuthorizeURL(appID, redirect, state string, scopes ...string) string {
 	q := url.Values{"client_id": {appID}, "response_type": {"code"}, "redirect_uri": {redirect}, "state": {state}}
-	// Basic identity needs no additional scope. Do not request offline_access,
-	// email, phone, or the default OpenClaw/PersonalAgent permission template.
+	if len(scopes) > 0 {
+		q.Set("scope", strings.Join(scopes, " "))
+	}
 	return AuthorizeURL + "?" + q.Encode()
 }
 
@@ -147,10 +148,12 @@ func (c *Client) ExchangeCode(ctx context.Context, appID, secret, redirect, code
 }
 
 type UserInfo struct {
-	OpenID    string `json:"open_id"`
-	TenantKey string `json:"tenant_key"`
-	Name      string `json:"name"`
-	AvatarURL string `json:"avatar_url"`
+	OpenID          string `json:"open_id"`
+	TenantKey       string `json:"tenant_key"`
+	Name            string `json:"name"`
+	AvatarURL       string `json:"avatar_url"`
+	Email           string `json:"email"`
+	EnterpriseEmail string `json:"enterprise_email"`
 }
 
 func (c *Client) GetUserInfo(ctx context.Context, token string) (*UserInfo, error) {
@@ -197,7 +200,7 @@ func (c *Client) BeginRegistration(ctx context.Context, name string) (*Registrat
 	}
 	// Match the official scene/registration SDK. The minimal base avoids
 	// silently requesting bot/chat/document permissions for a login app.
-	addons := map[string]any{"preset": false, "scopes": map[string]any{"tenant": []string{"application:application:patch", "tenant:tenant:readonly"}}}
+	addons := map[string]any{"preset": false, "scopes": map[string]any{"tenant": []string{"application:application:patch", "tenant:tenant:readonly"}, "user": []string{"contact:user.email:readonly", "contact:user.employee:readonly"}}}
 	raw, err := json.Marshal(addons)
 	if err != nil {
 		return nil, err
@@ -304,6 +307,45 @@ func (c *Client) ConfigureWebApp(ctx context.Context, token, appID, homepage str
 	// when it is omitted, despite the documentation marking it optional.
 	return c.jsonRequest(ctx, "configure_web_app", http.MethodPatch, APIURL+"/application/v7/applications/"+url.PathEscape(appID)+"/ability", token,
 		map[string]any{"web_app": map[string]any{"enable": true, "pc_url": homepage, "pc_new_page_open_mode": "browser", "mobile_url": homepage}}, &out)
+}
+
+// ConfigureEmailScopes upgrades the same app; existing open_id bindings survive.
+func (c *Client) ConfigureEmailScopes(ctx context.Context, token, appID string) error {
+	var out struct{}
+	return c.jsonRequest(ctx, "configure_email_scopes", http.MethodPatch, APIURL+"/application/v7/applications/"+url.PathEscape(appID)+"/config", token,
+		map[string]any{"scope": map[string]any{"add_scopes": []map[string]string{
+			{"scope_name": "contact:user.email:readonly", "token_type": "user"},
+			{"scope_name": "contact:user.employee:readonly", "token_type": "user"},
+		}}}, &out)
+}
+
+// Only request approved permissions. Adding an unapproved scope to the OAuth
+// URL breaks even basic sign-in with Feishu error 20027.
+func (c *Client) GrantedEmailScopes(ctx context.Context, appID, secret string) ([]string, error) {
+	token, err := c.TenantToken(ctx, appID, secret)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Data struct {
+			Scopes []struct {
+				Name   string `json:"scope_name"`
+				Status int    `json:"grant_status"`
+			} `json:"scopes"`
+		} `json:"data"`
+	}
+	if err := c.request(ctx, "email_scopes", http.MethodGet, APIURL+"/application/v6/scopes", token, nil, "", &out); err != nil {
+		return nil, err
+	}
+	var scopes []string
+	seen := make(map[string]bool)
+	for _, scope := range out.Data.Scopes {
+		if scope.Status == 1 && !seen[scope.Name] && (scope.Name == "contact:user.email:readonly" || scope.Name == "contact:user.employee:readonly") {
+			scopes = append(scopes, scope.Name)
+			seen[scope.Name] = true
+		}
+	}
+	return scopes, nil
 }
 
 func (c *Client) Publish(ctx context.Context, token, appID string) error {

@@ -69,7 +69,14 @@ func (h *AuthHandler) FeishuOAuthStart(c *gin.Context) {
 	setOAuthPendingBrowserCookieWithMaxAge(c, browser, isRequestHTTPS(c), feishuAuthorizeMaxAgeSec)
 	clearOAuthPendingSessionCookie(c, isRequestHTTPS(c))
 	captureOAuthPromoCode(c, isRequestHTTPS(c))
-	respondOAuthStart(c, feishu.BuildAuthorizeURL(cfg.AppID, cfg.RedirectURL, state))
+	api := h.feishuClient
+	if api == nil {
+		api = feishu.NewClient()
+	}
+	// Email enrichment is optional: unavailable/pending permissions must never
+	// disable the existing enterprise login flow.
+	scopes, _ := api.GrantedEmailScopes(c.Request.Context(), cfg.AppID, cfg.AppSecret)
+	respondOAuthStart(c, feishu.BuildAuthorizeURL(cfg.AppID, cfg.RedirectURL, state, scopes...))
 }
 func (h *AuthHandler) FeishuOAuthCallback(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")

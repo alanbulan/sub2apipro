@@ -8,13 +8,18 @@
       <Toggle :aria-label="t('feishu.title')" :model-value="settings?.enabled ?? false" :disabled="busy || !settings?.app_secret_configured" @update:model-value="toggle" />
     </div>
     <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('feishu.tenantOnly') }}</p>
+    <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('feishu.emailSyncHint') }}</p>
     <dl v-if="settings?.app_id" class="grid gap-2 text-sm sm:grid-cols-2">
       <div><dt class="text-gray-500">{{ t('feishu.enterprise') }}</dt><dd>{{ settings.tenant_name || settings.tenant_key }}</dd></div>
       <div><dt class="text-gray-500">App ID</dt><dd class="break-all">{{ settings.app_id }}</dd></div>
       <div class="sm:col-span-2"><dt class="text-gray-500">{{ t('feishu.callback') }}</dt><dd class="break-all">{{ settings.redirect_url }}</dd></div>
     </dl>
     <a v-if="settings?.app_id" :href="`https://open.feishu.cn/app/${encodeURIComponent(settings.app_id)}`" target="_blank" rel="noopener noreferrer" class="text-sm text-primary-600 underline">{{ t('feishu.manageApp') }}</a>
-    <button type="button" class="btn btn-primary" :disabled="busy || polling" @click="start">{{ busy ? t('common.processing') : settings?.app_id ? t('feishu.reconfigure') : t('feishu.scanSetup') }}</button>
+    <div class="flex flex-wrap gap-3">
+      <button type="button" class="btn btn-primary" :disabled="busy || polling" @click="start">{{ busy ? t('common.processing') : settings?.app_id ? t('feishu.reconfigure') : t('feishu.scanSetup') }}</button>
+      <button v-if="settings?.enabled && settings.app_id" type="button" class="btn btn-secondary" :disabled="busy || polling" @click="enableEmailSync">{{ t('feishu.enableEmailSync') }}</button>
+    </div>
+    <p v-if="emailSyncSubmitted" role="status" class="rounded-lg bg-green-50 p-3 text-sm text-green-800 dark:bg-green-900/20 dark:text-green-300">{{ t('feishu.emailSyncSubmitted') }}</p>
     <div v-if="setup?.verification_url && (polling || retryID)" class="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-dark-600">
       <p class="text-sm">{{ t('feishu.scanHint') }}</p>
       <img v-if="qr" :src="qr" :alt="t('feishu.qrAlt')" class="h-56 w-56 rounded-lg bg-white" />
@@ -35,7 +40,7 @@ import { useI18n } from 'vue-i18n'
 import QRCode from 'qrcode'
 import { useAppStore } from '@/stores'
 import Toggle from '@/components/common/Toggle.vue'
-import { getFeishuSettings, setFeishuEnabled, startFeishuSetup, pollFeishuSetup, type FeishuSettings, type FeishuSetup } from '@/api/admin/feishu'
+import { getFeishuSettings, setFeishuEnabled, startFeishuSetup, pollFeishuSetup, enableFeishuEmailSync, type FeishuSettings, type FeishuSetup } from '@/api/admin/feishu'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -45,6 +50,7 @@ const qr = ref('')
 const busy = ref(false)
 const polling = ref(false)
 const submitted = ref(false)
+const emailSyncSubmitted = ref(false)
 const error = ref('')
 const retryID = ref('')
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -97,6 +103,12 @@ function resume() {
 async function toggle(enabled: boolean) {
   busy.value = true; error.value = ''
   try { settings.value = await setFeishuEnabled(enabled); void appStore.fetchPublicSettings(true) } catch (e) { error.value = message(e) }
+  finally { busy.value = false }
+}
+async function enableEmailSync() {
+  busy.value = true; error.value = ''; emailSyncSubmitted.value = false
+  try { settings.value = await enableFeishuEmailSync(); emailSyncSubmitted.value = true }
+  catch (e) { error.value = message(e) }
   finally { busy.value = false }
 }
 onMounted(async () => { try { settings.value = await getFeishuSettings() } catch (e) { error.value = message(e) } })

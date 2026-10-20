@@ -749,6 +749,9 @@ func (s *UserService) buildEmailIdentitySummary(user *User, records []UserAuthId
 	}
 
 	// Compatibility fallback for legacy normal-email users that predate auth_identities backfill.
+	if user.SignupSource == "feishu" {
+		return summary
+	}
 	email := strings.TrimSpace(user.Email)
 	if email == "" || isReservedEmail(email) {
 		return summary

@@ -1,4 +1,7 @@
 export default {
+  enableEmailSync: 'Upgrade email permissions for this app',
+  emailSyncHint: 'New accounts prefer the Feishu enterprise mailbox, then the employee contact email. Existing internal addresses are filled on the next Feishu sign-in. Imported email is profile data; verify and bind it in profile settings to enable email sign-in.',
+  emailSyncSubmitted: 'Email permission changes have been submitted for the current app, preserving existing account bindings. Approve them in Feishu if required by your enterprise. Once effective, the next Feishu sign-in fills missing email addresses.',
   accountLabel: 'Feishu enterprise account',
   userLabel: 'Feishu user',
   title: 'Feishu enterprise login',

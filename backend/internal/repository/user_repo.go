@@ -381,8 +381,12 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	}
 	// 始终以库中的邮箱为准补齐 email 身份：未改邮箱时 updated.Email == oldEmail，
 	// 这里退化为幂等的身份补写，与改邮箱前的行为一致。
-	if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
-		return err
+	// Imported Feishu contacts are profile data, not verified email credentials.
+	// Ordinary profile updates must not silently turn them into email identities.
+	if updated.SignupSource != "feishu" || (fields.Email && !strings.EqualFold(strings.TrimSpace(oldEmail), strings.TrimSpace(updated.Email))) {
+		if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
+			return err
+		}
 	}
 
 	if tx != nil {

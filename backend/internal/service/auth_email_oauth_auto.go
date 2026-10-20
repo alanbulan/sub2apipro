@@ -115,6 +115,11 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 		}
 	}
 
+	if identityUser == nil {
+		if err := s.requireEmailAuthentication(ctx, user); err != nil {
+			return nil, nil, infraerrors.Conflict("OAUTH_EMAIL_REQUIRES_BINDING", "Sign in to the existing account and bind this sign-in method first")
+		}
+	}
 	if !user.IsActive() {
 		return nil, nil, ErrUserNotActive
 	}

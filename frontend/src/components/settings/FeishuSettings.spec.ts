@@ -5,7 +5,7 @@ import * as api from '@/api/admin/feishu'
 
 const refreshPublicSettings = vi.hoisted(() => vi.fn().mockResolvedValue(null))
 vi.mock('@/stores', () => ({ useAppStore: () => ({ fetchPublicSettings: refreshPublicSettings }) }))
-vi.mock('@/api/admin/feishu', () => ({ getFeishuSettings: vi.fn(), setFeishuEnabled: vi.fn(), startFeishuSetup: vi.fn(), pollFeishuSetup: vi.fn() }))
+vi.mock('@/api/admin/feishu', () => ({ getFeishuSettings: vi.fn(), setFeishuEnabled: vi.fn(), startFeishuSetup: vi.fn(), pollFeishuSetup: vi.fn(), enableFeishuEmailSync: vi.fn() }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,qr') } }))
 const empty = { enabled: false, app_id: '', app_secret_configured: false, tenant_key: '', tenant_name: '', redirect_url: '' }
@@ -18,6 +18,31 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers() })
 async function opened() { const wrapper = mount(FeishuSettings, { global: { stubs: { Toggle: true } } }); await flushPromises(); return wrapper }
 describe('Feishu QR configuration', () => {
+  it('upgrades email permissions without creating a replacement app', async () => {
+    vi.mocked(api.getFeishuSettings).mockResolvedValue(configured)
+    vi.mocked(api.enableFeishuEmailSync).mockResolvedValue(configured)
+    const wrapper = await opened()
+    const upgrade = wrapper.findAll('button').find(button => button.text() === 'feishu.enableEmailSync')!
+    await upgrade.trigger('click'); await flushPromises()
+    expect(api.enableFeishuEmailSync).toHaveBeenCalledOnce()
+    expect(api.startFeishuSetup).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('feishu.emailSyncSubmitted')
+    expect(wrapper.text()).toContain('cli_test')
+    expect(wrapper.find('input').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('keeps the current app when an email permission upgrade fails', async () => {
+    vi.mocked(api.getFeishuSettings).mockResolvedValue(configured)
+    vi.mocked(api.enableFeishuEmailSync).mockRejectedValue(new Error('approval pending'))
+    const wrapper = await opened()
+    await wrapper.findAll('button').find(button => button.text() === 'feishu.enableEmailSync')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('approval pending')
+    expect(wrapper.text()).not.toContain('feishu.emailSyncSubmitted')
+    expect(wrapper.text()).toContain('cli_test')
+    expect(api.startFeishuSetup).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('needs no manual credentials and waits for server poll intervals', async () => {
     const wrapper = await opened()
     expect(wrapper.find('input').exists()).toBe(false)

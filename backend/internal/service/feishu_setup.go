@@ -121,6 +121,33 @@ func (s *FeishuSetupService) load(ctx context.Context, id string, owner int64) (
 // All setup and manual writes share a distributed lock. A stale QR cannot replace
 // settings edited after it was generated, including from another replica/admin.
 func (s *FeishuSetupService) Lock(ctx context.Context) (func(), error) { return s.store.Lock(ctx) }
+
+// Upgrade permissions in place; never create a replacement app for email sync.
+func (s *FeishuSetupService) EnableEmailSync(ctx context.Context) (*FeishuConnectSettings, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	release, err := s.Lock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	cfg, err := s.settings.GetFeishuOAuthConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	token, err := s.api.TenantToken(ctx, cfg.AppID, cfg.AppSecret)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.api.ConfigureEmailScopes(ctx, token, cfg.AppID); err != nil {
+		return nil, err
+	}
+	if err := s.api.Publish(ctx, token, cfg.AppID); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func (s *FeishuSetupService) Start(ctx context.Context, owner int64, browserOrigin ...string) (*FeishuSetupResult, error) {
 	release, err := s.Lock(ctx)
 	if err != nil {

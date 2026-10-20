@@ -49,6 +49,13 @@ func (s *AuthService) BindEmailIdentity(
 		return nil, err
 	}
 	firstRealEmailBind := !hasBindableEmailIdentitySubject(currentUser.Email)
+	if currentUser.SignupSource == "feishu" {
+		allowed, err := s.emailAuthenticationAllowed(ctx, currentUser)
+		if err != nil {
+			return nil, ErrServiceUnavailable
+		}
+		firstRealEmailBind = !allowed
+	}
 	if firstRealEmailBind && len(password) < 6 {
 		return nil, infraerrors.BadRequest("PASSWORD_TOO_SHORT", "password must be at least 6 characters")
 	}

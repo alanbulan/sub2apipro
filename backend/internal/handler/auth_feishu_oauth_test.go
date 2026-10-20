@@ -20,12 +20,20 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/authguard"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/feishu"
+	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
 type feishuHandlerTransport func(*http.Request) (*http.Response, error)
+
+func (r *oauthPendingFlowUserRepo) FillFeishuContactEmail(ctx context.Context, id int64, email string) (bool, error) {
+	guard := repository.NewUserRepository(r.client, nil).(interface {
+		FillFeishuContactEmail(context.Context, int64, string) (bool, error)
+	})
+	return guard.FillFeishuContactEmail(ctx, id, email)
+}
 
 func (f feishuHandlerTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func feishuTestSettings() map[string]string {
@@ -250,12 +258,13 @@ func TestFeishuEmployeeAutoProvisionAndImmediateLogin(t *testing.T) {
 	require.Equal(t, service.RoleUser, u.Role)
 	require.Equal(t, 12.5, u.Balance)
 	require.Equal(t, 4, u.Concurrency)
+	require.Equal(t, "existing@example.com", u.Email)
 	profile, err := h.userService.GetByID(ctx, u.ID)
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com/employee.png", profile.AvatarURL)
 	summaries, err := h.userService.GetProfileIdentitySummaries(ctx, u.ID, profile)
 	require.NoError(t, err)
-	require.False(t, summaries.Email.Bound, "an internal placeholder is not a verified email")
+	require.False(t, summaries.Email.Bound, "importing a contact email does not verify mailbox ownership")
 	require.True(t, summaries.Feishu.Bound)
 	// A retry or subsequent login must not create another account or overwrite
 	// a local profile/role/balance that an administrator has since changed.
@@ -334,6 +343,56 @@ func TestFeishuConcurrentProvisioningAndIdentityIsolation(t *testing.T) {
 	count, err := client.User.Query().Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
+}
+
+func TestFeishuEmailBackfillPreservesAccountAndDoesNotEnableEmailAuthentication(t *testing.T) {
+	h, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{settingValues: feishuTestSettings()})
+	ctx := context.Background()
+	cfg, err := h.settingSvc.GetFeishuOAuthConfig(ctx)
+	require.NoError(t, err)
+	info := &feishu.UserInfo{OpenID: "ou_staff", TenantKey: "company_1", Name: "员工姓名"}
+	u, err := h.authService.EnsureFeishuEnterpriseUser(ctx, cfg, info)
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(u.Email, service.FeishuConnectSyntheticEmailDomain))
+	hash, err := h.authService.HashPassword("known-password")
+	require.NoError(t, err)
+	_, err = client.User.UpdateOneID(u.ID).SetUsername("保留的姓名").SetBalance(19.75).SetConcurrency(7).SetPasswordHash(hash).Save(ctx)
+	require.NoError(t, err)
+	info.EnterpriseEmail = " Staff@Company.Example "
+	info.Email = "contact@example.com"
+	filled, err := h.authService.EnsureFeishuEnterpriseUser(ctx, cfg, info)
+	require.NoError(t, err)
+	require.Equal(t, u.ID, filled.ID)
+	require.Equal(t, "staff@company.example", filled.Email)
+	require.Equal(t, "保留的姓名", filled.Username)
+	require.Equal(t, 19.75, filled.Balance)
+	require.Equal(t, 7, filled.Concurrency)
+	require.Equal(t, hash, filled.PasswordHash)
+	// A successful Feishu login and ordinary profile edits must not turn an
+	// administrator-supplied contact into a local email authentication method.
+	h.authService.RecordSuccessfulLogin(ctx, filled.ID)
+	_, _, err = h.authService.Login(ctx, filled.Email, "known-password")
+	require.ErrorIs(t, err, service.ErrInvalidCredentials)
+	_, err = h.authService.ValidatePasswordCredentials(ctx, filled.Email, "known-password")
+	require.ErrorIs(t, err, service.ErrInvalidCredentials)
+	_, _, err = h.authService.LoginOrRegisterVerifiedEmailOAuth(ctx, service.EmailOAuthIdentityInput{
+		ProviderType: "google", ProviderKey: "google", ProviderSubject: "google_owner", Email: filled.Email, EmailVerified: true,
+	})
+	require.Error(t, err, "a provider contact must not cause automatic cross-provider account adoption")
+	count, err := client.AuthIdentity.Query().Where(authidentity.ProviderTypeEQ("email")).Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	summaries, err := h.userService.GetProfileIdentitySummaries(ctx, filled.ID, filled)
+	require.NoError(t, err)
+	require.False(t, summaries.Email.Bound)
+	require.False(t, summaries.Feishu.CanUnbind, "an imported contact cannot replace the only sign-in method")
+	info.EnterpriseEmail = "changed@company.example"
+	again, err := h.authService.EnsureFeishuEnterpriseUser(ctx, cfg, info)
+	require.NoError(t, err)
+	require.Equal(t, filled.Email, again.Email, "real emails are not overwritten on later sign-ins")
+	count, err = client.User.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
 }
 
 func TestFeishuBackendModeDoesNotProvisionEmployees(t *testing.T) {
