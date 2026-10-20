@@ -20,11 +20,7 @@ func (s *AccountUsageService) PoolQuotaAccounts(accounts []Account, parents map[
 	sources := make(map[int64]*Account, len(accounts))
 	for i := range accounts {
 		a := &accounts[i]
-		if a.IsShadow() {
-			sources[a.ID] = parents[*a.ParentAccountID]
-		} else {
-			sources[a.ID] = a
-		}
+		sources[a.ID] = a
 	}
 	for i := range rows {
 		r := &rows[i]
@@ -68,7 +64,7 @@ func (s *AccountUsageService) PoolQuotaAccounts(accounts []Account, parents map[
 			if window.Status != "ok" || window.UsedPercent == nil || *window.UsedPercent < 100 {
 				allLimited = false
 			}
-			r.Windows = append(r.Windows, window)
+			r.Windows = append(r.Windows, poolQuotaWindow(window))
 		}
 		if allLimited {
 			r.Available = false

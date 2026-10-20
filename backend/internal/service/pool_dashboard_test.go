@@ -54,17 +54,35 @@ func TestPoolQuotaAccountsRedactSecretsAndRejectExpiredObservations(t *testing.T
 	require.NotContains(t, string(raw), "secret@example.com")
 	require.NotContains(t, string(raw), "private-token")
 	require.NotContains(t, string(raw), "credentials")
+	var response []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &response))
+	require.Len(t, response[0], 9)
+	window := response[0]["windows"].([]any)[0].(map[string]any)
+	require.Len(t, window, 6)
+	for _, key := range []string{"window", "label", "used_percent", "status", "observed_at", "resets_at"} {
+		require.Contains(t, window, key)
+	}
 	accounts[0].Extra["codex_5h_reset_at"] = now.Add(-time.Minute).Format(time.RFC3339)
 	rows = BuildPoolQuotaAccounts(accounts, nil, now)
 	require.Nil(t, rows[0].Windows[0].UsedPercent)
 	require.Equal(t, "stale", rows[0].Windows[0].Status)
-	// Shared credentials expose the same quota without publishing the parent.
+	// Shared credentials retain separate global/Spark quotas. A globally
+	// exhausted parent must not override a usable Spark quota or its status.
 	accounts[0].Extra["codex_5h_reset_at"] = now.Add(time.Hour).Format(time.RFC3339)
 	parent := accounts[0]
+	parent.Extra = map[string]any{"codex_usage_updated_at": now.Format(time.RFC3339), "codex_5h_used_percent": 100.0, "codex_5h_reset_at": now.Add(time.Hour).Format(time.RFC3339)}
+	parent.Schedulable = false
 	parentID := parent.ID
-	shadow := Account{ID: 2, ParentAccountID: &parentID, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true}
+	shadow := Account{ID: 2, ParentAccountID: &parentID, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Extra: accounts[0].Extra}
 	rows = BuildPoolQuotaAccounts([]Account{shadow}, map[int64]*Account{parentID: &parent}, now)
 	require.Len(t, rows, 1)
 	require.Equal(t, int64(2), rows[0].ID)
 	require.NotNil(t, rows[0].Windows[0].UsedPercent)
+	require.Equal(t, 20.0, *rows[0].Windows[0].UsedPercent)
+	require.True(t, rows[0].Available)
+	rows = BuildPoolQuotaAccounts([]Account{shadow}, nil, now)
+	require.False(t, rows[0].Available)
+	shadow.Extra = nil
+	rows = BuildPoolQuotaAccounts([]Account{shadow}, map[int64]*Account{parentID: &parent}, now)
+	require.Nil(t, rows[0].Windows[0].UsedPercent)
 }

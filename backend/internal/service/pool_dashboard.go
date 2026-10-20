@@ -53,16 +53,32 @@ func (s *APIKeyService) PoolSourceGroups(ctx context.Context, userID int64) ([]G
 
 // These DTOs deliberately do not embed Account or any admin DTO. The account
 // name, email, credentials, proxies, group bindings and raw errors stay private.
+type PoolQuotaWindow struct {
+	Window      string     `json:"window"`
+	Label       string     `json:"label"`
+	UsedPercent *float64   `json:"used_percent"`
+	Status      string     `json:"status"`
+	ObservedAt  *time.Time `json:"observed_at,omitempty"`
+	ResetsAt    *time.Time `json:"resets_at,omitempty"`
+}
+
+func poolQuotaWindow(w AccountOpsUsageWindow) PoolQuotaWindow {
+	return PoolQuotaWindow{
+		Window: w.Window, Label: w.Label, UsedPercent: w.UsedPercent,
+		Status: w.Status, ObservedAt: w.ObservedAt, ResetsAt: w.ResetsAt,
+	}
+}
+
 type PoolQuotaAccount struct {
-	ID                int64                   `json:"id"`
-	Label             string                  `json:"label"`
-	Platform          string                  `json:"platform"`
-	Available         bool                    `json:"available"`
-	Windows           []AccountOpsUsageWindow `json:"windows"`
-	Balance           *float64                `json:"balance"`
-	BalanceUnit       string                  `json:"balance_unit"`
-	BalanceFreshUntil *time.Time              `json:"balance_fresh_until"`
-	UpdatedAt         *time.Time              `json:"updated_at"`
+	ID                int64             `json:"id"`
+	Label             string            `json:"label"`
+	Platform          string            `json:"platform"`
+	Available         bool              `json:"available"`
+	Windows           []PoolQuotaWindow `json:"windows"`
+	Balance           *float64          `json:"balance"`
+	BalanceUnit       string            `json:"balance_unit"`
+	BalanceFreshUntil *time.Time        `json:"balance_fresh_until"`
+	UpdatedAt         *time.Time        `json:"updated_at"`
 }
 type PoolQuotaGroup struct {
 	ID       int64              `json:"id"`
@@ -86,15 +102,16 @@ func BuildPoolQuotaAccounts(accounts []Account, parents map[int64]*Account, now 
 			continue
 		}
 		seen[a.ID] = true
-		r := PoolQuotaAccount{ID: a.ID, Label: fmt.Sprintf("#%d", a.ID), Platform: a.Platform, Available: a.IsSchedulable(), Windows: []AccountOpsUsageWindow{}}
+		r := PoolQuotaAccount{ID: a.ID, Label: fmt.Sprintf("#%d", a.ID), Platform: a.Platform, Available: a.IsSchedulable(), Windows: []PoolQuotaWindow{}}
 		source := a
 		if a.IsShadow() {
-			source = parents[*a.ParentAccountID]
-			if source != nil && !source.IsSchedulable() {
+			parent := parents[*a.ParentAccountID]
+			if !parent.IsCredentialUsableForShadow() {
 				r.Available = false
 			}
 		}
-		// Resolve shared quota server-side without exposing parent identities.
+		// Shadow credentials are shared, but Spark quota is stored on the shadow
+		// itself. Never substitute the parent's independent global quota.
 		if source != nil {
 			for _, w := range opsExtraUsageWindows(source, now) {
 				if w.Window == "any" {
@@ -110,7 +127,7 @@ func BuildPoolQuotaAccounts(accounts []Account, parents map[int64]*Account, now 
 				if w.Status == "ok" && w.UsedPercent != nil && *w.UsedPercent >= 100 {
 					r.Available = false
 				}
-				r.Windows = append(r.Windows, w)
+				r.Windows = append(r.Windows, poolQuotaWindow(w))
 			}
 			balance := opsBalanceAccount(source, now)
 			if balance.BalanceStatus == "ok" && balance.Balance != nil {

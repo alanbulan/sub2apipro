@@ -7,6 +7,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts \
 	src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts \
 	src/utils/__tests__/userEmail.spec.ts \
+	src/views/admin/__tests__/UsersView.spec.ts \
+	src/components/admin/user/__tests__/BulkEditUserModal.spec.ts \
 	src/components/settings/FeishuSettings.spec.ts \
 	src/__tests__/rememberMePro.spec.ts \
 	src/__tests__/useAppTheme.spec.ts \
