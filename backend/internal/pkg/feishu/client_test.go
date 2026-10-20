@@ -137,8 +137,9 @@ func TestConfigurationAddsCallbackAndPublishesWebApp(t *testing.T) {
 			require.True(t, strings.HasSuffix(r.URL.Path, "/config"))
 			require.Equal(t, map[string]any{"add": map[string]any{"redirect_urls": []any{"https://example.com" + CallbackPath}}}, body["security"])
 		case 2:
+			require.Equal(t, "PATCH", r.Method)
 			require.True(t, strings.HasSuffix(r.URL.Path, "/ability"))
-			require.Equal(t, map[string]any{"enable": true, "pc_url": "https://example.com/login", "mobile_url": "https://example.com/login"}, body["web_app"])
+			require.Equal(t, map[string]any{"enable": true, "pc_url": "https://example.com/login", "pc_new_page_open_mode": "browser", "mobile_url": "https://example.com/login"}, body["web_app"])
 		case 3:
 			require.Equal(t, "POST", r.Method)
 			require.True(t, strings.HasSuffix(r.URL.Path, "/publish"))
@@ -153,6 +154,36 @@ func TestConfigurationAddsCallbackAndPublishesWebApp(t *testing.T) {
 	require.NoError(t, api.Publish(ctx, "tenant-token", "cli_test"))
 	require.Equal(t, 3, calls)
 }
+
+func TestOpenAPIErrorsPreserveCodesWithDiagnosticObjects(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		code   string
+	}{
+		{"new_web_app_missing_open_mode", http.StatusBadRequest, `{"code":210011,"msg":"invalid request","error":{"log_id":"provider-log","troubleshooter":"https://open.feishu.cn/search?secret=do-not-expose"}}`, "210011"},
+		{"missing_permission", http.StatusForbidden, `{"code":99991672,"msg":"Access denied","error":{"permission_violations":[{"subject":"application:application:patch"}],"message":"do-not-expose"}}`, "99991672"},
+		{"string_code", http.StatusBadRequest, `{"code":"210011","error":{"message":"do-not-expose"}}`, "210011"},
+		{"null_diagnostics", http.StatusBadRequest, `{"code":210011,"error":null}`, "210011"},
+		{"non_json_http_failure", http.StatusBadGateway, `<html>do-not-expose</html>`, "http_502"},
+		{"non_json_success", http.StatusOK, `<html>do-not-expose</html>`, "invalid_response"},
+		{"missing_code", http.StatusOK, `{"error":{"message":"do-not-expose"}}`, "missing_result_code"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &Client{HTTP: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body)), Header: make(http.Header)}, nil
+			})}}
+			err := api.ConfigureWebApp(context.Background(), "tenant-token", "cli_test", "https://example.com/login")
+			var providerErr *Error
+			require.ErrorAs(t, err, &providerErr)
+			require.Equal(t, "configure_web_app", providerErr.Stage)
+			require.Equal(t, tc.code, providerErr.Code)
+			require.NotContains(t, err.Error(), "do-not-expose")
+		})
+	}
+}
+
 func TestProviderErrorsNeverLeakResponseCredentials(t *testing.T) {
 	for _, body := range []string{`{"error":"secret-value"}`, `{"code":"secret-value","client_secret":"do-not-expose"}`, `{"code":999,"msg":"do-not-expose"}`} {
 		api := testClient(func(*http.Request) string { return body })

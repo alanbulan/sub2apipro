@@ -1,6 +1,6 @@
 # 飞书企业登录与扫码配置
 
-更新于 2026-10-19。实现已合入 main；后续修复的部署和 CI 结果以交付记录为准。
+更新于 2026-10-20。实现已合入 main；后续修复的部署和 CI 结果以交付记录为准。
 本机不运行测试、构建、代码生成或安装依赖。没有真实企业凭证时，CI 验证官方协议契约，
 最终企业授权与发布审批须在管理员扫码时由飞书平台执行，不能宣称已完成真实租户联调。
 
@@ -40,6 +40,11 @@
 只申请 `application:application:patch`（配置自己的应用）及 `tenant:tenant:readonly`（识别企业）。
 不申请文档、聊天、通讯录、邮箱、手机或 offline_access 权限。应用能力/权限是否允许创建及
 审批要求由官方和企业决定；平台返回错误时设置页提供重试，原有效配置保持不变。
+
+网页能力配置显式传 `pc_new_page_open_mode=browser`。官方文档虽标为可选，真实扫码新建应用
+在缺省时返回 HTTP 400 / `210011`；补齐后同一应用返回 HTTP 200 / `code=0`。
+OpenAPI 的 `error` 为诊断对象，OAuth 的 `error` 为字符串，必须分开解析；保留数字业务码，
+不把业务拒绝误报为 `invalid_response`，也不向浏览器暴露原始响应、凭证或诊断链接。
 
 二维码地址仅接受 HTTPS 的 `open.feishu.cn` 和 `accounts.feishu.cn`，不允许用户信息、其他域名或额外端口。
 实际注册响应使用 `https://open.feishu.cn/page/launcher?user_code=…` 及 `expires_in`；兼容旧 SDK 的

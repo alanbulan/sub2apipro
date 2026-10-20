@@ -192,6 +192,54 @@ func TestFeishuSetupFailurePreservesOldConfigAndCredentialsForRetry(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, "submitted", result.Status)
 }
+
+func TestFeishuSetupRetriesRejectedWebAppWithoutRegisteringAnotherApp(t *testing.T) {
+	svc, _, repo, calls := newFeishuSetupTest(t)
+	ctx := context.Background()
+	start, err := svc.Start(ctx, 42)
+	require.NoError(t, err)
+	state, err := svc.load(ctx, start.ID, 42)
+	require.NoError(t, err)
+	state.NextPoll = 0
+	require.NoError(t, svc.save(ctx, start.ID, state))
+	original := svc.api.HTTP.Transport
+	rejected := false
+	svc.api.HTTP.Transport = feishuTransport(func(r *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(r.URL.Path, "/ability") && !rejected {
+			rejected = true
+			return &http.Response{StatusCode: http.StatusBadRequest, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"code":210011,"msg":"invalid request","error":{"log_id":"provider-log","troubleshooter":"do-not-expose"}}`))}, nil
+		}
+		return original.RoundTrip(r)
+	})
+	_, err = svc.Poll(ctx, start.ID, 42)
+	var providerErr *feishu.Error
+	require.ErrorAs(t, err, &providerErr)
+	require.Equal(t, "configure_web_app", providerErr.Stage)
+	require.Equal(t, "210011", providerErr.Code)
+	require.NotContains(t, err.Error(), "do-not-expose")
+	require.Empty(t, repo.values[SettingKeyFeishuConnectAppID])
+	require.Empty(t, repo.values[SettingKeyFeishuConnectEnabled])
+	state, err = svc.load(ctx, start.ID, 42)
+	require.NoError(t, err)
+	require.Equal(t, 2, state.Stage)
+	require.Equal(t, "cli_test", state.Config.AppID)
+	require.Equal(t, "private-secret", state.Config.AppSecret)
+	state.NextPoll = 0
+	require.NoError(t, svc.save(ctx, start.ID, state))
+	result, err := svc.Poll(ctx, start.ID, 42)
+	require.NoError(t, err)
+	require.Equal(t, "submitted", result.Status)
+	require.Equal(t, "cli_test", result.Settings.AppID)
+	require.Equal(t, "true", repo.values[SettingKeyFeishuConnectEnabled])
+	registrationCalls := 0
+	for _, path := range *calls {
+		if path == "/oauth/v1/app/registration" {
+			registrationCalls++
+		}
+	}
+	require.Equal(t, 2, registrationCalls, "retry must reuse the begin/poll credentials")
+}
+
 func TestFeishuRedirectAndIdentityIsolation(t *testing.T) {
 	valid := &FeishuConnectSettings{Enabled: true, AppID: "cli_test", AppSecret: "secret", TenantKey: "company", RedirectURL: "https://example.com" + feishu.CallbackPath}
 	require.NoError(t, valid.Validate())

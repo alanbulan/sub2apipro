@@ -66,23 +66,35 @@ func (c *Client) request(ctx context.Context, stage, method, endpoint, token str
 	}
 	var envelope struct {
 		Code  json.RawMessage `json:"code"`
-		Error string          `json:"error"`
+		Error json.RawMessage `json:"error"`
 	}
 	if json.Unmarshal(raw, &envelope) != nil {
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return &Error{stage, "http_" + strconv.Itoa(resp.StatusCode)}
+		}
 		return &Error{stage, "invalid_response"}
 	}
-	if strings.HasPrefix(endpoint, APIURL+"/") && len(envelope.Code) == 0 {
+	openAPI := strings.HasPrefix(endpoint, APIURL+"/")
+	if openAPI && len(envelope.Code) == 0 {
 		return &Error{stage, "missing_result_code"}
+	}
+	// OAuth uses an error string; OpenAPI uses an error object containing
+	// diagnostics. Decode them separately so metadata cannot hide the real code.
+	var protocolError string
+	if len(envelope.Error) > 0 && string(envelope.Error) != "null" {
+		if json.Unmarshal(envelope.Error, &protocolError) != nil && (!openAPI || envelope.Error[0] != '{') {
+			return &Error{stage, "provider_error"}
+		}
 	}
 	// Registration uses OAuth protocol errors alongside numeric diagnostic
 	// codes. A pending poll is a control response, even with code=20094.
 	pendingPoll := stage == "registration_poll" && endpoint == RegistrationURL &&
-		(envelope.Error == "authorization_pending" || envelope.Error == "slow_down")
-	if envelope.Error != "" && !pendingPoll {
+		(protocolError == "authorization_pending" || protocolError == "slow_down")
+	if protocolError != "" && !pendingPoll {
 		// Only return known protocol errors; never expose arbitrary provider text.
-		switch envelope.Error {
+		switch protocolError {
 		case "access_denied", "expired_token", "invalid_client", "invalid_grant":
-			return &Error{stage, envelope.Error}
+			return &Error{stage, protocolError}
 		default:
 			return &Error{stage, "provider_error"}
 		}
@@ -288,8 +300,10 @@ func (c *Client) ConfigureLogin(ctx context.Context, token, appID, redirect stri
 
 func (c *Client) ConfigureWebApp(ctx context.Context, token, appID, homepage string) error {
 	var out struct{}
+	// Explicitly set the opening mode: newly registered apps return 210011
+	// when it is omitted, despite the documentation marking it optional.
 	return c.jsonRequest(ctx, "configure_web_app", http.MethodPatch, APIURL+"/application/v7/applications/"+url.PathEscape(appID)+"/ability", token,
-		map[string]any{"web_app": map[string]any{"enable": true, "pc_url": homepage, "mobile_url": homepage}}, &out)
+		map[string]any{"web_app": map[string]any{"enable": true, "pc_url": homepage, "pc_new_page_open_mode": "browser", "mobile_url": homepage}}, &out)
 }
 
 func (c *Client) Publish(ctx context.Context, token, appID string) error {
