@@ -70,7 +70,7 @@ func (s *adminServiceImpl) BatchRechargeUsers(ctx context.Context, ids []int64, 
 	}
 	result := &BatchUserRechargeResult{Affected: len(cleaned), AmountPerUser: amount, TotalAmount: amount * float64(len(cleaned))}
 	if existing != nil {
-		if existing.Type != "admin_batch_marker" || existing.Notes != fingerprintText {
+		if existing.Type != "admin_batch_marker" || (existing.Notes == nil || *existing.Notes != fingerprintText) {
 			return nil, ErrIdempotencyKeyConflict
 		}
 		return result, nil
