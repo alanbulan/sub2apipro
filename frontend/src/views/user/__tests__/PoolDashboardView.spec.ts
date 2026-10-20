@@ -3,7 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import PoolDashboardView from '../PoolDashboardView.vue'
 const { getPool } = vi.hoisted(() => ({ getPool: vi.fn() }))
 vi.mock('@/api/poolDashboard', async (original) => ({ ...await original<typeof import('@/api/poolDashboard')>(), getPoolDashboard:getPool }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t:(key:string) => key }) }))
+vi.mock('vue-i18n', async (importOriginal) => ({
+  ...await importOriginal<typeof import('vue-i18n')>(),
+  useI18n: () => ({ t:(key:string) => key })
+}))
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks() })
 const account = { id:7,label:'#7',platform:'openai',available:true,windows:[],balance:null,balance_unit:'',balance_fresh_until:null,updated_at:null }
 function render() { return mount(PoolDashboardView, { global: { stubs: {

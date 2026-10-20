@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PoolQuotaCard from '../PoolQuotaCard.vue'
 import type { PoolQuotaAccount } from '@/api/poolDashboard'
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t:(key:string) => key }) }))
+vi.mock('vue-i18n', async (importOriginal) => ({
+  ...await importOriginal<typeof import('vue-i18n')>(),
+  useI18n: () => ({ t:(key:string) => key })
+}))
 describe('user quota card', () => {
   it('reuses the quota progress component with remaining capacity and ignores private fields', () => {
     const now = Date.now()
