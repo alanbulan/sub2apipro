@@ -16,5 +16,6 @@ export default {
   failed: 'Configuration failed. Please retry.',
   manageApp: 'View app and approval status in Feishu',
   stopWaiting: 'Stop waiting',
-  retry: 'Continue configuring this app'
+  retry: 'Continue configuring this app',
+  retryHint: 'Setup was interrupted and can be retried. Use “Continue configuring this app” before the QR code expires. Starting a new scan creates another app.'
 }

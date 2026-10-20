@@ -16,5 +16,6 @@ export default {
   failed: '配置失败，请重试。',
   manageApp: '前往飞书查看应用和审批状态',
   stopWaiting: '停止等待',
-  retry: '继续配置此应用'
+  retry: '继续配置此应用',
+  retryHint: '配置中断，当前流程仍可重试。请在二维码有效期内点击下方“继续配置此应用”；重新扫码会创建另一个应用。'
 }
