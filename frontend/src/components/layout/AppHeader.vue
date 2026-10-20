@@ -2,7 +2,7 @@
   <header class="glass sticky top-0 z-30 border-b border-gray-200/50 dark:border-dark-700/50">
     <div class="flex h-16 items-center justify-between gap-2 px-2 sm:px-4 md:px-6">
       <!-- Left: Mobile Menu Toggle + Page Title -->
-      <div class="flex min-w-0 items-center gap-2 sm:gap-4">
+      <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
         <button
           @click="toggleMobileSidebar"
           class="btn-ghost btn-icon lg:hidden"
@@ -105,13 +105,16 @@
         </div>
 
         <!-- User Dropdown -->
-        <div v-if="user" class="relative" ref="dropdownRef">
+        <div v-if="user" class="relative min-w-0" ref="dropdownRef" @keydown.esc="closeDropdown">
           <button
+            type="button"
             @click="toggleDropdown"
-            class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
+            class="flex min-w-0 max-w-[12rem] items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             :aria-label="t('common.userMenu')"
+            :aria-expanded="dropdownOpen"
+            aria-controls="header-user-menu"
           >
-            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -120,26 +123,33 @@
               >
               <span v-else>{{ userInitials }}</span>
             </div>
-            <div class="hidden text-left md:block">
-              <div class="text-sm font-medium text-gray-900 dark:text-white">
+            <div class="hidden min-w-0 max-w-32 text-left md:block">
+              <div class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="displayName">
                 {{ displayName }}
               </div>
               <div class="text-xs text-gray-500 dark:text-dark-400">
                 {{ t('admin.users.roles.' + user.role) }}
               </div>
             </div>
-            <Icon name="chevronDown" size="sm" class="hidden text-gray-400 md:block" />
+            <Icon name="chevronDown" size="sm" class="hidden shrink-0 text-gray-400 md:block" />
           </button>
 
           <!-- Dropdown Menu -->
           <transition name="dropdown">
-            <div v-if="dropdownOpen" class="dropdown right-0 mt-2 w-56">
+            <div
+              v-if="dropdownOpen"
+              id="header-user-menu"
+              class="dropdown right-0 mt-2 max-h-[calc(100vh-5rem)] w-64 max-w-[calc(100vw-1rem)] overflow-y-auto"
+            >
               <!-- User Info -->
-              <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
-                <div class="text-sm font-medium text-gray-900 dark:text-white">
+              <div class="min-w-0 border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+                <div class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="displayName">
                   {{ displayName }}
                 </div>
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
+                <div v-if="accountLabel" class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-dark-400">
+                  <img v-if="isFeishuAccount" :src="feishuLogo" class="h-3.5 w-3.5 shrink-0" alt="" aria-hidden="true">
+                  <span class="truncate" :title="accountLabel">{{ accountLabel }}</span>
+                </div>
               </div>
 
               <!-- Balance (mobile only) -->
@@ -173,7 +183,7 @@
                 v-if="contactInfo"
                 class="border-t border-gray-100 px-4 py-2.5 dark:border-dark-700"
               >
-                <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <div class="flex min-w-0 items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <svg
                     class="h-3.5 w-3.5 flex-shrink-0"
                     fill="none"
@@ -187,8 +197,8 @@
                       d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"
                     />
                   </svg>
-                  <span>{{ t('common.contactSupport') }}:</span>
-                  <span class="font-medium text-gray-700 dark:text-gray-300">{{
+                  <span class="shrink-0">{{ t('common.contactSupport') }}:</span>
+                  <span class="min-w-0 break-words font-medium text-gray-700 dark:text-gray-300">{{
                     contactInfo
                   }}</span>
                 </div>
@@ -249,6 +259,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { resolveRouteMetaKeys } from '@/router/title'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
+import feishuLogo from '@/assets/icons/feishu.svg'
 
 const router = useRouter()
 const route = useRoute()
@@ -278,24 +289,22 @@ const showOnboardingButton = computed(() => {
   return !authStore.isSimpleMode && user.value?.role === 'admin'
 })
 
-const userInitials = computed(() => {
-  if (!user.value) return ''
-  // Prefer username, fallback to email
-  if (user.value.username) {
-    return user.value.username.substring(0, 2).toUpperCase()
-  }
-  if (user.value.email) {
-    // Get the part before @ and take first 2 chars
-    const localPart = user.value.email.split('@')[0]
-    return localPart.substring(0, 2).toUpperCase()
-  }
-  return ''
+const accountEmail = computed(() => user.value?.email?.trim() || '')
+const isInternalEmail = computed(() => accountEmail.value.toLowerCase().endsWith('.invalid'))
+const isFeishuAccount = computed(() => accountEmail.value.toLowerCase().endsWith('@feishu-connect.invalid'))
+const accountLabel = computed(() => {
+  if (isFeishuAccount.value) return t('feishu.accountLabel')
+  return isInternalEmail.value ? '' : accountEmail.value
 })
 
 const displayName = computed(() => {
-  if (!user.value) return ''
-  return user.value.username || user.value.email?.split('@')[0] || ''
+  const username = user.value?.username?.trim()
+  if (username) return username
+  if (isFeishuAccount.value) return t('feishu.userLabel')
+  if (isInternalEmail.value) return t('profile.user')
+  return accountEmail.value.split('@')[0] || t('profile.user')
 })
+const userInitials = computed(() => Array.from(displayName.value).slice(0, 2).join('').toUpperCase())
 
 // 订阅功能关闭时不挂载顶栏订阅徽章（组件 onMounted 会拉取订阅接口）。
 const subscriptionFeatureEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.subscription))

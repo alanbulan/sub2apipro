@@ -36,6 +36,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/operations/__tests__/QualityProbeSchedule.spec.ts \
 	src/components/admin/operations/__tests__/SmartOpsNav.spec.ts \
 	src/components/layout/__tests__/AppSidebar.spec.ts \
+	src/components/layout/__tests__/AppHeader.feishu.spec.ts \
 	src/components/account/__tests__/CreateAccountModal.autoBPS.spec.ts \
 	src/components/account/__tests__/EditAccountModal.autoBPS.spec.ts \
 	src/stores/__tests__/accountQuality.spec.ts \

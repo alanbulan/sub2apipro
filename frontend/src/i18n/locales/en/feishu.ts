@@ -1,4 +1,6 @@
 export default {
+  accountLabel: 'Feishu enterprise account',
+  userLabel: 'Feishu user',
   title: 'Feishu enterprise login',
   description: 'Scan to create an app, obtain credentials, identify your enterprise and configure the login callback.',
   tenantOnly: 'Only members of this Feishu enterprise can sign in. New employees automatically receive a regular account using their Feishu name and avatar, with the site’s default new-user benefits. No email or invitation is needed, even when public registration is closed. Existing users can sign in to their original account and bind Feishu in profile settings to keep using it.',
