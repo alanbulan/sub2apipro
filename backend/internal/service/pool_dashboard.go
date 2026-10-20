@@ -63,6 +63,7 @@ type PoolQuotaWindow struct {
 }
 
 func poolQuotaWindow(w AccountOpsUsageWindow) PoolQuotaWindow {
+	//nolint:staticcheck // S1016: keep an explicit allowlist so future admin DTO fields remain private.
 	return PoolQuotaWindow{
 		Window: w.Window, Label: w.Label, UsedPercent: w.UsedPercent,
 		Status: w.Status, ObservedAt: w.ObservedAt, ResetsAt: w.ResetsAt,
