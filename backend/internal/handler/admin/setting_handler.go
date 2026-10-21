@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -53,6 +54,9 @@ func firstNonEmpty(values ...string) string {
 type SettingHandler struct {
 	feishuSetup              *service.FeishuSetupService
 	feishuDirectory          *service.FeishuDirectoryService
+	ipAuditPenaltyRelease    func(context.Context, int64, int64, string) (service.SecurityPenaltySummary, error)
+	ipAuditLogs              *service.AuditLogService
+	ipAuditPenaltySummary    func(context.Context, int64) (service.SecurityPenaltySummary, error)
 	settingService           *service.SettingService
 	emailService             *service.EmailService
 	turnstileService         *service.TurnstileService
@@ -137,8 +141,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
 		LoginRateLimitEnabled:                                  settings.LoginRateLimitEnabled,
+		RegistrationIPLimitEnabled:                             settings.RegistrationIPLimitEnabled,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailAliasBlockEnabled:                     settings.RegistrationEmailAliasBlockEnabled,
 		RegistrationEmailDomainQuotaEnabled:                    settings.RegistrationEmailDomainQuotaEnabled,
 		PromoCodeEnabled:                                       settings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   settings.PasswordResetEnabled,

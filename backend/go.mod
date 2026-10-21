@@ -1,7 +1,7 @@
 module github.com/Wei-Shaw/sub2api
 
 // Keep the protected CI compatibility baseline; production images and the
-// release binaries and additive upstream security CI job use Go 1.27.2.
+// release binaries and additive upstream security CI job use Go 1.27.3.
 go 1.27.0
 
 require (

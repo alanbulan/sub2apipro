@@ -6,7 +6,7 @@
 
 Sub2API 维护副本 · AI API 网关与自托管部署。
 
-![Go](https://img.shields.io/badge/Backend-Go_1.27.2-5eead4?style=flat-square)
+![Go](https://img.shields.io/badge/Backend-Go_1.27.3-5eead4?style=flat-square)
 ![Vue](https://img.shields.io/badge/Frontend-Vue-818cf8?style=flat-square)
 ![Category](https://img.shields.io/badge/category-API_Gateway-fb7185?style=flat-square)
 
@@ -103,6 +103,12 @@ gateway:
 - 修改 Compose `.env` 后需要重建容器以更新环境变量。调大等待时间时，需要确认客户端及反向代理的首字节超时。
 - 升级自动应用 `237_add_api_key_concurrency_limit.sql`，旧 Key 默认为 `0`。回退二进制不会撤销数据库新增字段。
 
+### 中转 API Key 的上游 429
+
+- OpenAI 平台普通 API Key 收到上游 429 时，使用管理端已有的“429 兜底冷却”设置（默认启用、5 秒），不再把透传的 ChatGPT/Codex 周窗口、`resets_at` 或使用率快照写成整个 Key 的配额状态。关闭该设置时不新增本地兜底冷却，上游错误仍按原有响应与故障转移逻辑处理。
+- OAuth / Setup Token 保留真实配额窗口；Ollama Cloud、国产供应商和 OpenCode Go 的已识别专用配额逻辑，以及池模式、自定义错误策略和显式临时停调规则，仍按原有优先级处理。
+- 管理端测试 API Key 时，不再用透传的 ChatGPT 429 重置时间更新 Key 的调度状态。升级不会自动清理此前已写入的长冷却；核实状态后可使用管理端恢复功能处理。
+
 
 之后按照[中文部署文档](./README_CN.md)或[完整英文文档](./README_UPSTREAM.md)核对环境、安装方式、数据存储和配置。镜像、二进制、一键安装脚本可能指向上游发布渠道；使用前检查来源，不能假设它们包含本副本的独立修改。
 
@@ -110,7 +116,7 @@ gateway:
 
 | 组件 | 技术 |
 |------|------|
-| 后端 | Go 1.27.2, Gin, Ent |
+| 后端 | Go 1.27.3, Gin, Ent |
 | 前端 | Vue 3.4+, Vite 5+, TailwindCSS |
 | 数据库 | PostgreSQL 15+ |
 | 缓存/队列 | Redis 7+ |
