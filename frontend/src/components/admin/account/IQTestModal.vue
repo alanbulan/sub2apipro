@@ -1,5 +1,6 @@
 <template>
-  <PelicanRecordsDashboard v-if="!poolContext && dashboardOpen" :accounts="props.accounts || []" :account="props.account || null" :manual-record="records[0] || null" @close="dashboardOpen = false" />
+  <PelicanRecordsDashboard v-if="!poolContext && recordsView" :key="recordsView" :accounts="props.accounts || []" :account="props.account || null" :manual-record="records[0] || null"
+    :account-only="recordsView === 'account'" @show-all="recordsView = 'all'" @close="recordsView = null" />
   <BaseDialog :show="show" :title="t('admin.accounts.pelicanTest.title')" width="full" :fullscreen="viewingScheduled && testMode === 'question'" @close="handleClose">
     <div class="space-y-5">
       <div v-if="poolContext && modelLoadError" role="alert" class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
@@ -186,7 +187,8 @@
             type="button"
             class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
             :class="activeTab === 'history' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-700'"
-            @click="poolContext ? activeTab = 'history' : dashboardOpen = true"
+            data-testid="open-records"
+            @click="poolContext ? activeTab = 'history' : recordsView = 'account'"
           >
             {{ t('admin.accounts.pelicanTest.history') }}<span v-if="records.length" class="ml-1">({{ records.length }})</span>
           </button>
@@ -377,7 +379,8 @@ const parallelCount = ref<string | number>(1)
 const activeTab = ref<'results' | 'history' | 'schedule'>('results')
 const running = ref(false)
 const viewingScheduled = ref(false)
-const dashboardOpen = ref(false)
+// Test records open as this account's window over the dialog; every account's page is one step further.
+const recordsView = ref<'account' | 'all' | null>(null)
 const runs = ref<TestRun[]>([])
 const records = ref<TestRecord[]>([])
 const scheduledRecords = ref<ScheduledTestResult[]>([])
@@ -725,6 +728,8 @@ onBeforeUnmount(() => { for (const controller of controllers.values()) controlle
 watch(modelId, () => { if (props.show) loadReasoning() })
 
 watch(() => [props.show, account.value?.id, props.poolContext?.groupId] as const, ([show]) => {
+  // The records window never outlives the dialog or carries over to another account.
+  recordsView.value = null
   if (show) {
     readRecords()
     activeTab.value = 'results'

@@ -30,7 +30,6 @@ export default {
         "remaining": "in {hours}h {minutes}m",
         "saved": "Timer saved",
         "cancelled": "Timer cancelled",
-        "manualWarning": "Switch scheduling permission immediately? This also cancels ALL pending timed-on and timed-off actions for the affected account(s), even if the permission already has this value.",
         "results": {
                 "scheduled": "Scheduled",
                 "replaced": "Replaced",
@@ -1851,6 +1850,7 @@ export default {
 
         historyLoadError: 'Some scheduled records could not be loaded. Available manual records are still shown.',
         dashboardHint: 'Retained scheduled and manual test outputs, refreshed every 15 seconds. Select a card to view the full result.',
+        allAccountsHistory: 'View all accounts',
         scheduledPreview: 'Scheduled preview',
         sourceManual: 'Manual',
         sourceScheduled: 'Scheduled',

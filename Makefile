@@ -42,6 +42,13 @@ FRONTEND_CRITICAL_VITEST := \
 	src/features/security-penalties/__tests__/SecurityRecords.spec.ts \
 	src/views/user/__tests__/ProfileView.spec.ts \
 	src/components/account/__tests__/SIWCAccountSettings.spec.ts \
+	src/components/admin/account/__tests__/PelicanRecordsDashboard.spec.ts \
+	src/api/admin/__tests__/scheduledTests.spec.ts \
+	src/components/admin/__tests__/CyberEvidence.spec.ts \
+	src/components/admin/moderation/__tests__/ModerationUsers.spec.ts \
+	src/components/admin/security/__tests__/SecurityAuditNav.spec.ts \
+	src/router/__tests__/security-audit-pages.spec.ts \
+	src/views/admin/__tests__/SafetyPromptAuditView.spec.ts \
 	src/features/ip-risk/__tests__/IPRiskSettings.spec.ts \
 	src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts \
 	src/api/__tests__/groupCacheTest.spec.ts \
