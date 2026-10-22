@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia } from 'pinia'
 import AccountTestModal from '../AccountTestModal.vue'
 import IQTestModal from '../IQTestModal.vue'
 import type { PoolDiagnosticContext } from '@/api/poolDashboard'
@@ -41,7 +42,7 @@ afterEach(() => {
 
 describe('ordinary user diagnostics reuse existing modals', () => {
   it('uses the scoped connection API and omits admin-only modes and headers', async () => {
-    const wrapper = mount(AccountTestModal, { props: { show: false, poolContext: context }, global: { stubs } })
+    const wrapper = mount(AccountTestModal, { props: { show: false, poolContext: context }, global: { stubs, plugins: [createPinia()] } })
     await wrapper.setProps({ show: true })
     await flushPromises()
     expect(models).toHaveBeenCalledWith(context)
@@ -56,7 +57,7 @@ describe('ordinary user diagnostics reuse existing modals', () => {
   })
 
   it('uses fixed IQ questions, a single run and scoped model/reasoning APIs', async () => {
-    const wrapper = mount(IQTestModal, { props: { show: false, poolContext: context }, global: { stubs } })
+    const wrapper = mount(IQTestModal, { props: { show: false, poolContext: context }, global: { stubs, plugins: [createPinia()] } })
     await wrapper.setProps({ show: true })
     await flushPromises()
     expect(wrapper.find('[data-testid="mode-probe"]').exists()).toBe(false)
@@ -76,7 +77,7 @@ describe('ordinary user diagnostics reuse existing modals', () => {
 
   it('surfaces a safe backend rate-limit message in the reused connection modal', async () => {
     vi.mocked(fetch).mockResolvedValue({ ok: false, status: 429, json: async () => ({ message: '测试请求较多，请稍后再试' }) } as Response)
-    const wrapper = mount(AccountTestModal, { props: { show: false, poolContext: context }, global: { stubs } })
+    const wrapper = mount(AccountTestModal, { props: { show: false, poolContext: context }, global: { stubs, plugins: [createPinia()] } })
     await wrapper.setProps({ show: true })
     await flushPromises()
     await (wrapper.vm as any).startTest()
