@@ -40,7 +40,7 @@ afterEach(() => {
 })
 
 describe('user account pool', () => {
-  it('opens the reused modals for the clicked account and its source group from both rows', async () => {
+  it('opens the reused modals for the clicked account and its source group from the single action row', async () => {
     getPool.mockResolvedValue({ generated_at: new Date().toISOString(), groups: [
       { id: 9, name: 'Source group', platform: 'openai', accounts: [account] }
     ] })

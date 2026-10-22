@@ -43,7 +43,6 @@
       <span>{{ t('poolDashboard.observed') }}</span>
       <span>{{ account.updated_at ? formatDateTime(account.updated_at) : '—' }}</span>
     </p>
-    <AccountDiagnosticButtons class="mt-3" @test="emit('test')" @intelligence="emit('intelligence')" />
   </article>
 </template>
 

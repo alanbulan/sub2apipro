@@ -7,16 +7,19 @@ vi.mock('vue-i18n', async (importOriginal) => ({
   useI18n: () => ({ t:(key:string) => key })
 }))
 describe('user quota card', () => {
-  it('renders two shared action rows and emits the same actions from either row', async () => {
+  it('renders one shared action row between quota and updated time', async () => {
     const account: PoolQuotaAccount = { id: 1, name: 'Source name', type: 'oauth', platform: 'openai', available: true,
       balance: null, balance_unit: '', balance_fresh_until: null, updated_at: null, windows: [] }
     const wrapper = mount(PoolQuotaCard, { props: { account, now: Date.now() } })
     expect(wrapper.get('h3').text()).toBe('Source name')
-    expect(wrapper.findAll('[data-test="account-diagnostic-actions"]')).toHaveLength(2)
-    for (const button of wrapper.findAll('[data-test="test-connection"]')) await button.trigger('click')
-    for (const button of wrapper.findAll('[data-test="test-intelligence"]')) await button.trigger('click')
-    expect(wrapper.emitted('test')).toHaveLength(2)
-    expect(wrapper.emitted('intelligence')).toHaveLength(2)
+    expect(wrapper.findAll('[data-test="account-diagnostic-actions"]')).toHaveLength(1)
+    expect(wrapper.get('[data-test="account-diagnostic-actions"]').element.nextElementSibling?.textContent).toContain('poolDashboard.observed')
+    expect(wrapper.findAll('[data-test="test-connection"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-test="test-intelligence"]')).toHaveLength(1)
+    await wrapper.get('[data-test="test-connection"]').trigger('click')
+    await wrapper.get('[data-test="test-intelligence"]').trigger('click')
+    expect(wrapper.emitted('test')).toHaveLength(1)
+    expect(wrapper.emitted('intelligence')).toHaveLength(1)
     await wrapper.setProps({ account: { ...account, name: '' } })
     expect(wrapper.get('h3').text()).toBe('poolDashboard.unnamedAccount')
     expect(wrapper.text()).not.toContain('#1')
