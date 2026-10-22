@@ -2,6 +2,8 @@ export default {
   title: 'My account pool',
   description: 'See which groups your API keys use and how much quota each account has left.',
   account: 'Account',
+  unnamedAccount: 'Unnamed account',
+  noTestModels: 'No text models are available for testing in this group.',
   groups: 'Groups in use',
   accounts: 'Total accounts',
   available: 'Available',

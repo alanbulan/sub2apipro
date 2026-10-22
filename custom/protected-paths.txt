@@ -74,3 +74,10 @@ frontend/src/i18n/locales/zh/poolDashboard.ts
 docs/user-account-pool.md
 backend/internal/service/pool_quota_usage.go
 backend/internal/service/pool_quota_usage_test.go
+
+backend/internal/handler/admin/account_pool_diagnostics.go
+backend/internal/handler/admin/account_pool_diagnostics_test.go
+backend/internal/service/pool_diagnostics.go
+backend/internal/service/pool_diagnostics_test.go
+frontend/src/components/account/AccountDiagnosticButtons.vue
+frontend/src/components/admin/account/__tests__/PoolDiagnostics.spec.ts

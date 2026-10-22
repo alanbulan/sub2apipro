@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import PoolDashboardView from '../PoolDashboardView.vue'
+import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
+import IQTestModal from '@/components/admin/account/IQTestModal.vue'
 
 const { getPool } = vi.hoisted(() => ({ getPool: vi.fn() }))
 vi.mock('@/api/poolDashboard', async (original) => ({
@@ -13,13 +15,14 @@ vi.mock('vue-i18n', async (importOriginal) => ({
   useI18n: () => ({ t: (key: string) => key })
 }))
 
-const account = { id: 7, label: '#7', platform: 'openai', available: true, windows: [], balance: null, balance_unit: '', balance_fresh_until: null, updated_at: null }
+const account = { id: 7, name: 'Public source', type: 'oauth', platform: 'openai', available: true, windows: [], balance: null, balance_unit: '', balance_fresh_until: null, updated_at: null }
 let wrapper: ReturnType<typeof mount> | undefined
 function render() {
   wrapper = mount(PoolDashboardView, {
     attachTo: document.body,
     global: { stubs: {
       AppLayout: { template: '<div><slot/></div>' },
+      AccountTestModal: true, IQTestModal: true,
       RouterLink: { template: '<a><slot/></a>' }
     } }
   })
@@ -37,6 +40,29 @@ afterEach(() => {
 })
 
 describe('user account pool', () => {
+  it('opens the reused modals for the clicked account and its source group from both rows', async () => {
+    getPool.mockResolvedValue({ generated_at: new Date().toISOString(), groups: [
+      { id: 9, name: 'Source group', platform: 'openai', accounts: [account] }
+    ] })
+    const view = render()
+    await flushPromises()
+    for (const button of view.findAll('[data-test="test-connection"]')) {
+      await button.trigger('click')
+      const modal = view.getComponent(AccountTestModal)
+      expect(modal.props('show')).toBe(true)
+      expect(modal.props('poolContext')).toEqual({ groupId: 9, account: {
+        id: 7, name: 'Public source', type: 'oauth', platform: 'openai', status: 'active'
+      } })
+      modal.vm.$emit('close')
+      await flushPromises()
+      expect(modal.props('show')).toBe(false)
+    }
+    for (const button of view.findAll('[data-test="test-intelligence"]')) {
+      await button.trigger('click')
+      expect(view.getComponent(IQTestModal).props('show')).toBe(true)
+      expect(view.getComponent(IQTestModal).props('poolContext')?.groupId).toBe(9)
+    }
+  })
   it('deduplicates totals and filters groups through the shared dropdown inside the fullscreen container', async () => {
     getPool.mockResolvedValue({ generated_at: new Date().toISOString(), groups: [
       { id: 1, name: 'First source', platform: 'openai', accounts: [account] },
@@ -100,7 +126,7 @@ describe('user account pool', () => {
   it('paginates accounts and resets a removed filter when the pool changes', async () => {
     getPool.mockResolvedValueOnce({ generated_at: new Date().toISOString(), groups: [
       { id: 1, name: 'First source', platform: 'openai', accounts: [account] },
-      { id: 2, name: 'Second source', platform: 'openai', accounts: Array.from({ length: 25 }, (_, i) => ({ ...account, id: i + 100, label: `#${i + 100}` })) }
+      { id: 2, name: 'Second source', platform: 'openai', accounts: Array.from({ length: 25 }, (_, i) => ({ ...account, id: i + 100, name: `Source ${i + 100}` })) }
     ] }).mockResolvedValueOnce({ generated_at: new Date().toISOString(), groups: [
       { id: 1, name: 'First source', platform: 'openai', accounts: [account] }
     ] })
@@ -110,7 +136,7 @@ describe('user account pool', () => {
     expect(secondGroup.findAll('[data-test="pool-account"]')).toHaveLength(24)
     await secondGroup.get('button[aria-label="pagination.next"]').trigger('click')
     expect(secondGroup.findAll('[data-test="pool-account"]')).toHaveLength(1)
-    expect(secondGroup.text()).toContain('#124')
+    expect(secondGroup.text()).toContain('Source 124')
     await view.get('[data-test="group-filter"] button').trigger('click')
     await view.get('[role="listbox"]').findAll('[role="option"]')[2].trigger('click')
     await view.get('[data-test="refresh-pool"]').trigger('click')

@@ -13,6 +13,7 @@ import (
 
 type poolGroupReader interface {
 	PoolSourceGroups(context.Context, int64) ([]service.Group, error)
+	GetUserGroupDeniedModels(context.Context, int64) (map[int64][]string, error)
 }
 type poolQuotaCacheEntry struct {
 	expires  time.Time
@@ -21,6 +22,7 @@ type poolQuotaCacheEntry struct {
 type poolDashboardCache struct {
 	mu     sync.Mutex
 	groups map[int64]poolQuotaCacheEntry
+	tests  poolDiagnosticLimits
 }
 
 func (h *AccountHandler) SetPoolGroupReader(reader poolGroupReader) { h.poolGroupReader = reader }

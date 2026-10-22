@@ -2,7 +2,7 @@
   <article class="card flex min-w-0 flex-col p-4 sm:p-5" data-test="pool-account">
     <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
-        <h3 class="break-words font-semibold text-gray-900 dark:text-gray-100">{{ t('poolDashboard.account') }} {{ account.label }}</h3>
+        <h3 class="break-words [overflow-wrap:anywhere] font-semibold text-gray-900 dark:text-gray-100">{{ account.name?.trim() || t('poolDashboard.unnamedAccount') }}</h3>
         <p class="mt-1 break-words text-xs text-gray-500 dark:text-dark-400">{{ platformLabel(account.platform) }}</p>
       </div>
       <StatusBadge
@@ -38,10 +38,12 @@
         <p class="min-w-0 leading-6">{{ t('poolDashboard.unknown') }}</p>
       </div>
     </div>
+    <AccountDiagnosticButtons class="mt-4" @test="emit('test')" @intelligence="emit('intelligence')" />
     <p class="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-gray-100 pt-3 text-xs leading-5 text-gray-500 dark:border-dark-700 dark:text-dark-400">
       <span>{{ t('poolDashboard.observed') }}</span>
       <span>{{ account.updated_at ? formatDateTime(account.updated_at) : '—' }}</span>
     </p>
+    <AccountDiagnosticButtons class="mt-3" @test="emit('test')" @intelligence="emit('intelligence')" />
   </article>
 </template>
 
@@ -50,11 +52,13 @@ import { useI18n } from 'vue-i18n'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UsageProgressBar from './UsageProgressBar.vue'
+import AccountDiagnosticButtons from './AccountDiagnosticButtons.vue'
 import { balanceIsCurrent, quotaIsCurrent, type PoolQuotaAccount } from '@/api/poolDashboard'
 import { formatDateTime } from '@/utils/format'
 import { platformLabel } from '@/utils/platformColors'
 
 defineProps<{ account: PoolQuotaAccount; now: number }>()
+const emit = defineEmits<{ test: []; intelligence: [] }>()
 const { t } = useI18n()
 function quotaLabel(label: string) {
   if (label === '5h') return t('poolDashboard.fiveHours')

@@ -16,6 +16,10 @@ import (
 
 type poolGroupReaderStub struct{ groups map[int64][]service.Group }
 
+func (s *poolGroupReaderStub) GetUserGroupDeniedModels(context.Context, int64) (map[int64][]string, error) {
+	return nil, nil
+}
+
 func (s *poolGroupReaderStub) PoolSourceGroups(_ context.Context, id int64) ([]service.Group, error) {
 	return s.groups[id], nil
 }
@@ -27,7 +31,7 @@ type poolAccountsStub struct {
 
 func (s *poolAccountsStub) ListAccountsForSchedulerScoreFilter(_ context.Context, _, _, _, _ string, groupID int64, _ string) ([]service.Account, error) {
 	s.queries = append(s.queries, groupID)
-	return []service.Account{{ID: groupID * 10, Name: "private-account@company.com", Credentials: map[string]any{"api_key": "private-key"}, Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true}}, nil
+	return []service.Account{{ID: groupID * 10, Name: "Public source name", Credentials: map[string]any{"api_key": "private-key", "email": "private-account@company.com"}, Platform: service.PlatformOpenAI, Status: service.StatusActive, Schedulable: true}}, nil
 }
 func TestUserPoolAuthorizesBeforeCacheAndIgnoresForgedGroupParameters(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -48,6 +52,7 @@ func TestUserPoolAuthorizesBeforeCacheAndIgnoresForgedGroupParameters(t *testing
 	require.Equal(t, 200, first.Code)
 	require.Contains(t, first.Body.String(), "Mine")
 	require.NotContains(t, first.Body.String(), "Other")
+	require.Contains(t, first.Body.String(), "Public source name")
 	require.NotContains(t, first.Body.String(), "private-account")
 	require.NotContains(t, first.Body.String(), "private-key")
 	second := request(2)

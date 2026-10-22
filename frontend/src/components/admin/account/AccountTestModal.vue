@@ -53,7 +53,7 @@
       </div>
 
       <!-- Grok: mode first, then optional model / mode params -->
-      <div v-if="isGrokAccount" class="space-y-1.5">
+      <div v-if="isGrokAccount && !poolContext" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.grok.testMode') }}
         </label>
@@ -81,7 +81,7 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
+      <div v-if="isOpenAIAccount && !poolContext" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
@@ -377,7 +377,7 @@
 
 <script setup lang="ts">
 import { AUTH_TOKEN_KEY, getAuthItem } from '@/utils/authStorage'
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -388,6 +388,7 @@ import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
+import { getPoolDiagnosticModels, poolDiagnosticPath, poolTestError, type PoolDiagnosticContext } from '@/api/poolDashboard'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -404,8 +405,11 @@ interface PreviewMedia {
 
 const props = defineProps<{
   show: boolean
-  account: Account | null
+  account?: Account | null
+  poolContext?: PoolDiagnosticContext
 }>()
+
+const account = computed(() => props.poolContext?.account ?? props.account ?? null)
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -437,8 +441,8 @@ const uploadAudioDataURL = ref('')
 const uploadAudioName = ref('')
 const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
-const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
-const isGrokAccount = computed(() => props.account?.platform === 'grok')
+const isOpenAIAccount = computed(() => account.value?.platform === 'openai')
+const isGrokAccount = computed(() => account.value?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
@@ -457,13 +461,13 @@ const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
 
-  return props.account?.platform === 'gemini' || props.account?.platform === 'antigravity'
+  return account.value?.platform === 'gemini' || account.value?.platform === 'antigravity'
 })
 
 const supportsOpenAIImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gpt-image-')) return false
-  return props.account?.platform === 'openai'
+  return account.value?.platform === 'openai'
 })
 
 const isGrokImageModel = (id: string) => {
@@ -749,9 +753,9 @@ const pickDefaultModelForMode = () => {
 }
 
 watch(
-  () => [props.show, props.account?.id] as const,
+  () => [props.show, account.value?.id, props.poolContext?.groupId] as const,
   async ([newVal]) => {
-    if (newVal && props.account) {
+    if (newVal && account.value) {
       testPrompt.value = ''
       testMode.value = 'default'
       grokTestMode.value = 'text'
@@ -779,7 +783,7 @@ watch(grokTestMode, () => {
 })
 
 const loadAvailableModels = async () => {
-  if (!props.account) return
+  if (!account.value) return
 
   const generation = ++modelLoadGeneration
   loadingModels.value = true
@@ -788,14 +792,17 @@ const loadAvailableModels = async () => {
   availableModels.value = []
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
+    const models = props.poolContext
+      ? await getPoolDiagnosticModels(props.poolContext)
+      : await adminAPI.accounts.getAvailableModels(account.value.id)
     if (generation !== modelLoadGeneration) return
-    availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
+    availableModels.value = account.value.platform === 'gemini' || account.value.platform === 'antigravity'
       ? sortTestModels(models)
       : models
+    if (props.poolContext && !models.length) modelLoadError.value = t('poolDashboard.noTestModels')
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      if (account.value.platform === 'gemini') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model
@@ -854,12 +861,12 @@ const scrollToBottom = async () => {
 }
 
 const startTest = async () => {
-  if (!props.account || !canStartTest.value) return
+  if (!account.value || !canStartTest.value) return
 
   resetState()
   status.value = 'connecting'
-  addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
-  addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-gray-400')
+  addLine(t('admin.accounts.startingTestForAccount', { name: account.value.name }), 'text-blue-400')
+  addLine(t('admin.accounts.testAccountTypeLabel', { type: account.value.type }), 'text-gray-400')
   if (isGrokAccount.value) {
     const modeLabel =
       grokTestModeOptions.value.find((o) => o.value === grokTestMode.value)?.label || grokTestMode.value
@@ -906,7 +913,7 @@ const startTest = async () => {
     }
 
     // Use the configured API base; EventSource does not support POST.
-    const url = buildApiUrl(`/admin/accounts/${props.account.id}/test`)
+    const url = buildApiUrl(props.poolContext ? poolDiagnosticPath(props.poolContext, 'test') : `/admin/accounts/${account.value.id}/test`)
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {
@@ -914,14 +921,14 @@ const startTest = async () => {
       headers: {
         Authorization: `Bearer ${getAuthItem(AUTH_TOKEN_KEY)}`,
         'Content-Type': 'application/json',
-        [ADMIN_UI_REQUEST_HEADER]: '1'
+        ...(!props.poolContext ? { [ADMIN_UI_REQUEST_HEADER]: '1' } : {})
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(props.poolContext ? { model_id: requestBody.model_id } : requestBody),
       signal: abortController.signal
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+      throw props.poolContext ? await poolTestError(response) : new Error(`HTTP error! status: ${response.status}`)
     }
 
     const reader = response.body?.getReader()
@@ -1079,6 +1086,7 @@ const copyOutput = () => {
   const text = outputLines.value.map((l) => l.text).join('\n')
   copyToClipboard(text, t('admin.accounts.outputCopied'))
 }
+onBeforeUnmount(abortStream)
 </script>
 
 <style>

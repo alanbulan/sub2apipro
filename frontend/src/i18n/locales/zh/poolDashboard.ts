@@ -2,6 +2,8 @@ export default {
   title: '我的账号池',
   description: '看看你的 API 密钥正在使用哪些分组，以及各个账号还剩多少额度。',
   account: '账号',
+  unnamedAccount: '未命名账号',
+  noTestModels: '当前分组没有可测试的文本模型。',
   groups: '使用中的分组',
   accounts: '账号总数',
   available: '可用',

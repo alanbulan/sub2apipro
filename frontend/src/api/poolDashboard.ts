@@ -1,4 +1,23 @@
 import { apiClient } from './client'
+import type { Account, ClaudeModel } from '@/types'
+
+export type PoolDiagnosticAccount = Pick<Account, 'id' | 'name' | 'platform' | 'type' | 'status'> & Partial<Pick<Account, 'credentials' | 'extra'>>
+export interface PoolDiagnosticContext { groupId: number; account: PoolDiagnosticAccount }
+export function poolDiagnosticPath(context: PoolDiagnosticContext, operation: string): string {
+  return `/user/pool-dashboard/groups/${context.groupId}/accounts/${context.account.id}/${operation}`
+}
+export async function getPoolDiagnosticModels(context: PoolDiagnosticContext): Promise<ClaudeModel[]> {
+  return (await apiClient.get<ClaudeModel[]>(poolDiagnosticPath(context, 'models'))).data
+}
+export async function getPoolDiagnosticReasoning(context: PoolDiagnosticContext, modelId: string) {
+  return (await apiClient.get<{ supported_reasoning_levels: string[]; default_reasoning_level: string }>(
+    poolDiagnosticPath(context, 'models/reasoning'), { params: { model_id: modelId } }
+  )).data
+}
+export async function poolTestError(response: Response): Promise<Error> {
+  const body = await response.json().catch(() => null)
+  return new Error(typeof body?.message === 'string' ? body.message : `HTTP ${response.status}`)
+}
 
 export interface PoolQuotaWindow {
   window: string
@@ -10,8 +29,9 @@ export interface PoolQuotaWindow {
 }
 export interface PoolQuotaAccount {
   id: number
-  label: string
-  platform: string
+  name: string
+  type: Account['type']
+  platform: Account['platform']
   available: boolean
   windows: PoolQuotaWindow[]
   balance: number | null

@@ -20,6 +20,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/user/__tests__/CustomPageView.spec.ts \
 	src/utils/__tests__/upstreamResponseModel.spec.ts \
 	src/components/common/__tests__/Select.spec.ts \
+	src/components/common/__tests__/BaseDialog.spec.ts \
 	src/views/user/__tests__/PoolDashboardView.spec.ts \
 	src/components/account/__tests__/PoolQuotaCard.spec.ts \
 	src/api/__tests__/poolDashboard.spec.ts \
@@ -35,6 +36,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/admin/__tests__/modelTrace.spec.ts \
 	src/components/admin/account/__tests__/ModelTracePanel.spec.ts \
 	src/components/admin/account/__tests__/IQTestModal.modelTrace.spec.ts \
+	src/components/admin/account/__tests__/IQTestModal.spec.ts \
+	src/components/admin/account/__tests__/AccountTestModal.spec.ts \
+	src/components/admin/account/__tests__/PoolDiagnostics.spec.ts \
 	src/features/security-penalties/__tests__/SecurityRecords.spec.ts \
 	src/views/user/__tests__/ProfileView.spec.ts \
 	src/components/account/__tests__/SIWCAccountSettings.spec.ts \

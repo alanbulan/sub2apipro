@@ -37,17 +37,25 @@ func TestPoolSourceGroupsIntersectOwnerKeysWithCurrentPermissions(t *testing.T) 
 	require.NoError(t, err)
 	require.Len(t, groups, 1)
 	require.Equal(t, int64(1), groups[0].ID)
+	// Upstream multi-group keys must expose all permitted sources, while a
+	// forged primary group outside current permissions remains invisible.
+	svc.apiKeyRepo = &poolKeysRepo{keys: []APIKey{{UserID: 1, GroupID: &group2, GroupIDs: []int64{2, 1}, Status: StatusActive}}}
+	groups, err = svc.PoolSourceGroups(context.Background(), 1)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, int64(1), groups[0].ID)
 }
 
 func TestPoolQuotaAccountsRedactSecretsAndRejectExpiredObservations(t *testing.T) {
 	now := time.Now().UTC()
-	accounts := []Account{{ID: 1, Name: "secret@example.com", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true,
+	accounts := []Account{{ID: 1, Name: "Production source", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true,
 		Credentials: map[string]any{"access_token": "private-token", "email": "secret@example.com"},
 		Extra:       map[string]any{"codex_usage_updated_at": now.Add(-time.Minute).Format(time.RFC3339), "codex_5h_used_percent": 20.0, "codex_5h_reset_at": now.Add(time.Hour).Format(time.RFC3339)},
 	}}
 	rows := BuildPoolQuotaAccounts(accounts, nil, now)
 	require.Len(t, rows, 1)
-	require.Equal(t, "#1", rows[0].Label)
+	require.Equal(t, "Production source", rows[0].Name)
+	require.Equal(t, AccountTypeOAuth, rows[0].Type)
 	require.NotNil(t, rows[0].Windows[0].UsedPercent)
 	raw, err := json.Marshal(rows)
 	require.NoError(t, err)
@@ -56,7 +64,7 @@ func TestPoolQuotaAccountsRedactSecretsAndRejectExpiredObservations(t *testing.T
 	require.NotContains(t, string(raw), "credentials")
 	var response []map[string]any
 	require.NoError(t, json.Unmarshal(raw, &response))
-	require.Len(t, response[0], 9)
+	require.Len(t, response[0], 10)
 	window := response[0]["windows"].([]any)[0].(map[string]any)
 	require.Len(t, window, 6)
 	for _, key := range []string{"window", "label", "used_percent", "status", "observed_at", "resets_at"} {

@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="teleportTarget">
     <Transition name="modal">
       <div
         v-if="show"
@@ -77,6 +77,7 @@ interface Props {
   /** Optional per-dialog layout overrides; native defaults stay unchanged. */
   contentClass?: string
   bodyClass?: string
+  teleportTo?: string | HTMLElement
 }
 
 interface Emits {
@@ -94,6 +95,9 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+const teleportTarget = computed(() => props.teleportTo
+  ?? (props.show && typeof document !== 'undefined' ? document.fullscreenElement : null)
+  ?? 'body')
 
 // Custom z-index style (overrides the default z-50 from CSS)
 const zIndexStyle = computed(() => {

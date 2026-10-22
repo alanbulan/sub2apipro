@@ -1,7 +1,11 @@
 <template>
-  <PelicanRecordsDashboard v-if="dashboardOpen" :accounts="props.accounts || []" :account="props.account" :manual-record="records[0] || null" @close="dashboardOpen = false" />
+  <PelicanRecordsDashboard v-if="!poolContext && dashboardOpen" :accounts="props.accounts || []" :account="props.account || null" :manual-record="records[0] || null" @close="dashboardOpen = false" />
   <BaseDialog :show="show" :title="t('admin.accounts.pelicanTest.title')" width="full" :fullscreen="viewingScheduled && testMode === 'question'" @close="handleClose">
     <div class="space-y-5">
+      <div v-if="poolContext && modelLoadError" role="alert" class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+        <p>{{ modelLoadError }}</p>
+        <button type="button" class="mt-2 underline" @click="loadModels">{{ t('admin.accounts.retryModels') }}</button>
+      </div>
       <div v-if="account" class="flex flex-col items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-800/60 dark:bg-amber-950/20 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-white">
@@ -45,6 +49,7 @@
             v-model="modelId"
             :label="t('admin.accounts.pelicanTest.probe.model')"
             :options="modelOptions"
+            :allow-custom="!poolContext"
             :disabled="running"
             :hint="t('admin.accounts.pelicanTest.probe.modelHint')"
           />
@@ -118,7 +123,7 @@
       </div>
 
       <template v-else-if="testMode === 'modeltrace'">
-        <ModelTracePanel v-if="show && account" :key="account.id" v-model:model-id="modelId" :account="account"
+        <ModelTracePanel v-if="!poolContext && show && props.account" :key="props.account.id" v-model:model-id="modelId" :account="props.account"
           :model-options="modelOptions" :reasoning-levels="reasoningLevels" @running="running = $event" />
       </template>
       <template v-else>
@@ -131,7 +136,7 @@
         <TextArea
           v-model="prompt"
           :label="t('admin.accounts.pelicanTest.promptLabel')"
-          :disabled="running"
+          :disabled="running || !!poolContext"
           :rows="5"
           :hint="t('admin.accounts.pelicanTest.promptHint')"
         />
@@ -141,6 +146,7 @@
             v-model="modelId"
             :label="t('admin.accounts.pelicanTest.model')"
             :options="modelOptions"
+            :allow-custom="!poolContext"
             :disabled="running"
             :hint="t('admin.accounts.pelicanTest.modelHint', { model: defaultModel })"
           />
@@ -149,6 +155,7 @@
             <Select v-model="reasoningEffort" :options="reasoningOptions" :disabled="running" />
           </div>
           <Input
+            v-if="!poolContext"
             v-model="parallelCount"
             type="number"
             :label="t('admin.accounts.pelicanTest.parallel')"
@@ -179,11 +186,11 @@
             type="button"
             class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
             :class="activeTab === 'history' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-700'"
-            @click="dashboardOpen = true"
+            @click="poolContext ? activeTab = 'history' : dashboardOpen = true"
           >
             {{ t('admin.accounts.pelicanTest.history') }}<span v-if="records.length" class="ml-1">({{ records.length }})</span>
           </button>
-          <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium"
+          <button v-if="!poolContext" type="button" class="rounded-md px-3 py-1.5 text-sm font-medium"
             :class="activeTab === 'schedule' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-700'"
             @click="activeTab = 'schedule'">{{ t('admin.accounts.pelicanTest.schedule') }}</button>
         </div>
@@ -193,7 +200,7 @@
         </span>
       </div>
 
-      <ScheduledTestsPanel v-if="show && account && activeTab === 'schedule'" :key="account.id" :show="true" embedded
+      <ScheduledTestsPanel v-if="!poolContext && show && account && activeTab === 'schedule'" :key="account.id" :show="true" embedded
         :account-id="account.id" :default-model="modelId" :model-options="[{ value: modelId, label: modelId }]"
         :pelican-config="{ question_kind: questionKind, prompt, reasoning_effort: reasoningEffort, parallel_count: Number(parallelCount) }"
         :disabled="running" @preview="previewScheduled" @history="scheduledRecords = $event" />
@@ -298,6 +305,7 @@ import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { getAvailableModels, getModelReasoning, probeOpenAICodexState, type OpenAICodexStateProbeResult, type OpenAICodexStateVerdict } from '@/api/admin/accounts'
 import type { Account, AccountListItem, PelicanTestConfig, ScheduledTestResult } from '@/types'
+import { getPoolDiagnosticModels, getPoolDiagnosticReasoning, poolDiagnosticPath, poolTestError, type PoolDiagnosticContext } from '@/api/poolDashboard'
 import ScheduledTestsPanel from './ScheduledTestsPanel.vue'
 import PelicanRecordsDashboard from './PelicanRecordsDashboard.vue'
 import TestModelSelect from './TestModelSelect.vue'
@@ -311,7 +319,7 @@ const PROBE_RESULT_LIMIT = 5
 const PROBE_FAILURE_KINDS = new Set(['unsupported', 'account_error', 'rate_limited', 'model_unsupported', 'upstream_error', 'network_error', 'stream_error', 'no_ticket', 'cancelled'])
 
 type TestMode = 'question' | 'probe' | 'modeltrace'
-const testModes: TestMode[] = ['question', 'probe', 'modeltrace']
+const testModes = computed<TestMode[]>(() => props.poolContext ? ['question'] : ['question', 'probe', 'modeltrace'])
 
 type RunStatus = 'running' | 'success' | 'error'
 interface TestRun {
@@ -340,22 +348,24 @@ interface TestRecord {
   runs: TestRun[]
 }
 
-const props = defineProps<{ show: boolean; account: Account | null; accounts?: AccountListItem[] }>()
+const props = defineProps<{ show: boolean; account?: Account | null; accounts?: AccountListItem[]; poolContext?: PoolDiagnosticContext }>()
+const account = computed(() => props.poolContext?.account ?? props.account ?? null)
 const emit = defineEmits<{ (event: 'close'): void }>()
 
 const questionKind = ref<IntelligenceQuestion>('candy')
 const prompt = ref(questionPrompt('candy'))
 // Claude accounts cannot serve the OpenAI default.
-const defaultModel = computed(() => props.account?.platform === 'anthropic' ? 'claude-opus-5-5' : 'gpt-6-astra')
+const defaultModel = computed(() => account.value?.platform === 'anthropic' ? 'claude-opus-5-5' : 'gpt-6-astra')
 const modelId = ref(defaultModel.value)
 const reasoningEffort = ref('medium')
 const reasoningLevels = ref<string[]>(['low', 'medium', 'high'])
 const availableModels = ref<Array<{ id: string; display_name?: string }>>([])
+const modelLoadError = ref('')
 const modelOptions = computed(() => {
   const models = new Map(availableModels.value.map((model) => [model.id, model.display_name?.trim()]))
   // A diagnostic test must also allow explicitly configured public model names,
   // even when the upstream discovery catalog does not advertise their targets.
-  const mapping = props.account?.credentials?.model_mapping
+  const mapping = account.value?.credentials?.model_mapping
   if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
     for (const id of Object.keys(mapping)) {
       if (id.trim() && !id.includes('*') && !models.has(id)) models.set(id, undefined)
@@ -387,39 +397,52 @@ const reasoningOptions = computed(() => reasoningLevels.value.map((value) => ({
   value,
   label: ({ low: t('admin.accounts.pelicanTest.reasoningLow'), medium: t('admin.accounts.pelicanTest.reasoningMedium'), high: t('admin.accounts.pelicanTest.reasoningHigh'), none: t('admin.accounts.pelicanTest.reasoningNone'), minimal: t('admin.accounts.pelicanTest.reasoningMinimal'), xhigh: t('admin.accounts.pelicanTest.reasoningXHigh'), max: t('admin.accounts.pelicanTest.reasoningMax'), ultra: t('admin.accounts.pelicanTest.reasoningUltra') } as Record<string, string>)[value] || value
 })))
-const canStart = computed(() => Boolean(props.account && prompt.value.trim() && modelId.value.trim() && normalizeCount() > 0))
+const canStart = computed(() => Boolean(account.value && prompt.value.trim() && modelId.value.trim() && normalizeCount() > 0
+  && (!props.poolContext || availableModels.value.some(model => model.id === modelId.value.trim()))))
 const hasDownloadable = computed(() => runs.value.some((run) => Boolean(run.output)))
-const probeSupported = computed(() => props.account?.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token'))
-const canStartProbe = computed(() => Boolean(props.account && probeSupported.value))
+const probeSupported = computed(() => account.value?.platform === 'openai' && (account.value.type === 'oauth' || account.value.type === 'setup-token'))
+const canStartProbe = computed(() => Boolean(account.value && probeSupported.value))
 
 let modelLoadToken = 0
 async function loadModels() {
-  if (!props.account) return
+  if (!account.value) return
   const token = ++modelLoadToken
-  const accountId = props.account.id
+  const accountId = account.value.id
   const initialModel = modelId.value
   availableModels.value = []
+  modelLoadError.value = ''
   try {
-    const models = await getAvailableModels(accountId)
-    if (token !== modelLoadToken || props.account?.id !== accountId || !props.show) return
+    const models = props.poolContext ? await getPoolDiagnosticModels(props.poolContext) : await getAvailableModels(accountId)
+    if (token !== modelLoadToken || account.value?.id !== accountId || !props.show) return
     availableModels.value = models.map((model: any) => ({ id: model.id, display_name: model.display_name }))
+    if (props.poolContext && !models.length) modelLoadError.value = t('poolDashboard.noTestModels')
     if (modelId.value === initialModel && !modelOptions.value.some((model) => model.value === modelId.value) && modelOptions.value.length > 0) {
       modelId.value = modelOptions.value[0].value
     }
   } catch {
-    if (token === modelLoadToken && props.account?.id === accountId) availableModels.value = []
+    if (token === modelLoadToken && account.value?.id === accountId) {
+      availableModels.value = []
+      modelLoadError.value = t('admin.accounts.modelsLoadFailed')
+    }
   }
 }
 let reasoningLoadToken = 0
 async function loadReasoning() {
-  if (!props.account || !modelId.value.trim()) return
+  if (!account.value || !modelId.value.trim()) return
   const token = ++reasoningLoadToken
   try {
-    const result = await getModelReasoning(props.account.id, modelId.value.trim())
+    const result = props.poolContext
+      ? await getPoolDiagnosticReasoning(props.poolContext, modelId.value.trim())
+      : await getModelReasoning(account.value.id, modelId.value.trim())
     if (token !== reasoningLoadToken) return
     reasoningLevels.value = result.supported_reasoning_levels.length > 0 ? result.supported_reasoning_levels : ['none']
     reasoningEffort.value = reasoningLevels.value.includes(result.default_reasoning_level) ? result.default_reasoning_level : reasoningLevels.value[0]
   } catch {
+    if (props.poolContext) {
+      reasoningLevels.value = ['none']
+      reasoningEffort.value = 'none'
+      return
+    }
     reasoningLevels.value = ['low', 'medium', 'high']
     if (!reasoningLevels.value.includes(reasoningEffort.value)) reasoningEffort.value = 'medium'
   }
@@ -470,15 +493,17 @@ function newTicketLabel(result: OpenAICodexStateProbeResult) {
   return t(result.new_ticket ? 'admin.accounts.pelicanTest.probe.yes' : 'admin.accounts.pelicanTest.probe.no')
 }
 
-const storageKey = computed(() => `${STORAGE_PREFIX}${props.account?.id ?? 'unknown'}`)
+const storageKey = computed(() => `${props.poolContext ? 'sub2api-pool-iq:' : STORAGE_PREFIX}${account.value?.id ?? 'unknown'}`)
 
 function normalizeCount(): number {
+  if (props.poolContext) return 1
   const value = Number(parallelCount.value)
   if (!Number.isFinite(value)) return 1
   return Math.min(8, Math.max(1, Math.floor(value)))
 }
 
 function readRecords() {
+  if (props.poolContext) { records.value = []; return }
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey.value) || '[]')
     records.value = Array.isArray(parsed) ? parsed : []
@@ -488,6 +513,7 @@ function readRecords() {
 }
 
 function saveRecords() {
+  if (props.poolContext) return
   try {
     localStorage.setItem(storageKey.value, JSON.stringify(records.value.slice(0, 8)))
   } catch {
@@ -551,14 +577,16 @@ function handleClose() {
 }
 
 async function consumeRun(run: TestRun, signal: AbortSignal) {
-  const response = await fetch(buildApiUrl(`/admin/accounts/${props.account!.id}/pelican-test`), {
+  const response = await fetch(buildApiUrl(props.poolContext ? poolDiagnosticPath(props.poolContext, 'pelican-test') : `/admin/accounts/${account.value!.id}/pelican-test`), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${getAuthItem(AUTH_TOKEN_KEY)}`,
       'Content-Type': 'application/json',
-      [ADMIN_UI_REQUEST_HEADER]: '1'
+      ...(!props.poolContext ? { [ADMIN_UI_REQUEST_HEADER]: '1' } : {})
     },
-    body: JSON.stringify({
+    body: JSON.stringify(props.poolContext ? {
+      model_id: modelId.value.trim(), question_kind: questionKind.value, reasoning_effort: reasoningEffort.value === 'none' ? '' : reasoningEffort.value
+    } : {
       model_id: modelId.value.trim(),
       prompt: `${prompt.value.trim()}\n\n${deliveryContract.value}`,
       mode: 'default',
@@ -566,7 +594,7 @@ async function consumeRun(run: TestRun, signal: AbortSignal) {
     }),
     signal
   })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  if (!response.ok) throw props.poolContext ? await poolTestError(response) : new Error(`HTTP ${response.status}`)
   const reader = response.body?.getReader()
   if (!reader) throw new Error(t('admin.accounts.pelicanTest.noResponseBody'))
   const decoder = new TextDecoder()
@@ -623,7 +651,7 @@ async function startOne(run: TestRun) {
 }
 
 async function startTest() {
-  if (running.value || !props.account || !canStart.value) return
+  if (running.value || !account.value || !canStart.value) return
   viewingScheduled.value = false
   const count = normalizeCount()
   parallelCount.value = count
@@ -656,15 +684,15 @@ async function startTest() {
 }
 
 async function startProbe() {
-  if (running.value || !props.account || !canStartProbe.value) return
-  const accountId = props.account.id
+  if (running.value || !account.value || !canStartProbe.value) return
+  const accountId = account.value.id
   const controller = new AbortController()
   controllers.set(PROBE_CONTROLLER_KEY, controller)
   probeError.value = ''
   running.value = true
   try {
     const result = await probeOpenAICodexState(accountId, modelId.value, { signal: controller.signal })
-    if (controller.signal.aborted || props.account?.id !== accountId) return
+    if (controller.signal.aborted || account.value?.id !== accountId) return
     probeResults.value = [result, ...probeResults.value].slice(0, PROBE_RESULT_LIMIT)
   } catch (error) {
     if (controller.signal.aborted) return
@@ -696,7 +724,7 @@ onBeforeUnmount(() => { for (const controller of controllers.values()) controlle
 
 watch(modelId, () => { if (props.show) loadReasoning() })
 
-watch(() => [props.show, props.account?.id] as const, ([show]) => {
+watch(() => [props.show, account.value?.id, props.poolContext?.groupId] as const, ([show]) => {
   if (show) {
     readRecords()
     activeTab.value = 'results'

@@ -10,7 +10,22 @@ vi.mock('vue-i18n', () => ({
 describe('BaseDialog', () => {
   afterEach(() => {
     document.body.innerHTML = ''
+    Reflect.deleteProperty(document, 'fullscreenElement')
     document.body.classList.remove('modal-open')
+    vi.restoreAllMocks()
+  })
+
+  it('keeps the dialog in the active fullscreen element', async () => {
+    const target = document.createElement('section')
+    document.body.appendChild(target)
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: target })
+    const wrapper = mount(BaseDialog, {
+      props: { show: false, title: 'Account test' },
+      global: { stubs: { Icon: true } }
+    })
+    await wrapper.setProps({ show: true })
+    expect(target.querySelector('[role="dialog"]')).not.toBeNull()
+    wrapper.unmount()
   })
 
   it('resets body scroll position when reopened', async () => {

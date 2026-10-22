@@ -93,7 +93,8 @@
             <span class="max-w-full break-words rounded-lg px-2.5 py-1 text-xs font-medium" :class="platformBadgeLightClass(group.platform)">{{ platformLabel(group.platform) }}</span>
           </div>
           <div v-if="group.accounts.length" class="pool-account-grid grid gap-4 p-4 sm:p-5">
-            <PoolQuotaCard v-for="account in pageAccounts(group)" :key="account.id" :account="account" :now="now" />
+            <PoolQuotaCard v-for="account in pageAccounts(group)" :key="account.id" :account="account" :now="now"
+              @test="openDiagnostic(group.id, account, 'connection')" @intelligence="openDiagnostic(group.id, account, 'intelligence')" />
           </div>
           <EmptyState v-else :title="t('poolDashboard.emptyGroup')" />
           <Pagination
@@ -111,6 +112,8 @@
           <p>{{ t('poolDashboard.quotaHint') }}</p>
         </div>
       </template>
+      <AccountTestModal :show="diagnostic?.mode === 'connection'" :pool-context="diagnostic?.context" @close="diagnostic = null" />
+      <IQTestModal :show="diagnostic?.mode === 'intelligence'" :pool-context="diagnostic?.context" @close="diagnostic = null" />
     </div>
   </AppLayout>
 </template>
@@ -120,6 +123,8 @@ import { computed, h, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PoolQuotaCard from '@/components/account/PoolQuotaCard.vue'
+import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
+import IQTestModal from '@/components/admin/account/IQTestModal.vue'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -128,7 +133,7 @@ import Skeleton from '@/components/common/Skeleton.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
-import { balanceIsCurrent, getPoolDashboard, quotaIsCurrent, type PoolQuotaGroup, type UserPoolDashboard } from '@/api/poolDashboard'
+import { balanceIsCurrent, getPoolDashboard, quotaIsCurrent, type PoolQuotaAccount, type PoolQuotaGroup, type UserPoolDashboard, type PoolDiagnosticContext } from '@/api/poolDashboard'
 import { formatDateTime } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
@@ -137,6 +142,13 @@ const { t } = useI18n()
 const data = ref<UserPoolDashboard | null>(null)
 const loading = ref(false)
 const error = ref('')
+const diagnostic = ref<{ mode: 'connection' | 'intelligence'; context: PoolDiagnosticContext } | null>(null)
+function openDiagnostic(groupId: number, account: PoolQuotaAccount, mode: 'connection' | 'intelligence') {
+  diagnostic.value = { mode, context: { groupId, account: {
+    id: account.id, name: account.name?.trim() || t('poolDashboard.unnamedAccount'), platform: account.platform,
+    type: account.type, status: account.available ? 'active' : 'inactive'
+  } } }
+}
 const groupFilter = ref('all')
 const now = ref(Date.now())
 const pages = reactive<Record<number, number>>({})
@@ -244,6 +256,9 @@ onUnmounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
 }
 .pool-screen :deep(.select-dropdown-portal) {
+  margin: 0;
+}
+.pool-screen :deep(.modal-overlay) {
   margin: 0;
 }
 .pool-actions :deep(.app-theme-control) {

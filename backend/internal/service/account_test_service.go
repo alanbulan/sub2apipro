@@ -3676,6 +3676,18 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 			}
 		}
 	}
+	if c.Request != nil {
+		if stream, ok := c.Request.Context().Value(poolTestStreamKey{}).(*poolTestStream); ok {
+			for _, safeEvent := range stream.events(event) {
+				s.writeTestEvent(c, safeEvent)
+			}
+			return
+		}
+	}
+	s.writeTestEvent(c, event)
+}
+
+func (s *AccountTestService) writeTestEvent(c *gin.Context, event TestEvent) {
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)

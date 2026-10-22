@@ -60,12 +60,20 @@ afterEach(() => {
   unmountWrapper?.()
   unmountWrapper = undefined
   document.body.innerHTML = ''
+  Reflect.deleteProperty(document, 'fullscreenElement')
   setViewportWidth(originalInnerWidth)
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
 describe('Select dropdown viewport constraints', () => {
+  it('automatically keeps modal dropdowns inside the current fullscreen element', async () => {
+    const target = document.createElement('section')
+    document.body.appendChild(target)
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: target })
+    await openSelect()
+    expect(target.querySelector('[role="listbox"]')).not.toBeNull()
+  })
   it('renders into an explicit container so dropdowns remain visible in fullscreen', async () => {
     const target = document.createElement('section')
     document.body.appendChild(target)

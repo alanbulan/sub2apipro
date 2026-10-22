@@ -46,7 +46,7 @@
     </button>
 
     <!-- Fullscreen pages can keep the dropdown inside their fullscreen element. -->
-    <Teleport :to="teleportTo">
+    <Teleport :to="teleportTarget">
       <Transition name="select-dropdown">
         <div
           v-if="isOpen"
@@ -181,7 +181,6 @@ const props = withDefaults(defineProps<Props>(), {
   multiple: false,
   valueKey: 'value',
   labelKey: 'label',
-  teleportTo: 'body',
   remote: false,
   loading: false
 })
@@ -189,6 +188,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const isOpen = ref(false)
+const teleportTarget = computed(() => props.teleportTo
+  ?? (isOpen.value && typeof document !== 'undefined' ? document.fullscreenElement : null)
+  ?? 'body')
 const searchQuery = ref('')
 const focusedIndex = ref(-1)
 const containerRef = ref<HTMLElement | null>(null)

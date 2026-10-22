@@ -30,6 +30,12 @@ func RegisterUserRoutes(
 		{
 			if h.Admin != nil && h.Admin.Account != nil {
 				user.GET("/pool-dashboard", h.Admin.Account.SharedPoolDashboard)
+				diagnostics := user.Group("/pool-dashboard/groups/:group_id/accounts/:id")
+				diagnostics.Use(panelRateLimiter.Heavy())
+				diagnostics.GET("/models", h.Admin.Account.PoolDiagnosticModels)
+				diagnostics.GET("/models/reasoning", h.Admin.Account.PoolDiagnosticReasoning)
+				diagnostics.POST("/test", h.Admin.Account.PoolConnectionTest)
+				diagnostics.POST("/pelican-test", h.Admin.Account.PoolIntelligenceTest)
 			}
 			user.GET("/profile", h.User.GetProfile)
 			if h.Admin != nil && h.Admin.PromptAudit != nil {

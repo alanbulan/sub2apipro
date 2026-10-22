@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"time"
 
@@ -37,8 +36,10 @@ func (s *APIKeyService) PoolSourceGroups(ctx context.Context, userID int64) ([]G
 	}
 	now := time.Now()
 	for _, key := range keys {
-		if key.UserID == userID && key.GroupID != nil && key.Status == StatusActive && (key.ExpiresAt == nil || key.ExpiresAt.After(now)) {
-			used[*key.GroupID] = true
+		if key.UserID == userID && key.Status == StatusActive && (key.ExpiresAt == nil || key.ExpiresAt.After(now)) {
+			for _, id := range key.ConfiguredGroupIDs() {
+				used[id] = true
+			}
 		}
 	}
 	out := make([]Group, 0)
@@ -52,7 +53,8 @@ func (s *APIKeyService) PoolSourceGroups(ctx context.Context, userID int64) ([]G
 }
 
 // These DTOs deliberately do not embed Account or any admin DTO. The account
-// name, email, credentials, proxies, group bindings and raw errors stay private.
+// name is the administrator's display name; email, credentials, proxies, group
+// bindings and raw errors stay private.
 type PoolQuotaWindow struct {
 	Window      string     `json:"window"`
 	Label       string     `json:"label"`
@@ -72,7 +74,8 @@ func poolQuotaWindow(w AccountOpsUsageWindow) PoolQuotaWindow {
 
 type PoolQuotaAccount struct {
 	ID                int64             `json:"id"`
-	Label             string            `json:"label"`
+	Name              string            `json:"name"`
+	Type              string            `json:"type"`
 	Platform          string            `json:"platform"`
 	Available         bool              `json:"available"`
 	Windows           []PoolQuotaWindow `json:"windows"`
@@ -103,7 +106,7 @@ func BuildPoolQuotaAccounts(accounts []Account, parents map[int64]*Account, now 
 			continue
 		}
 		seen[a.ID] = true
-		r := PoolQuotaAccount{ID: a.ID, Label: fmt.Sprintf("#%d", a.ID), Platform: a.Platform, Available: a.IsSchedulable(), Windows: []PoolQuotaWindow{}}
+		r := PoolQuotaAccount{ID: a.ID, Name: a.Name, Type: a.Type, Platform: a.Platform, Available: a.IsSchedulable(), Windows: []PoolQuotaWindow{}}
 		source := a
 		if a.IsShadow() {
 			parent := parents[*a.ParentAccountID]

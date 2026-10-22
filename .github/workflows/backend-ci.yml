@@ -259,10 +259,16 @@ jobs:
         working-directory: backend
         run: go test -tags=unit ./internal/server/routes ./internal/handler -run 'Test(GatewayRoutesGroupModelAllowlist|ConversationCapture|OpenAIWSConversationRecorder)'
       - name: Unit and integration tests on upstream Go
+        id: upstream_tests
         working-directory: backend
+        shell: bash
         run: |
-          make test-unit
-          make test-integration
+          set -o pipefail
+          make test-unit 2>&1 | tee upstream-unit-test.log
+          make test-integration 2>&1 | tee upstream-integration-test.log
+      - name: Report upstream backend failure
+        if: failure() && steps.upstream_tests.outcome == 'failure'
+        run: bash .github/scripts/report-ci-failure.sh backend/upstream-*-test.log
       - name: Upstream golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
