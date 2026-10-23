@@ -68,6 +68,13 @@ jobs:
       - name: Verify Go version
         run: |
           go version | grep -q 'go1.27.0'
+      - name: Install Redis for isolated snapshot adapter checks
+        run: |
+          if ! command -v redis-server >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
       - name: Gateway initialization and fork module regression
         id: gateway
         working-directory: backend
@@ -182,6 +189,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/sub2api-kustomize/kustomize.tar.gz" -C "$RUNNER_TEMP/sub2api-kustomize" kustomize
           echo "$RUNNER_TEMP/sub2api-kustomize" >> "$GITHUB_PATH"
       - run: python -m unittest discover -s deploy/tests -p 'test_gateway_render*.py'
+      - name: Offline multi-host contract checks
+        run: python -m unittest discover -s deploy/tests -p 'test_multihost_preflight.py'
       - run: python -m unittest discover -s deploy/tests -p 'test_migrate_reauth_managed.py'
       - run: python -m unittest discover -s deploy/connection-diagnostics -p 'test_collect.py'
 
@@ -209,6 +218,13 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify upstream Go security baseline
         run: go version | grep -q 'go1.27.2'
+      - name: Install Redis for isolated snapshot adapter checks
+        run: |
+          if ! command -v redis-server >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
       - name: Gateway initialization and fork module regression on upstream Go
         working-directory: backend
         run: go test -tags=unit ./internal/server/routes ./internal/handler -run 'Test(GatewayRoutesGroupModelAllowlist|ConversationCapture|OpenAIWSConversationRecorder)'
@@ -271,6 +287,13 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify upstream Go security baseline
         run: go version | grep -q 'go1.27.3'
+      - name: Install Redis for isolated snapshot adapter checks
+        run: |
+          if ! command -v redis-server >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
       - name: Gateway initialization and fork module regression on upstream Go
         working-directory: backend
         run: go test -tags=unit ./internal/server/routes ./internal/handler -run 'Test(GatewayRoutesGroupModelAllowlist|ConversationCapture|OpenAIWSConversationRecorder)'
@@ -296,3 +319,99 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+  real-proxy-responses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Fetch verified Caddy 2.11.7 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          proxy_fixture_dir="$RUNNER_TEMP/sub2api-caddy-contract"
+          mkdir -p "$proxy_fixture_dir"
+          curl --fail --location --silent --show-error \
+            --connect-timeout 10 --max-time 90 \
+            https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz \
+            --output "$proxy_fixture_dir/caddy.tar.gz"
+          echo '727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b  '"$proxy_fixture_dir/caddy.tar.gz" | sha256sum --check --strict
+          tar -xzf "$proxy_fixture_dir/caddy.tar.gz" -C "$proxy_fixture_dir" caddy
+          echo "CADDY_BIN=$proxy_fixture_dir/caddy" >> "$GITHUB_ENV"
+      - name: Real proxy and two synthetic HTTP SSE origins
+        run: python3 deploy/traffic/test_caddy_responses.py
+      - name: Verified HTTPS origins with synthetic CA and SNI failures
+        run: python3 deploy/traffic/test_caddy_responses_tls.py
+
+  isolated-real-applications:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build actual cmd/server for the isolated runner only
+        working-directory: backend
+        env:
+          CGO_ENABLED: '0'
+          GOMAXPROCS: '1'
+          GOFLAGS: '-p=1'
+        run: |
+          set -euo pipefail
+          fullapp_fixture_dir="$RUNNER_TEMP/sub2api-fullapp"
+          mkdir -p "$fullapp_fixture_dir"
+          fullapp_fixture_commit="$(git rev-parse HEAD)"
+          go build -trimpath -ldflags="-X main.Commit=$fullapp_fixture_commit" \
+            -o "$fullapp_fixture_dir/sub2api" ./cmd/server
+          echo "FULLAPP_BIN=$fullapp_fixture_dir/sub2api" >> "$GITHUB_ENV"
+          echo "FULLAPP_EXPECTED_COMMIT=$fullapp_fixture_commit" >> "$GITHUB_ENV"
+          echo "FULLAPP_REPORT=$fullapp_fixture_dir/result.json" >> "$GITHUB_ENV"
+      - name: Fetch checksum-pinned Caddy 2.11.7
+        run: |
+          set -euo pipefail
+          fullapp_fixture_dir="$RUNNER_TEMP/sub2api-fullapp"
+          curl --fail --location --silent --show-error \
+            --connect-timeout 10 --max-time 90 \
+            https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz \
+            --output "$fullapp_fixture_dir/caddy.tar.gz"
+          echo '727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b  '"$fullapp_fixture_dir/caddy.tar.gz" | sha256sum --check --strict
+          tar -xzf "$fullapp_fixture_dir/caddy.tar.gz" -C "$fullapp_fixture_dir" caddy
+          echo "CADDY_BIN=$fullapp_fixture_dir/caddy" >> "$GITHUB_ENV"
+      - name: Initialize two full Sub2API applications and real Caddy in isolation
+        timeout-minutes: 15
+        run: python3 deploy/traffic/test_fullapp_bootstrap.py
+      - name: Build isolated seed and model fixture only
+        working-directory: backend
+        env:
+          CGO_ENABLED: '0'
+          GOMAXPROCS: '1'
+          GOFLAGS: '-p=1'
+        run: |
+          set -euo pipefail
+          go build -tags=fullappfixture -trimpath \
+            -o "$RUNNER_TEMP/sub2api-fullapp/fullapp-fixture" ./cmd/fullapp-fixture
+          echo "FULLAPP_FIXTURE_BIN=$RUNNER_TEMP/sub2api-fullapp/fullapp-fixture" >> "$GITHUB_ENV"
+      - name: Authenticated lifecycle, EOF boundaries and shared queued cancellation through two complete applications
+        timeout-minutes: 15
+        env:
+          FULLAPP_REPORT: ${{ runner.temp }}/sub2api-fullapp/model-result.json
+        run: python3 deploy/traffic/test_fullapp_models.py
+      - name: Save bounded fixture metadata, no config or application logs
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/sub2api-fullapp/result.json" ]; then
+            cat "$RUNNER_TEMP/sub2api-fullapp/result.json"
+          fi
+          if [ -f "$RUNNER_TEMP/sub2api-fullapp/model-result.json" ]; then
+            cat "$RUNNER_TEMP/sub2api-fullapp/model-result.json"
+          fi
