@@ -75,6 +75,10 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/AccountQualityView.spec.ts \
 	src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts \
 	src/utils/__tests__/qualityRulePatch.spec.ts \
+	src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts \
+	src/components/admin/operations/__tests__/QualityModelShortcuts.spec.ts \
+	src/components/payment/__tests__/SubscriptionPlanCard.spec.ts \
+	src/features/ip-risk/__tests__/api.spec.ts \
 	src/utils/__tests__/accountAutoBPS.spec.ts \
 	src/components/admin/operations/__tests__/QualityProbeSchedule.spec.ts \
 	src/components/admin/operations/__tests__/SmartOpsNav.spec.ts \
