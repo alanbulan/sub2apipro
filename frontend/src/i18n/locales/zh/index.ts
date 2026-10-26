@@ -1,6 +1,7 @@
 import poolDashboard from './poolDashboard'
 import feishu from './feishu'
 import ipAudit from './ipAudit'
+import traffic from './traffic'
 import connections from './connections'
 import securityRecords from './securityRecords'
 import siwc from './siwc'
@@ -29,6 +30,7 @@ import autoConfig from './autoConfig'
 export default {
   poolDashboard,
   feishu,
+  traffic,
   ipAudit,
   connections,
   securityRecords,

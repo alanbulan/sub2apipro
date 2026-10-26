@@ -1,6 +1,11 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/stores/__tests__/auth.spec.ts \
+	src/router/__tests__/title.spec.ts \
+	src/utils/__tests__/customMenu.spec.ts \
+	src/utils/__tests__/modelBilling.spec.ts \
+	src/components/admin/operations/__tests__/AutoConfigHistory.spec.ts \
 	src/i18n/__tests__/riskControlLocales.spec.ts \
 	src/components/common/__tests__/PlatformTypeBadge.openaiPlans.spec.ts \
 	src/components/common/__tests__/PlatformTypeBadge.grok.spec.ts \
@@ -90,6 +95,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/observerUsage.spec.ts \
 	src/views/admin/__tests__/UsageView.spec.ts \
 	src/views/user/__tests__/UsageView.spec.ts \
+	src/components/usage/__tests__/TrafficPanel.spec.ts \
+	src/api/__tests__/traffic.spec.ts \
 	src/views/user/__tests__/UsageEntryView.spec.ts \
 	src/components/admin/usage/__tests__/UsageFilters.spec.ts \
 	src/components/admin/usage/__tests__/UsageTimingDialog.spec.ts \

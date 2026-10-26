@@ -369,6 +369,92 @@ describe('useAuthStore', () => {
     })
   })
 
+  describe.each(['persistent', 'session'] as const)('token refresh (%s)', (mode) => {
+    const storage = mode === 'session' ? sessionStorage : localStorage
+
+    beforeEach(() => {
+      storage.setItem('auth_storage_mode', mode)
+    })
+    it('刷新后持久化新的 access token 和 refresh token', async () => {
+      storage.setItem('auth_token', 'old-access-token')
+      storage.setItem('auth_user', JSON.stringify(fakeUser))
+      storage.setItem('refresh_token', 'old-refresh-token')
+      storage.setItem('token_expires_at', String(Date.now() + 121_000))
+      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
+      const refreshedTokens = {
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }
+      mockRefreshToken.mockImplementation(async () => {
+        storage.setItem('auth_token', refreshedTokens.access_token)
+        storage.setItem('refresh_token', refreshedTokens.refresh_token)
+        storage.setItem('token_expires_at', String(Date.now() + 3_600_000))
+        return refreshedTokens
+      })
+
+      const store = useAuthStore()
+      store.checkAuth()
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      expect(store.token).toBe('new-access-token')
+      expect(storage.getItem('auth_token')).toBe('new-access-token')
+      expect(storage.getItem('refresh_token')).toBe('new-refresh-token')
+      expect(storage.getItem('token_expires_at')).toBe(String(Date.now() + 3_600_000))
+      const otherStorage = mode === 'session' ? localStorage : sessionStorage
+      for (const key of ['auth_token', 'auth_user', 'refresh_token', 'token_expires_at']) {
+        expect(otherStorage.getItem(key)).toBeNull()
+      }
+    })
+
+    it('忽略已切换会话的过期刷新结果', async () => {
+      storage.setItem('auth_token', 'old-access-token')
+      storage.setItem('auth_user', JSON.stringify(fakeUser))
+      storage.setItem('refresh_token', 'old-refresh-token')
+      storage.setItem('token_expires_at', String(Date.now() + 121_000))
+      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
+
+      let resolveRefresh!: (tokens: {
+        access_token: string
+        refresh_token: string
+        expires_in: number
+        token_type: string
+      }) => void
+      mockRefreshToken.mockImplementation(() => new Promise((resolve) => {
+        resolveRefresh = resolve
+      }))
+
+      const store = useAuthStore()
+      store.checkAuth()
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(mockRefreshToken).toHaveBeenCalledOnce()
+
+      const staleTokens = {
+        access_token: 'stale-access-token',
+        refresh_token: 'stale-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }
+      // Simulate the refresh coordinator committing its response before another tab changes sessions.
+      storage.setItem('auth_token', staleTokens.access_token)
+      storage.setItem('refresh_token', staleTokens.refresh_token)
+      storage.setItem('token_expires_at', String(Date.now() + 3_600_000))
+      storage.setItem('auth_token', 'new-session-access-token')
+      storage.setItem('refresh_token', 'new-session-refresh-token')
+      storage.setItem('token_expires_at', String(Date.now() + 7_200_000))
+      storage.setItem('auth_user', JSON.stringify(fakeAdminUser))
+
+      resolveRefresh(staleTokens)
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(store.token).toBe('old-access-token')
+      expect(storage.getItem('auth_token')).toBe('new-session-access-token')
+      expect(storage.getItem('refresh_token')).toBe('new-session-refresh-token')
+      expect(JSON.parse(storage.getItem('auth_user')!)).toEqual(fakeAdminUser)
+    })
+  })
+
   // --- isAdmin ---
 
   describe('isAdmin', () => {
