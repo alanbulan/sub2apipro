@@ -596,3 +596,1261 @@ jobs:
       - name: Exercise traffic isolation, delivery, calendar buckets and cursor queries with PostgreSQL
         working-directory: backend
         run: go test -race -tags=unit ./internal/service ./internal/repository ./internal/handler ./internal/handler/admin ./internal/server/middleware ./internal/server -run '^TestTraffic' -count=1 -timeout=15m
+
+  channel-operations-postgres-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Record exact source and run HTTP/auth/validation boundaries
+      working-directory: backend
+      run: |
+        git rev-parse HEAD
+        go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run '^TestChannelOperations' -count=1
+    - name: Missing peer model must fail against the reviewed source
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        target=internal/repository/channel_operations_stats.go
+        cp "$target" "$RUNNER_TEMP/channel-operations-current-stats.go"
+        trap 'cp "$RUNNER_TEMP/channel-operations-current-stats.go" "$target"' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git 0e1f50475a552bffd68c1822e17aa87c0a1561ac
+        git show 0e1f50475a552bffd68c1822e17aa87c0a1561ac:backend/internal/repository/channel_operations_stats.go > "$target"
+        set +e
+        go test -tags=integration ./internal/repository -run '^TestChannelOperationsQualityWaitsForAllFrozenModels$' -count=1 -v > "$RUNNER_TEMP/channel-operations-quality-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/channel-operations-quality-red.log"
+        test "$result" -ne 0
+        grep -q 'FAIL: TestChannelOperationsQualityWaitsForAllFrozenModels' "$RUNNER_TEMP/channel-operations-quality-red.log"
+        grep -q 'missing peer model cannot pass' "$RUNNER_TEMP/channel-operations-quality-red.log"
+    - name: Actual PostgreSQL persistence, HTTP, migration and statistics regressions
+      working-directory: backend
+      run: go test -tags=integration ./internal/repository -run '^TestChannelOperations' -count=1 -v
+  channel-operations-frontend-workflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Actual page interactions and existing editor compatibility
+      working-directory: frontend
+      run: pnpm exec vitest run src/views/admin/__tests__/ChannelOperationsView.spec.ts src/components/admin/operations/__tests__/SmartOpsNav.spec.ts
+        src/views/admin/__tests__/AccountQualityView.spec.ts src/views/admin/__tests__/ChannelsView.modelSync.spec.ts --maxWorkers=1
+        --minWorkers=1 --no-file-parallelism
+    - name: Full frontend build (remote only)
+      run: pnpm --dir frontend run build
+    - name: Isolated browser for synthetic UI acceptance
+      run: |
+        npm install --prefix "$RUNNER_TEMP/channel-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/channel-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Actual page screenshots and mutation confirmation
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/channel-browser/node_modules/playwright
+        CHANNEL_SCREENSHOT_DIR: ${{ runner.temp }}/channel-screenshots
+      run: node scripts/channel-operations-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: channel-operations-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/channel-screenshots
+        if-no-files-found: error
+  credential-operation-errors-seam:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Record exact tested head
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Prove refresh policy regression on original 3b18f8da1
+      shell: bash
+      env:
+        REFRESH_POLICY_BASELINE: 3b18f8da1dd17dd078590d5942c4308d005d1b89
+      run: |
+        set -euo pipefail
+        red_tree="$RUNNER_TEMP/credential-refresh-policy-red"
+        mkdir -p "$red_tree"
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$REFRESH_POLICY_BASELINE"
+        git rev-parse "$REFRESH_POLICY_BASELINE" | tee evidence/refresh-policy-red-head.txt
+        git archive "$REFRESH_POLICY_BASELINE" | tar -x -C "$red_tree"
+        git show "$REFRESH_POLICY_BASELINE:backend/internal/service/credential_operation_failure.go" | sha256sum > evidence/refresh-policy-red-source.sha256
+        test "$(cut -d ' ' -f 1 evidence/refresh-policy-red-source.sha256)" = "$(sha256sum "$red_tree/backend/internal/service/credential_operation_failure.go" | cut -d ' ' -f 1)"
+        cp backend/internal/service/credential_operation_refresh_policy_test.go "$red_tree/backend/internal/service/"
+        cp backend/internal/repository/credential_operation_refresh_policy{_test,_integration_test}.go "$red_tree/backend/internal/repository/"
+        cp tools/fixtures/credential-refresh-policy-errors.json "$red_tree/tools/fixtures/"
+        sha256sum backend/internal/{service,repository}/credential_operation_refresh_policy_test.go backend/internal/repository/credential_operation_refresh_policy_integration_test.go tools/fixtures/credential-refresh-policy-errors.json > evidence/refresh-policy-test-inputs.sha256
+        set +e
+        (cd "$red_tree/backend" && go test -tags=unit ./internal/service -run '^TestCredentialOperationRefreshPolicy' -count=1 -v) > evidence/refresh-policy-red-service.log 2>&1
+        service_result=$?
+        (cd "$red_tree/backend" && go test -tags=unit ./internal/repository -run '^TestCredentialOperationRefreshPolicy' -count=1 -v) > evidence/refresh-policy-red-http.log 2>&1
+        http_result=$?
+        (cd "$red_tree/backend" && go test -tags=integration ./internal/repository -run '^TestCredentialOperationRefreshPolicyPostgres' -count=1 -v) > evidence/refresh-policy-red-storage.log 2>&1
+        storage_result=$?
+        set -e
+        cat evidence/refresh-policy-red-service.log
+        cat evidence/refresh-policy-red-http.log
+        cat evidence/refresh-policy-red-storage.log
+        printf 'service=%s\nhttp=%s\nstorage=%s\n' "$service_result" "$http_result" "$storage_result" > evidence/refresh-policy-red-exit.txt
+        test "$service_result" -ne 0
+        test "$http_result" -ne 0
+        test "$storage_result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:' evidence/refresh-policy-red-{service,http,storage}.log; then
+          echo 'Compilation/setup errors are not regression evidence'
+          exit 1
+        fi
+        grep -F -- '--- FAIL: TestCredentialOperationRefreshPolicyStructuredSignals/type-invalid_grant' evidence/refresh-policy-red-service.log
+        grep -F -- '--- FAIL: TestCredentialOperationRefreshPolicyTypeInvalidGrantRaceRecovery' evidence/refresh-policy-red-service.log
+        grep -F -- '--- FAIL: TestCredentialOperationRefreshPolicyTerminalAndClientScope/type-invalid_client' evidence/refresh-policy-red-service.log
+        grep -F -- '--- FAIL: TestCredentialOperationRefreshPolicyHTTPTypeInvalidGrantRace' evidence/refresh-policy-red-http.log
+        grep -F -- '--- FAIL: TestCredentialOperationRefreshPolicyPostgresTypeInvalidGrantRace' evidence/refresh-policy-red-storage.log
+    - name: Verify refresh policy on exact current head
+      working-directory: backend
+      shell: bash
+      run: |
+        set -o pipefail
+        go test -tags=unit ./internal/service ./internal/repository -run '^TestCredentialOperationRefreshPolicy' -count=1 -v 2>&1 | tee ../evidence/refresh-policy-green.log
+        go test -tags=integration ./internal/repository -run '^TestCredentialOperationRefreshPolicyPostgres' -count=1 -v 2>&1 | tee ../evidence/refresh-policy-green-storage.log
+    - name: Offline worker results and regressions
+      shell: bash
+      run: |
+        set -o pipefail
+        python -m tools.credential_operation_seam "$GITHUB_WORKSPACE/evidence/worker.json" 2>&1 | tee evidence/worker.log
+        python -m unittest tools.test_openai_oauth_reauth_worker tools.test_openai_oauth_reauth_engines tools.test_openai_oauth_reauth_runtime_controls tools.test_openai_codex_oauth_adapter -v 2>&1 | tee evidence/python.log
+        node --test tools/test_openai_codex_diagnostics.mjs 2>&1 | tee evidence/node.log
+    - name: Targeted service and ownership regressions
+      working-directory: backend
+      shell: bash
+      run: |
+        set -o pipefail
+        go test -tags=unit ./internal/service -run 'Test(CredentialOperation|AccountTokenGuardV2|SessionStudioDiagnostic|LocalProtocolDiagnostic|OpenAIOAuthReauth|OAuthRefresh)' -count=1 -v 2>&1 | tee ../evidence/service.log
+    - name: Worker to PostgreSQL to real admin API
+      working-directory: backend
+      shell: bash
+      env:
+        CREDENTIAL_OPERATION_WORKER_FIXTURE: ${{ github.workspace }}/evidence/worker.json
+        CREDENTIAL_OPERATION_API_FIXTURE: ${{ github.workspace }}/evidence/api.json
+      run: |
+        set -o pipefail
+        go test -tags=integration ./internal/integration/credentialops -run '^TestCredentialOperationWorkerStorageAPISeam$' -count=1 -v 2>&1 | tee ../evidence/storage-api.log
+        go test -tags=integration ./internal/repository -run 'Test(AccountTokenGuardV2Repository|ReloginBudget)' -count=1 -v 2>&1 | tee ../evidence/ownership.log
+        test -s ../evidence/api.json
+    - name: Render actual persisted API records
+      shell: bash
+      env:
+        CREDENTIAL_OPERATION_API_FIXTURE: ${{ github.workspace }}/evidence/api.json
+        CREDENTIAL_OPERATION_REQUIRE_SEAM: '1'
+      run: |
+        set -o pipefail
+        pnpm --dir frontend install --frozen-lockfile
+        pnpm --dir frontend exec vitest run src/views/admin/ops/__tests__/TokenGuardV2View.spec.ts src/views/admin/ops/__tests__/CredentialOperationSeam.spec.ts src/components/account/__tests__/CredentialOperationFailure.spec.ts 2>&1 | tee evidence/frontend.log
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: credential-operation-errors-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+  issue-582-regression-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - redis: '6.0'
+          image: redis:6.0.20-alpine
+        - redis: '7.4'
+          image: redis:7.4.12-alpine
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SUB2API_TEST_REDIS_IMAGE: ${{ matrix.image }}
+      ISSUE_582_REDIS_VERSION: ${{ matrix.redis }}
+      CI: 'true'
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Install Redis binary for existing readiness adapter test
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends redis-server
+    - name: Assert exact head and static formatting
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        git rev-parse HEAD
+        git diff --check
+        test -z "$(git diff --name-only 08d69a522 HEAD -- '*.go' | xargs -r gofmt -l)"
+    - name: Real Redis 6.0 baseline RED
+      if: matrix.redis == '6.0'
+      run: bash scripts/issue-582-red.sh
+    - name: Exact head real Redis snapshot, outbox, queue and session behavior
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        git diff --exit-code
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        go test -race -tags=integration ./internal/repository -run '^(TestIssue582|TestUserMsgQueueCacheSuite|TestConcurrencyCacheSuite|TestSchedulerCache|TestSchedulerSnapshotOutboxReplay)' -count=1 -v | tee "$RUNNER_TEMP/issue-582-real-redis.log"
+        ! grep -E -- '--- SKIP: TestIssue582' "$RUNNER_TEMP/issue-582-real-redis.log"
+    - name: Preserve scheduler memo, fencing and failure protections
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        go test -race -tags=unit ./internal/repository -run '^Test(Scheduler|APIKeyCacheIncrementCreateCount)' -count=1 -v | tee "$RUNNER_TEMP/issue-582-scheduler-unit.log"
+    - name: Session, IP risk and serverless regressions
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        go test -race -tags=unit ./internal/pkg/redissession ./internal/pkg/rediscompat ./internal/iprisk ./internal/serverless -count=1 -v | tee "$RUNNER_TEMP/issue-582-audit-unit.log"
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue-582-${{ matrix.redis }}-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/issue-582-*.log
+  priority-observation-availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Exact head availability handler and transport regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/priority-availability-logs"
+        git rev-parse HEAD | tee "$RUNNER_TEMP/priority-availability-logs/head.txt"
+        test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+        (cd backend && go test -tags=unit ./internal/service ./internal/handler -run '^TestPriorityLatencyAvailability' -count=1 -v -timeout=5m) 2>&1 | tee "$RUNNER_TEMP/priority-availability-logs/green.log"
+        grep -q -- '--- PASS: TestPriorityLatencyAvailabilityPoolBoundaries' "$RUNNER_TEMP/priority-availability-logs/green.log"
+        grep -q -- '--- PASS: TestPriorityLatencyAvailabilityHTTPAndChatTransport' "$RUNNER_TEMP/priority-availability-logs/green.log"
+        grep -q -- '--- PASS: TestPriorityLatencyAvailabilityNativeFallback' "$RUNNER_TEMP/priority-availability-logs/green.log"
+        grep -q -- '--- PASS: TestPriorityLatencyAvailabilityHandlerSlots' "$RUNNER_TEMP/priority-availability-logs/green.log"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: priority-availability-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/priority-availability-logs
+        if-no-files-found: error
+  priority-observation-seams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Availability regressions must fail on exact 9620 baseline
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/priority-logs"
+        old="$RUNNER_TEMP/latency-availability-old"
+        git worktree add --detach "$old" 9620d315f72a7dbf04fa10fca02970e1e410805e
+        trap 'git worktree remove --force "$old"' EXIT
+        cp backend/internal/service/priority_latency_availability_test.go "$old/backend/internal/service/"
+        cp backend/internal/handler/priority_latency_availability_test.go "$old/backend/internal/handler/"
+        set +e
+        (cd "$old/backend" && go test -tags=unit ./internal/service ./internal/handler -run '^TestPriorityLatencyAvailability' -count=1 -v -timeout=5m) > "$RUNNER_TEMP/priority-logs/availability-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/priority-logs/availability-red.log"
+        test "$result" -ne 0
+        ! grep -Eq 'build failed|undefined:|no tests to run|panic:' "$RUNNER_TEMP/priority-logs/availability-red.log"
+        for name in PoolBoundaries HistoryDegrades BoundContinuation EligibilityAndScope; do
+          grep -q -- "--- FAIL: TestPriorityLatencyAvailability$name" "$RUNNER_TEMP/priority-logs/availability-red.log"
+        done
+    - name: Complete old production checkout must fail behavioral regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/priority-logs"
+        cleanup_old_checkout() {
+          if test -d "$RUNNER_TEMP/priority-old"; then
+            git -C "$RUNNER_TEMP/priority-old" restore --source=00788a4705152cb90aab089d352a494531e4664b --staged --worktree -- .
+            git -C "$RUNNER_TEMP/priority-old" diff --exit-code
+            git -C "$RUNNER_TEMP/priority-old" diff --cached --exit-code
+            git worktree remove --force "$RUNNER_TEMP/priority-old"
+            echo "Restored immutable baseline source and removed isolated red checkout"
+          fi
+        }
+        trap cleanup_old_checkout EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        python3 scripts/priority-observation-red.py
+        set +e
+        (cd "$RUNNER_TEMP/priority-old/backend" && go test -tags=unit ./internal/service ./internal/handler ./internal/handler/admin -run '^TestPriorityObservationBaseline' -count=1 -v -timeout=10m) > "$RUNNER_TEMP/priority-logs/red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/priority-logs/red.log"
+        test "$result" -ne 0
+        python3 scripts/priority-observation-check-red.py "$RUNNER_TEMP/priority-logs/red.log"
+    - name: Complete a426 review baseline must fail the three review regressions
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/priority-logs"
+        cleanup_review_checkout() {
+          if test -d "$RUNNER_TEMP/priority-review-old"; then
+            git -C "$RUNNER_TEMP/priority-review-old" restore --source=a426477ecc8cec1af43b0545467850ea5768a23d --staged --worktree -- .
+            git -C "$RUNNER_TEMP/priority-review-old" diff --exit-code
+            git worktree remove --force "$RUNNER_TEMP/priority-review-old"
+            echo "Restored a426 baseline and removed review checkout"
+          fi
+        }
+        trap cleanup_review_checkout EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        python3 scripts/priority-penalty-review-red.py
+        set +e
+        (cd "$RUNNER_TEMP/priority-review-old/backend" && go test -tags=unit ./internal/service ./internal/handler -run '^TestPriorityPenaltyReview(NativeLease|LateSelection|HandlerFailover)$' -count=1 -v -timeout=10m) > "$RUNNER_TEMP/priority-logs/review-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/priority-logs/review-red.log"
+        test "$result" -ne 0
+        python3 scripts/priority-penalty-review-red.py "$RUNNER_TEMP/priority-logs/review-red.log"
+    - name: New transport scheduler history and handler seams
+      id: green
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        (cd backend && go test -tags=unit ./internal/service ./internal/handler ./internal/handler/admin -run '^(TestPriority|TestOpenAI.*Sticky|Test.*PreviousResponse|TestOpenAI.*Profit|TestOpenAI.*RPM|TestOpenAI.*Replay|TestOpenAI.*Failover)'  -count=1 -v -timeout=15m) 2>&1 | tee "$RUNNER_TEMP/priority-logs/green.log"
+    - name: Race check asynchronous history and observation seams
+      if: ${{ !cancelled() && steps.green.outcome == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        (cd backend && go test -race -tags=unit ./internal/service -run '^(TestPriorityObservation|TestPriorityLatencyModes|TestPriorityLatencyAvailability|TestPriorityPenaltyReview|TestPriorityHistory|TestPrioritySignalRefresh)' -count=1 -v -timeout=8m) 2>&1 | tee "$RUNNER_TEMP/priority-logs/race.log"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: priority-seams-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/priority-logs
+        if-no-files-found: error
+  priority-observation-persistence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+      CI: 'true'
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: PostgreSQL persisted usage and quality scope regressions
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/priority-logs"
+        (cd backend && go test -tags=integration ./internal/repository -run '^(TestPriorityObservation|TestPriorityScheduling)' -count=1 -v -timeout=15m) 2>&1 | tee "$RUNNER_TEMP/priority-logs/persistence.log"
+        grep -q -- '--- PASS: TestPriorityObservationPersistedPublicAliasAndGroup' "$RUNNER_TEMP/priority-logs/persistence.log"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: priority-persistence-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/priority-logs
+  priority-observation-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Real page bounded refresh lifecycle
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/priority-logs"
+        pnpm --dir frontend exec vitest run src/views/admin/__tests__/PrioritySchedulingView.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts --maxWorkers=1 --minWorkers=1 2>&1 | tee "$RUNNER_TEMP/priority-logs/ui.log"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: priority-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/priority-logs
+  profit-operations-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - run: git rev-parse HEAD
+    - run: go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run '^TestProfitOperations'
+        -count=1 -v
+      working-directory: backend
+    - name: Standard charge cost formula RED against account-statistics substitution
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        target=internal/repository/profit_operations.go
+        cp "$target" "$RUNNER_TEMP/current-profit.go"
+        trap 'cp "$RUNNER_TEMP/current-profit.go" "$target"' EXIT
+        python3 - <<'PYRED'
+        from pathlib import Path
+        p=Path('internal/repository/profit_operations.go')
+        s=p.read_text()
+        assert 'u.total_cost AS cost_base' in s
+        p.write_text(s.replace('u.total_cost AS cost_base','COALESCE(u.account_stats_cost,u.total_cost) AS cost_base'))
+        PYRED
+        set +e
+        go test -tags=integration ./internal/repository -run '^TestProfitOperationsHTTPPostgresWithoutModelChannelBinding$' -count=1 -v > "$RUNNER_TEMP/profit-cost-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/profit-cost-red.log"
+        test "$result" -ne 0
+        grep -q 'FAIL: TestProfitOperationsHTTPPostgresWithoutModelChannelBinding' "$RUNNER_TEMP/profit-cost-red.log"
+        grep -q 'standard model charge base, not account statistics override' "$RUNNER_TEMP/profit-cost-red.log"
+    - run: go test -tags=integration ./internal/repository -run '^TestProfitOperations' -count=1 -v
+      working-directory: backend
+  profit-operations-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - run: pnpm exec vitest run src/views/admin/__tests__/ProfitOperationsView.spec.ts src/components/admin/operations/__tests__/SmartOpsNav.spec.ts
+        src/components/layout/__tests__/AppSidebar.spec.ts --maxWorkers=1 --minWorkers=1 --no-file-parallelism
+      working-directory: frontend
+    - run: pnpm --dir frontend run build
+    - name: Install isolated browser
+      run: |
+        npm install --prefix "$RUNNER_TEMP/upstream-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/upstream-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Independent profit page with synthetic data and zero live requests
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/upstream-browser/node_modules/playwright
+        UPSTREAM_SCREENSHOT_DIR: ${{ runner.temp }}/upstream-screenshots
+      run: node scripts/upstream-profit-operations-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: upstream-profit-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/upstream-screenshots
+        if-no-files-found: error
+  quality-jev-judge-protocol-and-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Record exact tested commit
+      run: git rev-parse HEAD | tee "$RUNNER_TEMP/quality-jev-sha.txt"
+    - name: Prove metadata regression against the complete previous head
+      shell: bash
+      run: |
+        set -euo pipefail
+        baseline=bb6c383079a2dad45449fb9880dc461a024e9ae9
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$baseline"
+        old_tree="$RUNNER_TEMP/quality-jev-before-metadata"
+        git worktree add --detach "$old_tree" "$baseline"
+        git -C "$old_tree" rev-parse HEAD | tee "$RUNNER_TEMP/quality-jev-red-sha.txt"
+        cp backend/internal/pkg/typesafe/choice_metadata_test.go "$old_tree/backend/internal/pkg/typesafe/"
+        mkdir -p "$old_tree/backend/internal/pkg/typesafe/testdata"
+        cp backend/internal/pkg/typesafe/testdata/quality-choice-metadata.json "$old_tree/backend/internal/pkg/typesafe/testdata/"
+        set +e
+        (cd "$old_tree/backend" && GOWORK=off go test -tags=unit -json ./internal/pkg/typesafe -run '^TestTypeSafeQualityChoiceMetadataCompatibility$' -count=1) > "$RUNNER_TEMP/quality-jev-metadata-red.jsonl" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/quality-jev-metadata-red.jsonl"
+        test "$result" -ne 0
+        python3 - <<'PY'
+        import json, os, pathlib
+        p = pathlib.Path(os.environ['RUNNER_TEMP']) / 'quality-jev-metadata-red.jsonl'
+        events = [json.loads(line) for line in p.read_text().splitlines() if line.startswith('{')]
+        assert any(e.get('Action') == 'fail' and e.get('Test') == 'TestTypeSafeQualityChoiceMetadataCompatibility' for e in events), 'must fail a real test, never compilation'
+        assert any('confirmed bounded id/provider metadata' in e.get('Output', '') for e in events), 'missing expected metadata failure'
+        PY
+    - name: Native protocol and quality safety regressions (offline transports)
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test -tags=unit -json ./internal/pkg/typesafe ./internal/service ./internal/handler/admin -run 'Test(TypeSafeQuality|QualityJev|QualityJudge|QualityValidation|QualityOutcome|QualityRunner|RandomQualityRound|QualityRestoreDiagnostic)' -count=1 | tee "$RUNNER_TEMP/quality-jev-unit.jsonl"
+    - name: Isolated PostgreSQL and Redis seams
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test -tags=integration -json ./internal/repository -run 'TestQuality(JevPersistence|Isolation|ActionsRestoreOwnershipAndStaleRuns)' -count=1 | tee "$RUNNER_TEMP/quality-jev-db.jsonl"
+    - name: Require real execution of new gates (no skip or compile-only success)
+      shell: python
+      run: |
+        import json, os, pathlib
+        root = pathlib.Path(os.environ['RUNNER_TEMP'])
+        events = [json.loads(line) for name in ('quality-jev-unit.jsonl', 'quality-jev-db.jsonl') for line in (root/name).read_text().splitlines() if line.startswith('{')]
+        required = ['TestTypeSafeQualityChoiceStrictProtocol', 'TestTypeSafeQualityChoiceOneAttemptBoundAndRedaction', 'TestQualityJevNativeIsolationAndUnknownSafety', 'TestQualityJevDisabledAndMissingConfigNeverCalls', 'TestQualityJevErrorsRetryRotationAndRedaction', 'TestQualityJevCancellationTimeoutAndConcurrency', 'TestQualityJevConfigValidationAndInputBounds', 'TestQualityJevURLPolicyAndNoAuditMutation', 'TestQualityJevRotationReloadsSavedCredentials', 'TestQualityJevGenerationLatencyAndDeterministicPriority', 'TestQualityJevAPICompatibilityAndPermission', 'TestQualityJevObserverCannotEnableSavedRule', 'TestQualityJevPersistenceAndIsolationSafety']
+        required += ['TestTypeSafeQualityChoiceMetadataCompatibility', 'TestTypeSafeQualityChoiceMetadataKeepsStrictBoundaries']
+        passed = {e.get('Test') for e in events if e.get('Action') == 'pass'}
+        assert set(required) <= passed, f'Missing executed gates: {set(required)-passed}'
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: quality-jev-logs-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event_name }}
+        path: ${{ runner.temp }}/quality-jev-*
+  quality-jev-judge-offline-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Install isolated screenshot tool
+      run: |
+        npm install --prefix "$RUNNER_TEMP/quality-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/quality-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Render real grading editor with offline fixtures
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/quality-browser/node_modules/playwright
+        QUALITY_SCREENSHOT_DIR: ${{ runner.temp }}/quality-jev-ui
+        QUALITY_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: node scripts/quality-jev-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: quality-jev-ui-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event_name }}
+        path: ${{ runner.temp }}/quality-jev-ui
+  quality-live-regressions-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Record exact head
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Original behavior must fail the unchanged boundary regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        sources=(backend/internal/service/quality_supported_models.go backend/internal/service/openai_codex_models_service.go backend/internal/service/pelican_scheduled.go)
+        for source in "${sources[@]}"; do cp "$source" "$RUNNER_TEMP/$(basename "$source")"; done
+        trap 'for source in "${sources[@]}"; do cp "$RUNNER_TEMP/$(basename "$source")" "$source"; done' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git e082313679d5269eef3e3cce4101c22692695371
+        for source in "${sources[@]}"; do git show "e082313679d5269eef3e3cce4101c22692695371:$source" > "$source"; done
+        set +e
+        (cd backend && go test -tags=unit ./internal/service -run '^TestQualityLive' -count=1 -v) > evidence/red-service.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red-service.log
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:' evidence/red-service.log; then exit 1; fi
+        grep -F -- '--- FAIL: TestQualityLiveManualModelMissingFromManifest' evidence/red-service.log
+        grep -F -- '--- FAIL: TestQualityLiveUnknownProbeCatalogIsNotUnsupported' evidence/red-service.log
+        grep -F -- '--- FAIL: TestQualityLiveModelListCredentialErrorIsStructured' evidence/red-service.log
+    - name: Current behavior and retained safety assertions
+      working-directory: backend
+      shell: bash
+      run: |
+        set -o pipefail
+        go test -tags=unit ./internal/service -run 'Test(QualityLive|QualitySupportedModels|QualityUnsupportedResponse|QualityModelSync|CandyConfiguredModels|FetchOpenAIAccountModels|FetchCodexModelsManifest|OpenAIModelsList)' -count=1 -v 2>&1 | tee ../evidence/green-service.log
+    - name: Original storage behavior must fail restoration boundary regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        source=backend/internal/repository/quality_ownership.go
+        cp "$source" "$RUNNER_TEMP/quality-ownership-current.go"
+        trap 'cp "$RUNNER_TEMP/quality-ownership-current.go" "$source"' EXIT
+        git show "e082313679d5269eef3e3cce4101c22692695371:$source" > "$source"
+        set +e
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQualityLiveDeleteHTTP' -count=1 -v) > evidence/red-storage.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red-storage.log
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:|--- SKIP:' evidence/red-storage.log; then exit 1; fi
+        grep -F -- '--- FAIL: TestQualityLiveDeleteHTTPRestoresMatchingOwnershipThenDeletes' evidence/red-storage.log
+    - name: Current real HTTP and temporary PostgreSQL ownership seam
+      working-directory: backend
+      shell: bash
+      env:
+        CI: 'true'
+      run: |
+        set -o pipefail
+        go test -tags=integration ./internal/repository -run 'Test(QualityLiveDeleteHTTP|QualityOwnership|QualityIsolation)' -count=1 -v 2>&1 | tee ../evidence/green-storage.log
+        if grep -q -- '--- SKIP:' ../evidence/green-storage.log; then exit 1; fi
+    - name: Admin confirmation and model error response boundaries
+      working-directory: backend
+      shell: bash
+      run: |
+        set -o pipefail
+        go test ./internal/handler -run 'TestCodexModels(ReturnsLastUpstreamError|HonorsAccountSwitchLimit|PinnedAccountsAllFailed)' -count=1 -v 2>&1 | tee ../evidence/green-gateway-handler.log
+        go test ./internal/handler/admin -run 'Test(QualityOwnership|QualityLive|QualityScopeConflicts)' -count=1 -v 2>&1 | tee ../evidence/green-handler.log
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Unchanged deletion interaction must fail against original components
+      shell: bash
+      run: |
+        set -euo pipefail
+        sources=(frontend/src/components/admin/operations/QualityOwnershipReview.vue frontend/src/views/admin/AccountQualityView.vue)
+        for source in "${sources[@]}"; do cp "$source" "$RUNNER_TEMP/$(basename "$source")"; done
+        trap 'for source in "${sources[@]}"; do cp "$RUNNER_TEMP/$(basename "$source")" "$source"; done' EXIT
+        for source in "${sources[@]}"; do git show "e082313679d5269eef3e3cce4101c22692695371:$source" > "$source"; done
+        set +e
+        pnpm --dir frontend exec vitest run src/views/admin/__tests__/AccountQualityView.spec.ts -t 'restores isolated ownership before deletion' > evidence/red-ui.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red-ui.log
+        test "$result" -ne 0
+        grep -F 'AssertionError' evidence/red-ui.log
+    - name: Current offline UI and retained interaction assertions
+      shell: bash
+      run: |
+        set -o pipefail
+        pnpm --dir frontend exec vitest run src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts src/views/admin/__tests__/AccountQualityView.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee evidence/green-ui.log
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: quality-live-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+  quality-orphan-removal-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Record exact head and unchanged regression inputs
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        sha256sum backend/internal/repository/quality_orphan*test.go frontend/src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts > evidence/test-input.sha256
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Old repository source must fail real PostgreSQL business regression
+      shell: bash
+      env:
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        baseline=5c035675aa891568ad312ec6ce81d2e1d1fc221b
+        source=backend/internal/repository/quality_ownership.go
+        cp "$source" "$RUNNER_TEMP/quality-current.go"
+        trap 'cp "$RUNNER_TEMP/quality-current.go" "$source"' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$baseline"
+        git rev-parse "$baseline" > evidence/red-source-head.txt
+        git show "$baseline:$source" > "$source"
+        set +e
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQualityOrphanRemovalAtomicScopeContraction$' -count=1 -v) > evidence/red-storage.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red-storage.log
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:|--- SKIP:' evidence/red-storage.log; then exit 1; fi
+        grep -F -- '--- FAIL: TestQualityOrphanRemovalAtomicScopeContraction' evidence/red-storage.log
+        grep -F 'no model removal preview for sol' evidence/red-storage.log
+    - name: Exact head PostgreSQL repository and HTTP regressions with retained guards
+      env:
+        CI: 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git diff --exit-code
+        sha256sum -c evidence/test-input.sha256
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality(Orphan|Ownership|Isolation|152|LiveDeleteHTTP)' -count=1 -v) 2>&1 | tee evidence/green-storage.log
+        if grep -Eq -- '--- SKIP:|no tests to run' evidence/green-storage.log; then exit 1; fi
+        for name in TestQualityOrphanRemovalAtomicScopeContraction TestQualityOrphanRemovalRejectsUnsafeCurrentEntries TestQualityOrphanRemovalRevalidatesFullPreviewAndLease TestQualityOrphanRemovalConcurrentConfirmations TestQualityOrphanRemovalMatchingAndMappedMarkers TestQualityOrphanRule152ModelsAndStaleClaims TestQualityOrphanHTTPPreviewConfirmReadbackAndSave; do
+          grep -F -- "--- PASS: $name" evidence/green-storage.log
+        done
+    - name: Admin authorization and consent boundaries
+      shell: bash
+      run: |
+        set -euo pipefail
+        (cd backend && go test ./internal/handler/admin -run '^TestQuality(Orphan|Ownership|Live|Scope)' -count=1 -v) 2>&1 | tee evidence/green-handler.log
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Old component must fail unchanged preview-confirm-readback interaction
+      shell: bash
+      run: |
+        set -euo pipefail
+        source=frontend/src/components/admin/operations/QualityOwnershipReview.vue
+        cp "$source" "$RUNNER_TEMP/quality-current.vue"
+        trap 'cp "$RUNNER_TEMP/quality-current.vue" "$source"' EXIT
+        git show "5c035675aa891568ad312ec6ce81d2e1d1fc221b:$source" > "$source"
+        set +e
+        pnpm --dir frontend exec vitest run src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts -t 'releases an orphan and contracts scope only after explicit consent and readback' > evidence/red-ui.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red-ui.log
+        test "$result" -ne 0
+        grep -F 'Unable to get [data-testid="quality-removal-model"]' evidence/red-ui.log
+    - name: Current component and full editor interaction regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        git diff --exit-code
+        sha256sum -c evidence/test-input.sha256
+        pnpm --dir frontend exec vitest run src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts src/views/admin/__tests__/AccountQualityView.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee evidence/green-ui.log
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: quality-orphan-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+  quality-ownership-ui-screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Record exact head
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/quality-screenshots"
+        git rev-parse HEAD | tee "$RUNNER_TEMP/quality-screenshots/head.txt"
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Install isolated screenshot tool
+      run: |
+        npm install --prefix "$RUNNER_TEMP/quality-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/quality-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Render actual component with offline fixtures
+      env:
+        QUALITY_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/quality-browser/node_modules/playwright
+        QUALITY_SCREENSHOT_DIR: ${{ runner.temp }}/quality-screenshots
+      run: node scripts/quality-ownership-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: quality-ownership-reviewed-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/quality-screenshots
+        if-no-files-found: error
+  quality-rule152-account-save:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Record exact head and unchanged regression inputs
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        sha256sum backend/internal/repository/quality_rule152{,_http}_integration_test.go > evidence/test-input.sha256
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Fixed 9227 account-save implementation must fail real PostgreSQL assertions
+      shell: bash
+      env:
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        baseline=9227fee3866d7ad7628817771cdd208b406a166d
+        sources=(backend/internal/repository/account_repo.go backend/internal/service/admin_account.go)
+        for source in "${sources[@]}"; do cp "$source" "$RUNNER_TEMP/$(basename "$source")"; done
+        trap 'for source in "${sources[@]}"; do cp "$RUNNER_TEMP/$(basename "$source")" "$source"; done' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$baseline"
+        git rev-parse "$baseline" | tee evidence/red-source-head.txt
+        for source in "${sources[@]}"; do git show "$baseline:$source" > "$source"; done
+        set +e
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality152' -count=1 -v) > evidence/red.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red.log
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:|--- SKIP:' evidence/red.log; then exit 1; fi
+        grep -F -- '--- FAIL: TestQuality152AdminUpdatePreservesLockedIsolation' evidence/red.log
+        grep -F -- '--- FAIL: TestQuality152AdminUpdateServiceReadBeforeLock' evidence/red.log
+        grep -F -- '--- FAIL: TestQuality152OrdinaryBulkAndExtraSavesPreserveIsolation' evidence/red.log
+    - name: Exact head real Update to repository to PostgreSQL and retained ownership gates
+      working-directory: backend
+      shell: bash
+      env:
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        git diff --exit-code -- internal/repository/account_repo.go internal/service/admin_account.go
+        (cd .. && sha256sum -c evidence/test-input.sha256)
+        go test -tags=integration ./internal/repository -run 'Test(Quality152|QualityOwnership|QualityLiveDeleteHTTP)' -count=1 -v 2>&1 | tee ../evidence/green.log
+        if grep -Eq -- '--- SKIP:|no tests to run' ../evidence/green.log; then exit 1; fi
+        for name in TestQuality152AdminUpdatePreservesLockedIsolation TestQuality152AdminUpdateServiceReadBeforeLock TestQuality152OrdinaryBulkAndExtraSavesPreserveIsolation TestQuality152OwnershipAndExplicitRestoreRemainIntact TestQuality152HTTPUpdatePreservesServerIsolation; do
+          grep -F -- "--- PASS: $name" ../evidence/green.log
+        done
+    - name: Existing locked account Extra preservation assertions
+      working-directory: backend
+      shell: bash
+      run: |
+        set -o pipefail
+        go test -tags=unit ./internal/repository -run 'Test(LockAndMergeAccount|CodexTicketExtra|ExcelBPS403Marker)' -count=1 -v 2>&1 | tee ../evidence/retained-unit.log
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: quality-rule152-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+  quality-template-complete-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Record exact head and regression inputs
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        sha256sum backend/internal/repository/quality_template_complete*integration_test.go backend/internal/service/quality_rule_preset_test.go frontend/src/utils/__tests__/qualityRulePatch.spec.ts frontend/src/views/admin/__tests__/AccountQualityView.spec.ts frontend/src/api/admin/__tests__/scheduledTests.spec.ts > evidence/test-input.sha256
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Previous preset repository must fail unchanged group validation regression
+      env:
+        CI: 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        baseline=94937267b2acb32bbbd44a7aae13218709c466fc
+        source=backend/internal/repository/quality_rule_preset_repo.go
+        cp "$source" "$RUNNER_TEMP/complete-preset-current.go"
+        trap 'cp "$RUNNER_TEMP/complete-preset-current.go" "$source"' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$baseline"
+        git rev-parse "$baseline" > evidence/red-source-head.txt
+        git show "$baseline:$source" > "$source"
+        set +e
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQualityTemplateCompleteRejectsInvalidGroupsAndPermissions$' -count=1 -v) > evidence/red-storage.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red-storage.log
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:|--- SKIP:' evidence/red-storage.log; then exit 1; fi
+        grep -F -- '--- FAIL: TestQualityTemplateCompleteRejectsInvalidGroupsAndPermissions' evidence/red-storage.log
+    - name: Exact head real HTTP PostgreSQL complete templates and retained safety guards
+      env:
+        CI: 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git diff --exit-code
+        sha256sum -c evidence/test-input.sha256
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality(Template|Preset|Orphan|Ownership|Isolation|152|LiveDeleteHTTP|RuleTemplate|Reuse)' -count=1 -v) 2>&1 | tee evidence/green-storage.log
+        if grep -Eq -- '--- SKIP:|no tests to run' evidence/green-storage.log; then exit 1; fi
+        for name in TestQualityTemplateCompleteHTTPRoundtripAllActions TestQualityTemplateCompleteRejectsInvalidGroupsAndPermissions TestQualityTemplateCompleteExistingIsolationGuard TestQualityTemplateCompleteLegacyReadAndRevalidation TestQualityTemplateCompleteDetectionModesAndProviders TestQualityTemplateCompleteDistributionKeepsItsOwnSemantics TestQualityTemplateCompleteDistributionCannotOverrideIsolatedScope TestQualityPresetPersistsWithoutDistributingPlans; do
+          grep -F -- "--- PASS: $name" evidence/green-storage.log
+        done
+    - name: Template service and HTTP validation
+      shell: bash
+      run: |
+        set -euo pipefail
+        (cd backend && go test -tags=unit ./internal/service -run '^Test(QualityPreset|QualityTemplate)' -count=1 -v) 2>&1 | tee evidence/green-service.log
+        (cd backend && go test ./internal/handler/admin -run '^TestQuality(Preset|Orphan|Ownership|Live|Scope|Jev)' -count=1 -v) 2>&1 | tee evidence/green-handler.log
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Old reusable config must fail unchanged legacy and bulk regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        source=frontend/src/utils/qualityRulePatch.ts
+        cp "$source" "$RUNNER_TEMP/complete-current.ts"
+        trap 'cp "$RUNNER_TEMP/complete-current.ts" "$source"' EXIT
+        git show "94937267b2acb32bbbd44a7aae13218709c466fc:$source" > "$source"
+        set +e
+        pnpm --dir frontend exec vitest run src/utils/__tests__/qualityRulePatch.spec.ts -t 'complete template selected fields' > evidence/red-ui.log 2>&1
+        result=$?
+        set -e
+        cat evidence/red-ui.log
+        test "$result" -ne 0
+        grep -F 'AssertionError' evidence/red-ui.log
+    - name: Current full editor matrix, policy copying and ownership interactions
+      shell: bash
+      run: |
+        set -euo pipefail
+        git diff --exit-code
+        sha256sum -c evidence/test-input.sha256
+        pnpm --dir frontend exec vitest run src/api/admin/__tests__/scheduledTests.spec.ts src/utils/__tests__/qualityRulePatch.spec.ts src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts src/views/admin/__tests__/AccountQualityView.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee evidence/green-ui.log
+    - name: Install isolated browser
+      run: |
+        npm install --prefix "$RUNNER_TEMP/quality-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/quality-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Complete template actual view offline browser interaction
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/quality-browser/node_modules/playwright
+        QUALITY_SCREENSHOT_DIR: ${{ github.workspace }}/evidence/screenshots
+        QUALITY_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: node scripts/quality-template-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: quality-template-complete-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+  upstream-channel-operations-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - run: git rev-parse HEAD
+    - name: OAuth and pinned-protocol attribution assertions RED against previous head
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        target=internal/service/upstream_operations.go
+        cp "$target" "$RUNNER_TEMP/upstream-current-service.go"
+        trap 'cp "$RUNNER_TEMP/upstream-current-service.go" "$target"' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git ecf63af98587c151fe40893f3e3c322a777b17df
+        git show ecf63af98587c151fe40893f3e3c322a777b17df:backend/internal/service/upstream_operations.go > "$target"
+        python3 - <<'PY'
+        from pathlib import Path
+        target = Path("internal/service/upstream_operations.go")
+        source = target.read_text()
+        canonical = Path("internal/service/profit_operations.go").read_text()
+        marker = "// OperationsCostMultiplier distinguishes the scheduling default"
+        assert source.count(marker) == canonical.count(marker) == 1
+        offset = source.index(marker)
+        assert source[offset:] == canonical[canonical.index(marker):]
+        target.write_text(source[:offset])
+        PY
+        set +e
+        go test -tags=unit ./internal/service -run '^TestUpstreamOperations(ExcelOAuthCannotMasqueradeAsNativeCodex|PinnedResponsesPreservesExplicitRelayBase)$' -count=1 -v > "$RUNNER_TEMP/upstream-excel-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/upstream-excel-red.log"
+        test "$result" -ne 0
+        grep -q 'FAIL: TestUpstreamOperationsExcelOAuthCannotMasqueradeAsNativeCodex' "$RUNNER_TEMP/upstream-excel-red.log"
+        grep -q 'Excel-only OAuth cannot be attributed to native Codex' "$RUNNER_TEMP/upstream-excel-red.log"
+        grep -q 'FAIL: TestUpstreamOperationsPinnedResponsesPreservesExplicitRelayBase' "$RUNNER_TEMP/upstream-excel-red.log"
+        grep -q 'pinned Responses must retain explicit relay base' "$RUNNER_TEMP/upstream-excel-red.log"
+    - run: go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run '^TestUpstreamOperations'
+        -count=1 -v
+      working-directory: backend
+    - run: go test -tags=integration ./internal/repository -run '^TestUpstreamOperations' -count=1 -v
+      working-directory: backend
+  upstream-channel-operations-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - run: pnpm exec vitest run src/views/admin/__tests__/UpstreamChannelOperationsView.spec.ts src/components/admin/operations/__tests__/SmartOpsNav.spec.ts
+        src/components/layout/__tests__/AppSidebar.spec.ts --maxWorkers=1 --minWorkers=1 --no-file-parallelism
+      working-directory: frontend
+    - run: pnpm --dir frontend run build
+    - name: Install isolated browser
+      run: |
+        npm install --prefix "$RUNNER_TEMP/upstream-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/upstream-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Upstream channel page with synthetic data and zero live requests
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/upstream-browser/node_modules/playwright
+        UPSTREAM_SCREENSHOT_DIR: ${{ runner.temp }}/upstream-screenshots
+      run: node scripts/upstream-channel-operations-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: upstream-channel-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/upstream-screenshots
+        if-no-files-found: error
+  upstream-v0219-regression-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: scoped_ci
+          POSTGRES_PASSWORD: scoped_ci_only
+          POSTGRES_DB: scoped_ci
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U scoped_ci -d scoped_ci" --health-interval 5s --health-timeout 5s --health-retries
+          10
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=5432 user=scoped_ci password=scoped_ci_only dbname=scoped_ci sslmode=disable
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Isolated inflight memory bound and negative controls
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        go test -tags=unit ./internal/service -run '^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$' -count=30 -v | tee "$RUNNER_TEMP/inflight-memory-isolated.log"
+        go test -tags=unit ./internal/service -run '^TestInflightEstimate_MemoryMeasurementControls$' -count=1 -v | tee "$RUNNER_TEMP/inflight-memory-controls.log"
+    - name: Pagination behavior RED against production baseline
+      shell: bash
+      run: |
+        set -euo pipefail
+        targets=(backend/internal/pkg/pagination/pagination.go backend/internal/pkg/response/response.go)
+        trap 'git restore --source=HEAD -- "${targets[@]}"' EXIT
+        for target in "${targets[@]}"; do
+          git show e6b30da8f75b382a20b56b712a209e9f7d8c72fb:"$target" > "$target"
+        done
+        set +e
+        (cd backend && go test -tags=unit ./internal/pkg/pagination ./internal/pkg/response -run 'TestPaginationParamsOffsetDoesNotOverflow|TestParsePaginationBoundariesAndResponse' -count=1 -v) > "$RUNNER_TEMP/upstream-v0219-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/upstream-v0219-red.log"
+        test "$result" -ne 0
+        ! grep -q '\[build failed\]' "$RUNNER_TEMP/upstream-v0219-red.log"
+        grep -q -- '--- FAIL: TestPaginationParamsOffsetDoesNotOverflow' "$RUNNER_TEMP/upstream-v0219-red.log"
+        grep -q -- '--- FAIL: TestParsePaginationBoundariesAndResponse' "$RUNNER_TEMP/upstream-v0219-red.log"
+    - name: Compatibility and scoped authorization behavior RED
+      shell: bash
+      run: python3 scripts/upstream-v0219-red.py
+    - name: Exact head GREEN
+      working-directory: backend
+      run: |
+        git diff --exit-code
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        git rev-parse HEAD
+        set -euo pipefail
+        go test -tags=unit ./internal/config ./internal/pkg/pagination ./internal/pkg/response ./internal/pkg/antigravity ./internal/pkg/gemini ./internal/pkg/geminicli ./internal/pkg/adminaccess ./internal/repository ./internal/securityaudit ./internal/handler ./internal/handler/admin ./internal/server/middleware ./internal/server/routes ./internal/service -run 'Test(Pagination|ParsePagination|_parseInt|Paginate|MergeBalanceHistoryCodesLargePage|ParseOpsOpenAITokenStatsFilter|PromptAdminRejects|HandleUpstreamError_Zhipu|CNProviderResponseIndicatesFrequencyLimit|CNProviderQuotaSnapshotNearExhausted|AdminService_UpdateUser_AdminGuards|AdminService_DeleteUser_AdminGuard|ParseOpenAIImagesRequest_Multipart|ParseGrokMediaRequest_Multipart|MalformedFunctionCallTransform|AntigravityMalformedFunctionCall|ForwardAsChatCompletions_StrictDeveloperRole|NormalizeStrictChatDeveloperRoles|ClaudeCodeFingerprint|SyncBillingHeaderVersion|BuildOAuthRequest_Billing|MergeWebSearchEmulation|ChannelService_ApplyUpdateInput|OpenAIModelsSingleflight|LoadGeminiSameAccountRetries|Gemini.*(Retry|Retries|BoundCache|Declared|NativeModels|DefaultTestModel)|GatewayModels_Gemini|DefaultModels|Scoped|Custom|LegacyAdmin|AdminAccess|PanelRate|OpenAIStreamReplayBoundary|GeminiCachedContentMutationRecovery|.*Models.*Admission|APIKeyAdmissionModels|FetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation|Observer|EnforceStepUp)' -count=1 -v | tee "$RUNNER_TEMP/upstream-v0219-green.log"
+        ! grep -E -- '--- SKIP: TestScoped|--- SKIP: TestCustom' "$RUNNER_TEMP/upstream-v0219-green.log"
+    - name: Fixed-tag pricing and Grok behavior RED
+      run: python3 scripts/upstream-v0219-remaining-red.py
+    - name: Fixed-tag pricing and usage regressions
+      working-directory: backend
+      run: go test -tags=unit ./internal/pkg/openai ./internal/pkg/apicompat ./internal/service -run 'Test.*(Deepseek|DeepSeek|GPT61Terra|GeminiImage|Gemini.*Image|CountGemini|ModelPricingCatalog|ModelPlaza|PlazaGroups|IsImageGenerationModel|Image.*Pricing|Pricing.*Image|ImageCountBilling|BillableImage|CountOpenAIImage|ChannelPerRequestContextTier|ExplicitTokenCardsAcrossGateways|AuthoritativeZeroCacheRead)'
+        -count=1 -v
+    - name: Grok catalog audit and ownership regressions
+      working-directory: backend
+      run: |
+        go test -tags=unit ./internal/service ./internal/repository ./internal/handler/admin ./internal/handler/dto ./internal/server -run 'Test.*(Grok|ImageCountBilling|ImageCount|AvailableGroups|Group.*Duplicate|AuthCache.*|LockAndMergeAccountProbeExtra)' -count=1 -v
+        go test -tags=integration ./internal/repository -run '^TestGrok' -count=1 -v
+    - name: Preserve exact model-index plans across repeated integration fixtures
+      working-directory: backend
+      run: go test -tags=integration ./internal/repository -run '^TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex$'
+        -count=10 -v
+    - name: Ownership and cancellation race regressions
+      working-directory: backend
+      run: go test -race -tags=unit ./internal/service ./internal/server/middleware -run 'TestOpenAIModelsSingleflight|TestScopedAdmin|TestPanelRate|TestAPIKeyAdmissionModels|TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation|TestGrokCatalogPersistConcurrentWritersAreRaceSafe|ImageCountBillingPreservesExplicitTokenCardsAcrossGateways|GrokCatalog'
+        -count=1
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - name: Targeted admin and model frontend tests
+      working-directory: frontend
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec vitest run src/components/admin/settings/__tests__/AdminAccessKeysSettings.spec.ts src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts src/composables/__tests__/useModelWhitelist.spec.ts src/api/__tests__/admin.accounts.grokModelDiagnostics.spec.ts src/components/account/__tests__/GrokModelDiagnosticsPanel.spec.ts src/components/account/__tests__/EditAccountModal.grokUpstream.spec.ts src/components/account/__tests__/ModelWhitelistSelector.spec.ts src/components/keys/__tests__/UseKeyModal.spec.ts
+  moderation-user-enable-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        go-version: 1.27.3
+        cache-dependency-path: backend/go.sum
+    - name: Verify user enable reason regression against original handler
+      shell: bash
+      run: |
+        set -euo pipefail
+        target=backend/internal/handler/admin/user_handler.go
+        cp "$target" "$RUNNER_TEMP/user-enable-current-handler.go"
+        trap 'cp "$RUNNER_TEMP/user-enable-current-handler.go" "$target"' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git bccac61c757f2c04a2360063c4057db2b270c856
+        git show bccac61c757f2c04a2360063c4057db2b270c856:"$target" > "$target"
+        set +e
+        (cd backend && go test -tags=unit ./internal/handler/admin -run '^TestUserQuickEnableReasonLimit$' -count=1) > "$RUNNER_TEMP/user-enable-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/user-enable-red.log"
+        test "$result" -ne 0
+        grep -q 'FAIL: TestUserQuickEnableReasonLimit' "$RUNNER_TEMP/user-enable-red.log"
+        grep -q 'actual.*200' "$RUNNER_TEMP/user-enable-red.log"
+    - name: Verify user enable regressions
+      working-directory: backend
+      run: go test -tags=unit ./internal/handler/admin ./internal/server/middleware ./internal/service ./internal/repository
+        -run 'TestUserQuickEnable|TestAdminService_UserQuickEnable|TestModerationRecoveryUnbanDoesNotClaimOtherDisable' -count=1
+        -v
+  usage-rolling-24h-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        go-version: 1.27.3
+        cache-dependency-path: backend/go.sum
+    - name: Usage trend local bucket regressions
+      working-directory: backend
+      run: go test -tags=integration ./internal/repository -run '^TestUsageTrendAggregateTimezone' -count=1 -v
