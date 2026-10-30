@@ -15,6 +15,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
+      - name: Use upstream Node 22 runtime for patched frontend dependencies
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
       - name: Check sync scripts and recovery behavior
         id: sync
         run: |
@@ -143,6 +147,10 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Use upstream Node 22 runtime for patched frontend dependencies
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
@@ -278,6 +286,10 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Use upstream Node 22 runtime for patched frontend dependencies
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -447,6 +459,10 @@ jobs:
           node-version: '20'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Use upstream Node 22 runtime for patched frontend dependencies
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
       - run: pnpm --dir frontend install --frozen-lockfile
       - name: Install isolated screenshot tool
         run: |
@@ -497,6 +513,10 @@ jobs:
           node-version: '20'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Use upstream Node 22 runtime for patched frontend dependencies
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
       - run: pnpm --dir frontend install --frozen-lockfile
       - name: Exercise real configuration page, API pagination and locale keys
         env:
@@ -649,6 +669,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - name: Actual page interactions and existing editor compatibility
       working-directory: frontend
@@ -1027,6 +1051,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - name: Real page bounded refresh lifecycle
       run: |
@@ -1093,6 +1121,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - run: pnpm exec vitest run src/views/admin/__tests__/ProfitOperationsView.spec.ts src/components/admin/operations/__tests__/SmartOpsNav.spec.ts
         src/components/layout/__tests__/AppSidebar.spec.ts --maxWorkers=1 --minWorkers=1 --no-file-parallelism
@@ -1193,6 +1225,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - name: Install isolated screenshot tool
       run: |
@@ -1292,6 +1328,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - name: Unchanged deletion interaction must fail against original components
       shell: bash
@@ -1386,6 +1426,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - name: Old component must fail unchanged preview-confirm-readback interaction
       shell: bash
@@ -1438,6 +1482,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - name: Install isolated screenshot tool
       run: |
@@ -1591,6 +1639,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - name: Old reusable config must fail unchanged legacy and bulk regressions
       shell: bash
@@ -1664,6 +1716,17 @@ jobs:
         assert source[offset:] == canonical[canonical.index(marker):]
         target.write_text(source[:offset])
         PY
+        python3 - <<'PYENTITY'
+        from pathlib import Path
+        p = Path('internal/service/upstream_operations.go')
+        s = p.read_text()
+        if '`json:"channel_id,omitempty"`' not in s:
+            before = 'Upstream   string    `json:"upstream"`'
+            assert s.count(before) == 1
+            s = s.replace(before, before + '\n ChannelID int64 `json:"channel_id,omitempty"`')
+        assert '`json:"channel_id,omitempty"`' in s
+        p.write_text(s)
+        PYENTITY
         set +e
         go test -tags=unit ./internal/service -run '^TestUpstreamOperations(ExcelOAuthCannotMasqueradeAsNativeCodex|PinnedResponsesPreservesExplicitRelayBase)$' -count=1 -v > "$RUNNER_TEMP/upstream-excel-red.log" 2>&1
         result=$?
@@ -1694,6 +1757,10 @@ jobs:
         node-version: '20'
         cache: pnpm
         cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - run: pnpm --dir frontend install --frozen-lockfile
     - run: pnpm exec vitest run src/views/admin/__tests__/UpstreamChannelOperationsView.spec.ts src/components/admin/operations/__tests__/SmartOpsNav.spec.ts
         src/components/layout/__tests__/AppSidebar.spec.ts --maxWorkers=1 --minWorkers=1 --no-file-parallelism
@@ -1799,6 +1866,10 @@ jobs:
     - uses: actions/setup-node@v6
       with:
         node-version: '20'
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
     - uses: pnpm/action-setup@v6
       with:
         version: 9
@@ -1854,3 +1925,1527 @@ jobs:
     - name: Usage trend local bucket regressions
       working-directory: backend
       run: go test -tags=integration ./internal/repository -run '^TestUsageTrendAggregateTimezone' -count=1 -v
+
+  account-connection-timing-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      BASELINE: 77455cf755fa0f119367b911704f11df88e7917e
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Exact source identity
+      run: |
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        git diff --exit-code HEAD
+        mkdir -p "$RUNNER_TEMP/timing-proof"
+        printf 'exact_head=%s\nbaseline=%s\n' "$EXPECTED_HEAD" "$BASELINE" | tee "$RUNNER_TEMP/timing-proof/source.txt"
+    - name: RED in an isolated baseline directory, without modifying delivery checkout
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/timing-baseline"
+        git archive "$BASELINE" | tar -x -C "$RUNNER_TEMP/timing-baseline"
+        cp backend/internal/service/account_connection_timing_test.go "$RUNNER_TEMP/timing-baseline/backend/internal/service/"
+        set +e
+        (cd "$RUNNER_TEMP/timing-baseline/backend" && go test -tags=unit ./internal/service -run '^TestAccountConnectionTimingLifecycle$' -count=1 -json -timeout=15m) > "$RUNNER_TEMP/timing-proof/red.jsonl" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/timing-proof/red.jsonl"
+        test "$result" -ne 0
+        python3 - "$RUNNER_TEMP/timing-proof/red.jsonl" <<'PY'
+        import json, sys
+        events = [json.loads(s) for s in open(sys.argv[1]) if s.startswith('{')]
+        assert any(e.get('Action') == 'fail' and e.get('Test', '').startswith('TestAccountConnectionTimingLifecycle/') for e in events), 'RED must be an executed assertion failure'
+        assert any('one start and one final timing event' in e.get('Output', '') for e in events), 'expected timing assertion missing'
+        PY
+        git diff --exit-code HEAD
+    - name: GREEN actual service, handler and collector packages with race detection
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        export ACCOUNT_TIMING_FIXTURES_DIR="$RUNNER_TEMP/timing-proof/fixtures"
+        go test -race -tags=unit ./internal/service ./internal/handler/admin ./internal/integration/accountconnectiontiming -run 'TestAccountConnectionTiming|TestAccountTest|TestProcessGeminiStream|TestTypeSafeAccountTest|TestExcelBPS.*(Test|Probe)|TestOpenAIConnectionManagementRejectsAPIKey|TestOpenAIConnectionCreationRejectsMixedCredentials|TestOpenAIConnectionHandlerAccountType' -count=1 -v -timeout=20m 2>&1 | tee "$RUNNER_TEMP/timing-proof/green.log"
+        go test -race ./internal/pkg/requesttiming -count=1 -v -timeout=5m 2>&1 | tee "$RUNNER_TEMP/timing-proof/collector.log"
+        go test ./internal/service ./internal/handler/admin -run '^$' -timeout=10m 2>&1 | tee "$RUNNER_TEMP/timing-proof/normal-packages.log"
+        test -f "$ACCOUNT_TIMING_FIXTURES_DIR/apikey-responses.sse"
+        test -f "$ACCOUNT_TIMING_FIXTURES_DIR/oauth-responses.sse"
+        git diff --exit-code HEAD
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: account-timing-backend-${{ github.event.pull_request.head.sha }}
+        path: ${{ runner.temp }}/timing-proof
+        if-no-files-found: error
+  account-connection-timing-frontend:
+    needs:
+    - account-connection-timing-backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      BASELINE: 77455cf755fa0f119367b911704f11df88e7917e
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/download-artifact@v8
+      with:
+        name: account-timing-backend-${{ github.event.pull_request.head.sha }}
+        path: ${{ runner.temp }}/handler-proof
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: RED real modal consumers in a separate baseline directory
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/ui-proof" "$RUNNER_TEMP/timing-ui-baseline"
+        git archive "$BASELINE" frontend | tar -x -C "$RUNNER_TEMP/timing-ui-baseline"
+        ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$RUNNER_TEMP/timing-ui-baseline/frontend/node_modules"
+        cp frontend/src/components/account/__tests__/AccountConnectionTiming.spec.ts "$RUNNER_TEMP/timing-ui-baseline/frontend/src/components/account/__tests__/"
+        set +e
+        env -u ACCOUNT_TIMING_FIXTURES_DIR pnpm --dir "$RUNNER_TEMP/timing-ui-baseline/frontend" exec vitest run src/components/account/__tests__/AccountConnectionTiming.spec.ts -t 'keeps legacy success' --maxWorkers=1 --minWorkers=1 --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/ui-proof/red.json" > "$RUNNER_TEMP/ui-proof/red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/ui-proof/red.log"
+        test "$result" -ne 0
+        python3 - "$RUNNER_TEMP/ui-proof/red.json" <<'PY'
+        import json, sys
+        report = json.load(open(sys.argv[1]))
+        assert report['numFailedTests'] == 2, 'Both actual modals must fail the intended assertion'
+        failed = [t for f in report['testResults'] for t in f['assertionResults'] if t['status'] == 'failed']
+        assert len(failed) == 2 and all('account-test-timing' in '\n'.join(t['failureMessages']) for t in failed)
+        PY
+        git diff --exit-code HEAD
+    - name: Exact source, real components and captured handler events
+      shell: bash
+      run: |
+        set -euo pipefail
+        export ACCOUNT_TIMING_FIXTURES_DIR="$RUNNER_TEMP/handler-proof/fixtures"
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        mkdir -p "$RUNNER_TEMP/ui-proof"
+        printf 'exact_head=%s\n' "$EXPECTED_HEAD" | tee "$RUNNER_TEMP/ui-proof/source.txt"
+        test -f "$ACCOUNT_TIMING_FIXTURES_DIR/apikey-responses.sse"
+        pnpm --dir frontend exec vitest run src/components/account/__tests__/AccountConnectionTiming.spec.ts src/components/account/__tests__/AccountTestModal.spec.ts src/components/admin/account/__tests__/AccountTestModal.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts --maxWorkers=1 --minWorkers=1 --reporter=verbose 2>&1 | tee "$RUNNER_TEMP/ui-proof/tests.log"
+        pnpm --dir frontend exec vue-tsc --noEmit 2>&1 | tee "$RUNNER_TEMP/ui-proof/types.log"
+        pnpm --dir frontend exec eslint src/components/account/AccountTestModal.vue src/components/admin/account/AccountTestModal.vue src/components/account/AccountTestTiming.vue src/composables/useAccountTestTiming.ts src/utils/accountTestStream.ts src/components/account/__tests__/AccountConnectionTiming.spec.ts 2>&1 | tee "$RUNNER_TEMP/ui-proof/lint.log"
+        git diff --exit-code HEAD
+    - name: Install isolated pinned browser tooling
+      run: |
+        npm install --prefix "$RUNNER_TEMP/account-timing-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/account-timing-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Real desktop and mobile modals in both languages
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/account-timing-browser/node_modules/playwright
+        ACCOUNT_TIMING_FIXTURES_DIR: ${{ runner.temp }}/handler-proof/fixtures
+        ACCOUNT_TIMING_SCREENSHOT_DIR: ${{ runner.temp }}/ui-proof/screenshots
+      run: node scripts/account-connection-timing-browser.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: account-timing-ui-${{ github.event.pull_request.head.sha }}
+        path: ${{ runner.temp }}/ui-proof
+        if-no-files-found: error
+  issue-578-regression-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - name: Record exact tested head
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        sha256sum backend/internal/service/issue_578_regression_test.go > evidence/tests.sha256
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Verify toolchain
+      run: go version | tee evidence/toolchain.txt
+    - name: Prepare dependencies and loopback-only test runner
+      shell: bash
+      run: |
+        set -euo pipefail
+        (cd backend && go mod download)
+        cat > "$RUNNER_TEMP/issue-578-offline" <<'SH'
+        #!/usr/bin/env bash
+        set -euo pipefail
+        exec sudo env PATH="$PATH" GOPATH="$(go env GOPATH)" \
+          GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" \
+          GOPROXY=off GOSUMDB=off \
+          unshare --net bash -c 'ip link set lo up; exec "$@"' bash "$@"
+        SH
+        chmod +x "$RUNNER_TEMP/issue-578-offline"
+        "$RUNNER_TEMP/issue-578-offline" ip -brief address | tee evidence/offline-network.txt
+    - name: Review 2 behavioral RED on exact merged pre-fix source
+      shell: bash
+      env:
+        REVIEW2_BASELINE: 60254aa9081f715161ef0c0ce3b6683e671b4798
+      run: |
+        set -euo pipefail
+        red_tree="$RUNNER_TEMP/issue-578-review2-red"
+        mkdir -p "$red_tree"
+        git archive "$REVIEW2_BASELINE" | tar -x -C "$red_tree"
+        cp backend/internal/service/issue_578_review2_regression_test.go "$red_tree/backend/internal/service/"
+        echo "$REVIEW2_BASELINE" > evidence/review2-baseline-head.txt
+        set +e
+        (cd "$red_tree/backend" && "$RUNNER_TEMP/issue-578-offline" go test -tags=unit ./internal/service -run '^TestIssue578Review2' -count=1 -v) > evidence/review2-red.log 2>&1
+        result=$?
+        set -e
+        cat evidence/review2-red.log
+        echo "$result" > evidence/review2-red-exit.txt
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:|--- SKIP:' evidence/review2-red.log; then exit 1; fi
+        grep -F -- '--- FAIL: TestIssue578Review2PendingFieldObservationSurvivesRetry' evidence/review2-red.log
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: issue-578-review2-red-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+    - name: Prove behavioral RED on pinned production baseline
+      shell: bash
+      env:
+        BASELINE: 08d69a522c79a182fd681ead8fa4d848d9e1554e
+      run: |
+        set -euo pipefail
+        red_tree="$RUNNER_TEMP/issue-578-baseline"
+        mkdir -p "$red_tree"
+        git archive "$BASELINE" | tar -x -C "$red_tree"
+        echo "$BASELINE" > evidence/baseline-head.txt
+        cp backend/internal/service/issue_578_regression_test.go "$red_tree/backend/internal/service/"
+        set +e
+        (cd "$red_tree/backend" && "$RUNNER_TEMP/issue-578-offline" go test -tags=unit ./internal/service -run '^TestIssue578(HeaderLatestValue|HeaderSerialAndRetry|QueryUsageSynchronizesNonzero|BPSTTLRefreshAndThrottle)$' -count=1 -v) > evidence/baseline-red.log 2>&1
+        result=$?
+        set -e
+        cat evidence/baseline-red.log
+        echo "$result" > evidence/baseline-exit.txt
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:' evidence/baseline-red.log; then
+          echo 'Build/setup failures are not behavioral RED evidence'
+          exit 1
+        fi
+        for name in HeaderLatestValue HeaderSerialAndRetry QueryUsageSynchronizesNonzero BPSTTLRefreshAndThrottle; do
+          grep -F -- "--- FAIL: TestIssue578$name" evidence/baseline-red.log
+        done
+    - name: Exact head offline regressions and preserved controls
+      if: '!cancelled()'
+      shell: bash
+      working-directory: backend
+      run: |
+        set -o pipefail
+        "$RUNNER_TEMP/issue-578-offline" go test -tags=unit ./internal/service -run '^(TestIssue578|TestExcelBPSQuotaSnapshot|TestExcelBPS429|TestOpenAIQuotaRecovery|TestShouldRefreshOpenAICodexSnapshot|TestGetOpenAIUsage_SparkShadow|TestQueryUsageAgentIdentity|TestQueryUsageShadow|TestOpenAIQuotaAutoReset|TestShouldAutoPauseOpenAIAccountByQuota|TestEvaluateAccountSchedulingThreshold_OpenAI)' -count=1 -v 2>&1 | tee ../evidence/green-service.log
+        "$RUNNER_TEMP/issue-578-offline" go test -tags=unit ./internal/handler/admin -run '^TestIssue578|^TestOpenAI.*(Quota|Refresh)' -count=1 -v 2>&1 | tee ../evidence/green-admin.log
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: issue-578-early-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+    - name: Review blockers behavioral RED on rejected head
+      if: '!cancelled()'
+      shell: bash
+      env:
+        REVIEW_BASELINE: 4f57d52e0f161f9dcd99ceb519cd4a102ad1394b
+      run: |
+        set -euo pipefail
+        red_tree="$RUNNER_TEMP/issue-578-review-red"
+        mkdir -p "$red_tree"
+        git archive "$REVIEW_BASELINE" | tar -x -C "$red_tree"
+        cp backend/internal/service/issue_578_review_regression_test.go "$red_tree/backend/internal/service/"
+        set +e
+        (cd "$red_tree/backend" && "$RUNNER_TEMP/issue-578-offline" go test -tags=unit ./internal/service -run '^TestIssue578Review' -count=1 -v) > evidence/review-red.log 2>&1
+        result=$?
+        set -e
+        cat evidence/review-red.log
+        echo "$REVIEW_BASELINE" > evidence/review-baseline-head.txt
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:' evidence/review-red.log; then exit 1; fi
+        grep -F -- '--- FAIL: TestIssue578ReviewQueryDownstreamCannotRestampWindows' evidence/review-red.log
+        grep -F -- '--- FAIL: TestIssue578ReviewWorkerPermanentErrorAndShutdown' evidence/review-red.log
+    - name: Exact head concurrency regressions
+      if: '!cancelled()'
+      working-directory: backend
+      shell: bash
+      run: |
+        set -o pipefail
+        "$RUNNER_TEMP/issue-578-offline" go test -race -tags=unit ./internal/service -run '^TestIssue578' -count=3 -v 2>&1 | tee ../evidence/race.log
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: issue-578-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+  issue-578-regression-shared-storage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Prepare isolated PostgreSQL Redis and dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends postgresql redis-server
+        for attempt in 1 2 3 4 5; do
+          if (cd backend && go mod download); then break; fi
+          if [ "$attempt" -eq 5 ]; then exit 1; fi
+          sleep "$attempt"
+        done
+    - name: Exact head and rejected-head shared storage regression
+      shell: bash
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        red_tree="$RUNNER_TEMP/issue-578-storage-red"
+        mkdir -p "$red_tree"
+        git archive 4f57d52e0f161f9dcd99ceb519cd4a102ad1394b | tar -x -C "$red_tree"
+        mkdir -p "$red_tree/backend/internal/integration/issue578"
+        cp backend/internal/integration/issue578/*test.go "$red_tree/backend/internal/integration/issue578/"
+        review2_tree="$RUNNER_TEMP/issue-578-storage-review2-red"
+        mkdir -p "$review2_tree"
+        git archive 60254aa9081f715161ef0c0ce3b6683e671b4798 | tar -x -C "$review2_tree"
+        cp backend/internal/integration/issue578/*test.go "$review2_tree/backend/internal/integration/issue578/"
+        echo 60254aa9081f715161ef0c0ce3b6683e671b4798 > evidence/review2-baseline-head.txt
+        sudo env PATH="$PATH" GOPATH="$(go env GOPATH)" GOCACHE="$(go env GOCACHE)" \
+          GOMODCACHE="$(go env GOMODCACHE)" GOPROXY=off GOSUMDB=off \
+          unshare --net bash scripts/issue-578-storage.sh "$PWD" "$red_tree" "$PWD/evidence" "$review2_tree"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: issue-578-storage-${{ github.event_name }}-${{ github.run_id }}
+        path: evidence/
+        if-no-files-found: error
+        retention-days: 14
+  issue-600-regression-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      redis:
+        image: redis:8.4-alpine
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      PHASE: ${{ matrix.phase }}
+      ISSUE600_REDIS_ADDR: 127.0.0.1:6379
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Prove source and run real handler network regression
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        git diff --exit-code HEAD
+        files=(backend/internal/handler/openai_gateway_handler.go backend/internal/service/openai_ws_forwarder.go backend/internal/service/openai_ws_forwarder_ingress.go backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/service/openai_codex_account_identity.go backend/internal/service/session_id.go)
+        delivery_root="$PWD"
+        if [ "$PHASE" = RED ]; then
+          red_tree="$RUNNER_TEMP/issue600-upstream-red"
+          git worktree add --detach "$red_tree" ec007920de042797299fc7cf2c034ad24c136462
+          trap 'git -C "$delivery_root" worktree remove --force "$red_tree"' EXIT
+          for test_file in backend/internal/handler/openai_ws_client_identity_test.go backend/internal/handler/openai_ws_nested_identity_test.go backend/internal/service/openai_nested_identity_test.go; do
+            cp "$test_file" "$red_tree/$test_file"
+          done
+          printf 'RED supporting tree: %s; unchanged candidate tests: %s\n' ec007920de042797299fc7cf2c034ad24c136462 "$EXPECTED_HEAD"
+          cd "$red_tree"
+        fi
+        if [ "$PHASE" = RED ]; then
+          for file in "${files[@]}"; do
+            git show "77455cf755fa0f119367b911704f11df88e7917e:$file" > "$file"
+          done
+        fi
+        {
+          echo "candidate=$EXPECTED_HEAD phase=$PHASE baseline=77455cf755fa0f119367b911704f11df88e7917e"
+          for file in "${files[@]}"; do
+            if [ "$PHASE" = RED ]; then
+              test "$(git hash-object "$file")" = "$(git rev-parse "77455cf755fa0f119367b911704f11df88e7917e:$file")"
+            else
+              test "$(git hash-object "$file")" = "$(git rev-parse "$EXPECTED_HEAD:$file")"
+            fi
+            echo "$file blob=$(git hash-object "$file") candidate=$(git rev-parse "$EXPECTED_HEAD:$file") baseline=$(git rev-parse "77455cf755fa0f119367b911704f11df88e7917e:$file")"
+          done
+        } | tee "$RUNNER_TEMP/issue600-source-$PHASE.log"
+        git hash-object backend/internal/handler/openai_ws_client_identity_test.go backend/internal/handler/openai_ws_nested_identity_test.go backend/internal/service/openai_nested_identity_test.go | tee "$RUNNER_TEMP/issue600-tests-$PHASE.log"
+        set +e
+        (cd backend && go test -tags=unit ./internal/handler -run '^TestIssue600' -count=1 -v -timeout=8m) > "$RUNNER_TEMP/issue600-$PHASE.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/issue600-$PHASE.log"
+        if grep -E 'build failed|no tests to run|--- SKIP:|panic:|unexpected fixture destination|failed to get access token' "$RUNNER_TEMP/issue600-$PHASE.log"; then
+          echo 'Invalid test evidence: compile, fixture, panic, skip or missing tests'
+          exit 1
+        fi
+        if [ "$PHASE" = RED ]; then
+          test "$result" -ne 0
+          grep -q -- '--- FAIL: TestIssue600ClientIdentityNetwork/' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'stable original client identity must admit turn 2' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'cyber_session_identity_conflict' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'nested outbound identity must be account isolated' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'rejected turn must have no response generation' "$RUNNER_TEMP/issue600-$PHASE.log"
+          for mode in ctx_pool http_bridge passthrough legacy; do
+            for strict in false true; do
+              for scenario in stable_header_body body_only; do
+                grep -q -- "--- FAIL: TestIssue600ClientIdentityNetwork/$mode/strict=$strict/oauth/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+              done
+              for scenario in nested_header_body nested_body_only root_nested_consistent; do
+                grep -q -- "--- FAIL: TestIssue600NestedIdentityNetwork/$mode/strict=$strict/oauth/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+              done
+              grep -q -- "--- FAIL: TestIssue600NestedIdentityNetwork/$mode/strict=$strict/none/conflicting_root_nested_thread " "$RUNNER_TEMP/issue600-$PHASE.log"
+            done
+          done
+        else
+          test "$result" -eq 0
+          grep -q -- '--- PASS: TestIssue600ClientIdentityNetwork ' "$RUNNER_TEMP/issue600-$PHASE.log"
+          for mode in ctx_pool http_bridge passthrough legacy; do
+            for strict in false true; do
+              for namespace in none oauth; do
+                for scenario in stable_header_body body_only omitted_identity static_session_inheritance genuine_header_body_conflict true_body_identity_switch invalid_followup; do
+                  grep -q -- "--- PASS: TestIssue600ClientIdentityNetwork/$mode/strict=$strict/$namespace/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+                done
+              done
+            done
+          done
+          for mode in ctx_pool http_bridge passthrough legacy; do
+            for strict in false true; do
+              for namespace in none oauth; do
+                for scenario in nested_header_body nested_body_only root_nested_consistent omitted_nested_identity root_hidden_by_empty_envelope conflicting_root_nested_thread conflicting_root_nested_session invalid_nested_identity invalid_root_identity invalid_nested_metadata invalid_root_metadata nested_header_conflict true_nested_switch session_only_consistent session_only_switch; do
+                  grep -q -- "--- PASS: TestIssue600NestedIdentityNetwork/$mode/strict=$strict/$namespace/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+                done
+              done
+              grep -q -- "--- PASS: TestIssue600NestedAccountSwitch/$mode/strict=$strict " "$RUNNER_TEMP/issue600-$PHASE.log"
+            done
+          done
+          git diff --exit-code HEAD
+        fi
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue600-${{ matrix.phase }}-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/issue600-*.log
+  issue-600-regression-preserved-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      redis:
+        image: redis:8.4-alpine
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI: 'true'
+      ISSUE600_REDIS_ADDR: 127.0.0.1:6379
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Exact-head race checked admission, billing, resources, tools and continuation
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        git diff --exit-code HEAD
+        go test -race -tags=unit ./internal/handler ./internal/service -run '^(TestIssue600|TestOpenAIWSRevalidation|TestOpenAIWS.*Pricing|TestOpenAIWS.*Key|TestOpenAIResponsesWebSocket_|TestRefreshOpenAIWSTurnBilling|TestBuildCyberSessionBlockedOpsEntry|TestOpenAIWSRateLimit|TestOpenAIAuth|TestIssue594|TestRegional.*WS|TestOpenAIWSNextAttempt|TestWSAPIKeySlot|TestWSUserSlot|TestWSHTTPBridge|TestPassthroughIngress|TestOpenAIRPMPassthrough|TestOpenAIResponsesWebSocketV2|TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient|TestProxyOpenAIWSHTTPBridge|TestOpenAIWSHTTPBridge|TestCodexRequestBodyIdentity|TestBuildOpenAIWSHeadersNamespaces|Test.*Codex.*Tool)' -count=1 -v -timeout=20m | tee "$RUNNER_TEMP/issue600-contracts.log"
+        if grep -E -- '--- SKIP:|no tests to run' "$RUNNER_TEMP/issue600-contracts.log"; then exit 1; fi
+        git diff --exit-code HEAD
+    - name: PostgreSQL and Redis persistence, queue and session fixtures
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        # Select relevant lifecycle methods; the legacy GetAccountsLoadBatch
+        # method is unconditionally skipped in the repository and is outside
+        # this regression. Every selected test must execute without skips.
+        go test -tags=integration ./internal/repository -run '^(TestUsageLog_SessionIDPersistence|TestUserMsgQueueCacheSuite|TestConcurrencyCacheSuite|TestSessionLimitCacheSuite)$/(TestOpenAIWSIngressAPIKeySlot|TestLiveLease_|TestAccountSlot_|TestUserSlot_|TestAPIKeySlot_|TestAccountActiveIndex_|TestUserActiveIndex_|TestAccountWaitQueue_|TestWaitQueue_|TestCleanup|TestUnregisterSession|TestAcquire|TestReconcile)' -count=1 -v -timeout=15m | tee "$RUNNER_TEMP/issue600-pg-redis.log"
+        for name in TestUsageLog_SessionIDPersistence TestUserMsgQueueCacheSuite TestConcurrencyCacheSuite TestSessionLimitCacheSuite; do
+          grep -q -- "--- PASS: $name " "$RUNNER_TEMP/issue600-pg-redis.log"
+        done
+        if grep -E -- '--- SKIP:|no tests to run' "$RUNNER_TEMP/issue600-pg-redis.log"; then exit 1; fi
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue600-contracts-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/issue600-*.log
+  openai-connection-account-type-regression-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+        - red
+        - green
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      BASELINE: cf3d30c69ea997d15a5d714805d5b6ad2901463f
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Prove source identity and keep head tests
+      env:
+        MODE: ${{ matrix.mode }}
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        git diff --exit-code HEAD
+        mkdir -p "$RUNNER_TEMP/connection-proof"
+        if [ "$MODE" = red ]; then
+          git restore --source="$BASELINE" --worktree -- \
+            backend/internal/service/openai_auth_connections.go \
+            backend/internal/service/openai_auth_connection_oauth.go \
+            backend/internal/service/openai_auth_connection_legacy.go \
+            backend/internal/service/openai_auth_connection_routing.go
+        fi
+        git rev-parse HEAD | tee "$RUNNER_TEMP/connection-proof/head.txt"
+        git diff --name-only | tee "$RUNNER_TEMP/connection-proof/restored-paths.txt"
+        git diff --exit-code HEAD -- '*test.go'
+        git hash-object backend/internal/service/openai_auth_connections.go | tee "$RUNNER_TEMP/connection-proof/source-blob.txt"
+        if [ "$MODE" = red ]; then
+          test "$(git hash-object backend/internal/service/openai_auth_connections.go)" = "$(git rev-parse "$BASELINE:backend/internal/service/openai_auth_connections.go")"
+        fi
+    - name: Baseline must fail the intended service and HTTP assertions
+      if: matrix.mode == 'red'
+      run: |
+        set -euo pipefail
+        set +e
+        (cd backend && go test -tags=unit ./internal/service -run '^(TestOpenAIConnectionManagementRejectsAPIKey|TestOpenAIConnectionCreationRejectsMixedCredentials)$/(list|api_key)$' -count=1 -json -timeout=20m) > "$RUNNER_TEMP/connection-proof/service.jsonl" 2>&1
+        service_result=$?
+        (cd backend && go test -tags=unit ./internal/handler/admin -run '^TestOpenAIConnectionHandlerAccountType$/(apikey|oauth)/(list|reject_mixed)$' -count=1 -json -timeout=20m) > "$RUNNER_TEMP/connection-proof/handler.jsonl" 2>&1
+        handler_result=$?
+        set -e
+        cat "$RUNNER_TEMP/connection-proof/service.jsonl"
+        cat "$RUNNER_TEMP/connection-proof/handler.jsonl"
+        test "$service_result" -ne 0
+        test "$handler_result" -ne 0
+        python3 scripts/openai-connection-account-type-proof.py backend-red "$RUNNER_TEMP/connection-proof"
+    - name: Current head service handler and production repository adapter must compile and pass
+      if: matrix.mode == 'green'
+      run: |
+        set -euo pipefail
+        (cd backend && go test -tags=unit ./internal/service ./internal/handler/admin -run '^TestOpenAIConnection|^TestIssue594' -count=1 -json -timeout=20m) > "$RUNNER_TEMP/connection-proof/backend.jsonl" 2>&1 || { cat "$RUNNER_TEMP/connection-proof/backend.jsonl"; exit 1; }
+        cat "$RUNNER_TEMP/connection-proof/backend.jsonl"
+        python3 scripts/openai-connection-account-type-proof.py backend-green "$RUNNER_TEMP/connection-proof"
+        git diff --exit-code HEAD
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: connection-type-backend-${{ matrix.mode }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/connection-proof
+        if-no-files-found: error
+  openai-connection-account-type-regression-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+        - red
+        - green
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      BASELINE: cf3d30c69ea997d15a5d714805d5b6ad2901463f
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Real Vue child and editor mounts with actual Axios adapter
+      env:
+        MODE: ${{ matrix.mode }}
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        git diff --exit-code HEAD
+        mkdir -p "$RUNNER_TEMP/connection-proof"
+        if [ "$MODE" = red ]; then
+          git restore --source="$BASELINE" --worktree -- \
+            frontend/src/components/account/OpenAIAuthConnections.vue \
+            frontend/src/components/account/EditAccountModal.vue \
+            frontend/src/api/admin/openaiAuthConnections.ts
+        fi
+        git rev-parse HEAD | tee "$RUNNER_TEMP/connection-proof/head.txt"
+        git diff --name-only | tee "$RUNNER_TEMP/connection-proof/restored-paths.txt"
+        git diff --exit-code HEAD -- '*spec.ts'
+        set +e
+        pnpm --dir frontend exec vitest run \
+          src/components/account/__tests__/OpenAIAuthConnections.spec.ts \
+          src/components/account/__tests__/EditAccountModal.spec.ts \
+          --maxWorkers=1 --minWorkers=1 --reporter=default --reporter=json \
+          --outputFile="$RUNNER_TEMP/connection-proof/ui.json" > "$RUNNER_TEMP/connection-proof/ui.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/connection-proof/ui.log"
+        if [ "$MODE" = red ]; then
+          test "$result" -ne 0
+        else
+          test "$result" -eq 0
+          pnpm --dir frontend run typecheck
+          git diff --exit-code HEAD
+        fi
+        python3 scripts/openai-connection-account-type-proof.py "ui-$MODE" "$RUNNER_TEMP/connection-proof"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: connection-type-ui-${{ matrix.mode }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/connection-proof
+        if-no-files-found: error
+  openai-connection-account-type-regression-persisted-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Existing PostgreSQL Redis HTTP inference and OAuth compatibility regressions
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/connection-proof"
+        (cd backend && go test -tags=integration ./internal/repository ./internal/service -run '^TestIssue594|^TestOpenAIConnection' -count=1 -json -timeout=25m) > "$RUNNER_TEMP/connection-proof/integration.jsonl" 2>&1 || { cat "$RUNNER_TEMP/connection-proof/integration.jsonl"; exit 1; }
+        cat "$RUNNER_TEMP/connection-proof/integration.jsonl"
+        python3 scripts/openai-connection-account-type-proof.py integration-green "$RUNNER_TEMP/connection-proof"
+        git diff --exit-code HEAD
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: connection-type-persisted-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/connection-proof
+        if-no-files-found: error
+  openai-multi-auth-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Original production dispatch must fail the regression
+      shell: bash
+      run: |
+        set -euo pipefail
+        cp backend/internal/service/openai_auth_connections_regression_test.go "$RUNNER_TEMP/issue594-regression_test.go"
+        mkdir "$RUNNER_TEMP/issue594-baseline"
+        git archive 12a49ef4ef6a2f116389701ac8f1fe620f27bbf5 | tar -x -C "$RUNNER_TEMP/issue594-baseline"
+        cp "$RUNNER_TEMP/issue594-regression_test.go" "$RUNNER_TEMP/issue594-baseline/backend/internal/service/"
+        cd "$RUNNER_TEMP/issue594-baseline/backend"
+        set +e
+        go test -tags=unit ./internal/service -run '^TestIssue594UnknownConnectionCannotFallBackToCodex$' -count=1 -v > "$RUNNER_TEMP/issue594-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/issue594-red.log"
+        test "$result" -ne 0
+        grep -q -- '--- FAIL: TestIssue594UnknownConnectionCannotFallBackToCodex' "$RUNNER_TEMP/issue594-red.log"
+        grep -q 'unknown or identity-only connections must never inherit Codex authorization' "$RUNNER_TEMP/issue594-red.log"
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue594-red-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/issue594-red.log
+  openai-multi-auth-review-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Review regression RED on writer checkpoint
+      env:
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        red_tree="$RUNNER_TEMP/issue594-review-baseline"
+        mkdir "$red_tree"
+        git archive 19b4e6730351b48f208391b7a411117bfce1538b | tar -x -C "$red_tree"
+        cp backend/internal/repository/openai_auth_connections_review_regression_test.go "$red_tree/backend/internal/repository/"
+        cp backend/internal/service/openai_auth_connections_review_regression_test.go "$red_tree/backend/internal/service/"
+        set +e
+        (cd "$red_tree/backend" && go test -race -tags=unit ./internal/service -run '^TestIssue594Review' -count=1 -v) > "$RUNNER_TEMP/issue594-review-unit-red.log" 2>&1
+        unit_result=$?
+        (cd "$red_tree/backend" && go test -race -tags=integration ./internal/repository -run '^TestIssue594Review' -count=1 -v) > "$RUNNER_TEMP/issue594-review-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/issue594-review-red.log"
+        test "$result" -ne 0
+        cat "$RUNNER_TEMP/issue594-review-unit-red.log"
+        test "$unit_result" -ne 0
+        grep -F -- "--- FAIL: TestIssue594ReviewManagedCodexRejectsUnboundLegacyTicket" "$RUNNER_TEMP/issue594-review-unit-red.log"
+        grep -F -- "--- FAIL: TestIssue594ReviewManagedCodexIdentityChangesWithClientAndRevision" "$RUNNER_TEMP/issue594-review-unit-red.log"
+        grep -F -- "--- FAIL: TestIssue594ReviewBPSCannotAdvertiseBrokenBridges" "$RUNNER_TEMP/issue594-review-unit-red.log"
+        ! grep -E 'build failed|setup failed|undefined:|syntax error:|no tests to run|panic:' "$RUNNER_TEMP/issue594-review-red.log"
+        grep -F -- '--- FAIL: TestIssue594ReviewUncertainRefreshNeverReplaysOldGrant' "$RUNNER_TEMP/issue594-review-red.log"
+        grep -F -- '--- FAIL: TestIssue594ReviewExpiredLeaseCannotCommitOldCredentials' "$RUNNER_TEMP/issue594-review-red.log"
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue594-review-red-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/issue594-review*-red.log
+  openai-multi-auth-lease-proof-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Lease takeover service RED on dd0a7fb5a
+      env:
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        baseline="$RUNNER_TEMP/issue594-lease-baseline"
+        mkdir "$baseline"
+        git archive dd0a7fb5a44bf1db881bd13f45a22a1238849384 | tar -x -C "$baseline"
+        cp backend/internal/repository/openai_auth_connections_lease_takeover_integration_test.go "$baseline/backend/internal/repository/"
+        cp backend/internal/service/openai_auth_connection_egress_export_test.go backend/internal/service/openai_auth_connection_siwc_boundary_integration_test.go "$baseline/backend/internal/service/"
+
+        set +e
+        (cd "$baseline/backend" && go test -race -tags=integration ./internal/repository -run '^TestIssue594LeaseTakeoverCannotAdoptAnotherOwnersProof$' -count=1 -v) > "$RUNNER_TEMP/issue594-lease-proof-red.log" 2>&1
+        result=$?
+        (cd "$baseline/backend" && go test -race -tags=integration ./internal/service -run '^TestIssue594SIWCFinalEgress' -count=1 -v) > "$RUNNER_TEMP/issue594-siwc-boundary-red.log" 2>&1
+        siwc_result=$?
+        set -e
+        cat "$RUNNER_TEMP/issue594-siwc-boundary-red.log"
+        test "$siwc_result" -ne 0
+        ! grep -E 'build failed|setup failed|undefined:|syntax error:|no tests to run|panic:' "$RUNNER_TEMP/issue594-siwc-boundary-red.log"
+        grep -F -- '--- FAIL: TestIssue594SIWCFinalEgress' "$RUNNER_TEMP/issue594-siwc-boundary-red.log"
+        cat "$RUNNER_TEMP/issue594-lease-proof-red.log"
+        test "$result" -ne 0
+        ! grep -E 'build failed|setup failed|undefined:|syntax error:|no tests to run|panic:' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+        grep -F -- '--- FAIL: TestIssue594LeaseTakeoverCannotAdoptAnotherOwnersProof' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+        ! grep -E 'Messages:.*must exercise A lease' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+        grep -F 'a stolen lease snapshot cannot authorize an OAuth network operation' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue594-lease-proof-red-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/issue594-lease-proof-red.log
+          ${{ runner.temp }}/issue594-siwc-boundary-red.log
+  openai-multi-auth-green:
+    needs:
+    - openai-multi-auth-red
+    - openai-multi-auth-review-red
+    - openai-multi-auth-lease-proof-red
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Compile production adapters and run exact-head connection regressions
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        go test -race -tags=unit ./internal/service ./internal/repository ./internal/handler/admin ./internal/pkg/openai -run '^TestIssue594|^TestSIWC' -count=1 -v | tee "$RUNNER_TEMP/issue594-green.log"
+    - name: Actual HTTP service repository PostgreSQL connection lifecycle
+      working-directory: backend
+      env:
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        go test -race -tags=integration ./internal/repository -run '^TestIssue594' -count=1 -v | tee "$RUNNER_TEMP/issue594-integration.log"
+        ! grep -E -- '--- SKIP: TestIssue594|no tests to run' "$RUNNER_TEMP/issue594-integration.log"
+    - name: Actual SIWC final send boundary with isolated PostgreSQL
+      working-directory: backend
+      env:
+        CI: 'true'
+      run: |
+        set -euo pipefail
+        go test -race -tags=integration ./internal/service -run '^TestIssue594SIWCFinalEgress' -count=1 -v | tee "$RUNNER_TEMP/issue594-siwc-final-egress.log"
+        ! grep -E -- '--- SKIP: TestIssue594|no tests to run' "$RUNNER_TEMP/issue594-siwc-final-egress.log"
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue594-green-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/issue594-*.log
+  openai-multi-auth-ui:
+    needs:
+    - openai-multi-auth-red
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 22
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Connection components and both locales
+      working-directory: frontend
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        pnpm exec vitest run src/components/account/__tests__/OpenAIAuthConnections.spec.ts src/components/account/__tests__/SIWCAccountSettings.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts | tee "$RUNNER_TEMP/issue594-ui-tests.log"
+        pnpm exec eslint src/components/account/OpenAIAuthConnections.vue src/api/admin/openaiAuthConnections.ts src/components/account/__tests__/OpenAIAuthConnections.spec.ts
+        pnpm run typecheck
+    - name: Sanitized screenshots of actual component and styles
+      run: |
+        set -euo pipefail
+        npm install --prefix "$RUNNER_TEMP/issue594-browser" --no-package-lock playwright
+        "$RUNNER_TEMP/issue594-browser/node_modules/.bin/playwright" install --with-deps chromium
+        cp .github/fixtures/openai-auth-ui.html frontend/.issue594-ui.html
+        pnpm --dir frontend exec vite --host 127.0.0.1 --port 4179 > "$RUNNER_TEMP/issue594-vite.log" 2>&1 &
+        server_pid=$!
+        trap 'kill "$server_pid" || true; rm -f frontend/.issue594-ui.html' EXIT
+        ISSUE594_PLAYWRIGHT="$RUNNER_TEMP/issue594-browser/node_modules/playwright" node scripts/openai-auth-screenshots.cjs
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue594-ui-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/issue594-*.png
+          ${{ runner.temp }}/issue594-*.log
+  openai-multi-auth-i18n-lock-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 22
+    - name: Generate reviewable patched i18n lock in isolation
+      run: |
+        set -euo pipefail
+        mkdir "$RUNNER_TEMP/issue594-i18n-candidate"
+        cp frontend/package.json frontend/pnpm-lock.yaml "$RUNNER_TEMP/issue594-i18n-candidate/"
+        node - <<'JS'
+        const fs = require('fs'); const p = `${process.env.RUNNER_TEMP}/issue594-i18n-candidate/package.json`
+        const data = JSON.parse(fs.readFileSync(p)); data.pnpm.overrides['decode-uri-component@<0.5.1'] = '0.5.1'; fs.writeFileSync(p, JSON.stringify(data, null, 2) + '\n')
+        JS
+        pnpm --dir "$RUNNER_TEMP/issue594-i18n-candidate" install --lockfile-only --ignore-scripts
+    - uses: actions/upload-artifact@v6
+      with:
+        name: issue594-i18n-candidate-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/issue594-i18n-candidate/package.json
+          ${{ runner.temp }}/issue594-i18n-candidate/pnpm-lock.yaml
+  pr596-cooldown-ownership-cooldown-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: 'true'
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        persist-credentials: false
+    - name: Record exact source head
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: RED - unchanged new tests against original production files
+      shell: bash
+      run: |
+        set -euo pipefail
+        original=23b0dbae040e0d0b8c40f25ddb012ce2444feba3
+        sources=(backend/internal/repository/account_quality_isolation.go backend/internal/repository/account_quality_models.go backend/internal/repository/scheduled_test_repo.go)
+        mkdir -p "$RUNNER_TEMP/pr596-original"
+        for source in "${sources[@]}"; do cp "$source" "$RUNNER_TEMP/pr596-original/$(basename "$source")"; done
+        trap 'for source in "${sources[@]}"; do cp "$RUNNER_TEMP/pr596-original/$(basename "$source")" "$source"; done' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$original"
+        for source in "${sources[@]}"; do git show "$original:$source" > "$source"; done
+        set +e
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQualityCooldown(ActionGuardRetainsAllOwnershipLayouts|OwnedScopeRejectsEdits|MappingChangeCannotStrandOwnedTarget|DeletePreservesOwnedState|DeleteChecksLiveMarkersWithoutSnapshot|DeleteAfterRecoveryPreservesExternalRestrictions)$' -count=1 -timeout=15m -json) > evidence/red.jsonl 2>&1
+        result=$?
+        set -e
+        cat evidence/red.jsonl
+        test "$result" -ne 0
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        raw = Path('evidence/red.jsonl').read_text()
+        events = []
+        for line in raw.splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+        output = raw + ''.join(e.get('Output', '') for e in events)
+        for forbidden in ('[build failed]', '[setup failed]', 'undefined:', 'syntax error:', 'no tests to run', 'panic:', '--- SKIP:'):
+            assert forbidden not in output, forbidden
+        for name in ('TestQualityCooldownActionGuardRetainsAllOwnershipLayouts', 'TestQualityCooldownOwnedScopeRejectsEdits', 'TestQualityCooldownMappingChangeCannotStrandOwnedTarget', 'TestQualityCooldownDeletePreservesOwnedState', 'TestQualityCooldownDeleteChecksLiveMarkersWithoutSnapshot', 'TestQualityCooldownDeleteAfterRecoveryPreservesExternalRestrictions'):
+            assert any(e.get('Action') == 'fail' and e.get('Test') == name for e in events), name
+        assert 'owned cooldown edit must be rejected' in output
+        assert 'owned cooldown delete must be rejected' in output
+        assert 'cooldown ownership must block action changes' in output
+        assert 'Error Trace:' in output and 'An error is expected but got nil.' in output
+        PY
+    - name: GREEN - real repository transitions and retained ownership protection
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The repository integration TestMain starts PostgreSQL and Redis via
+        # testcontainers; CI=true makes missing Docker a failure, never a skip.
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality(Cooldown|Model|PersistentIsolation|Isolation|Ownership|Observation)' -count=1 -timeout=20m -json) > evidence/green.jsonl 2>&1
+        cat evidence/green.jsonl
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        events = [json.loads(line) for line in Path('evidence/green.jsonl').read_text().splitlines() if line.startswith('{')]
+        assert not any(e.get('Action') in ('fail', 'skip') for e in events)
+        top_level_passes = {e['Test'] for e in events if e.get('Action') == 'pass' and 'Test' in e and '/' not in e['Test']}
+        assert len(top_level_passes) == 39, sorted(top_level_passes)
+        for name in ('TestQualityCooldownOwnedScopeRejectsEdits', 'TestQualityCooldownOrdinaryEditRetainsOwnershipUntilPassingRecovery', 'TestQualityCooldownExternalOwnerSurvivesEditsAndRecovery', 'TestQualityCooldownMappingChangeCannotStrandOwnedTarget', 'TestQualityCooldownChangedActionOutcomeRetainsOwnership', 'TestQualityCooldownActionGuardRetainsAllOwnershipLayouts', 'TestQualityCooldownDeadlinePersistedRecovery', 'TestQualityCooldownDeletePreservesOwnedState', 'TestQualityCooldownDeleteChecksLiveMarkersWithoutSnapshot', 'TestQualityCooldownDeleteAfterRecoveryPreservesExternalRestrictions', 'TestQualityIsolationScopeAndDeleteGuard', 'TestQualityIsolationGroupsFollowIndependentModelRecovery'):
+            assert any(e.get('Action') == 'pass' and e.get('Test') == name for e in events), name
+        PY
+    - name: Verify Node and locked i18n toolchain contract
+      run: |
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        package = json.loads(Path('frontend/package.json').read_text())
+        assert package['engines']['node'] == '>=22'
+        assert package['dependencies']['vue-i18n'] == '^11.4.16'
+        lock = Path('frontend/pnpm-lock.yaml').read_text()
+        assert 'vue-i18n@11.4.16:' in lock
+        assert "engines: {node: '>= 22'}" in lock
+        PY
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: pr596-cooldown-ownership-${{ github.event.pull_request.head.sha }}
+        path: evidence/
+  pr597-stream-timing-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        persist-credentials: false
+    - name: Record exact source and production baseline
+      env:
+        SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        PRODUCTION_BASE: ${{ github.event.pull_request.base.sha || '99f25942738ff12056ac82d97ee6b74cb07cd163' }}
+      run: |
+        test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+        printf 'exact_head=%s\nproduction_baseline=%s\nred_scanner_baseline=%s\n' "$SOURCE_HEAD" "$PRODUCTION_BASE" e7b6e505560fbe810c36c2bbd50b57b1f437ff49
+        git cat-file -p HEAD | sed -n 's/^parent /merge_parent=/p'
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Fetch the reviewed original head for RED
+      run: git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git e7b6e505560fbe810c36c2bbd50b57b1f437ff49
+    - name: RED - new tests against only the original scanner production file
+      run: python3 scripts/pr597-stream-timing-red.py "$RUNNER_TEMP/pr597-red.jsonl"
+    - name: Verify production source restored before GREEN
+      run: git diff --exit-code -- backend/internal/service/openai_sse_json_documents.go backend/internal/service/openai_sse_timing_context_test.go
+    - name: GREEN - actual service scanner and native timing boundaries
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test -race -tags=unit ./internal/service -run '^Test(OpenAISSEScannerTiming|OpenAINativeSSETiming|ToolConversionTiming|OpenAIVisibleOutputClassification|OpenAIResponsesTTFT|OpenAINativeMetadataAndKeepalive|OpenAINativeFirstOutput|OpenAIStreaming.*RepairsConcatenatedJSON|SplitOpenAIConcatenatedJSON)' -count=1 -timeout=10m -v 2>&1 | tee "$RUNNER_TEMP/pr597-service-green.log"
+    - name: GREEN - actual repository transport and timing persistence
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test -race -tags=unit ./internal/repository -run '^Test(StreamDecompressionBeforeEOF|StreamTimingDoesNotLabelUndecodedBodyAsDecoded|TimingWriteJoinsBillingIdentityAndKeepsDistinctTraces|TimingBindingDoesNotWriteUntilRequestFinished)$' -count=1 -timeout=5m -v 2>&1 | tee "$RUNNER_TEMP/pr597-repository-green.log"
+    - name: GREEN - actual attempt timing and HTTP lifecycle package
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test -race ./internal/pkg/requesttiming -count=1 -timeout=5m -v 2>&1 | tee "$RUNNER_TEMP/pr597-timing-green.log"
+    - name: Preserve RED and GREEN evidence
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: pr597-stream-timing-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/pr597-red.jsonl
+          ${{ runner.temp }}/pr597-red.stderr.log
+          ${{ runner.temp }}/pr597-*-green.log
+        if-no-files-found: error
+        retention-days: 14
+  pr598-repair-regression-service-green:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Prove clean exact-head production sources
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        git diff --exit-code HEAD
+        mkdir -p "$RUNNER_TEMP/pr598-source-proof"
+        bash scripts/pr598-source-proof.sh "$GITHUB_WORKSPACE" "$EXPECTED_HEAD" \
+          backend/internal/service/priority_scheduling_history.go \
+          backend/internal/service/priority_scheduling_recompute.go \
+          backend/internal/service/priority_scheduling_snapshot.go \
+          backend/internal/service/priority_scheduling.go \
+          backend/internal/service/priority_latency_series.go \
+          backend/internal/repository/priority_latency_series.go \
+          backend/internal/repository/priority_scheduling.go \
+          backend/internal/handler/admin/priority_scheduling_handler.go \
+          backend/internal/handler/admin/priority_scheduling_sticky.go \
+          frontend/src/views/admin/PrioritySchedulingView.vue \
+          frontend/src/api/admin/priorityScheduling.ts | tee "$RUNNER_TEMP/pr598-source-proof/production.txt"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Service, handler and recompute regressions must pass
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/pr598-red"
+        (cd backend && go test -race -tags=unit ./internal/service ./internal/handler -run '^TestPriority(LatencySeriesNoHistorySerializesEmptyBuckets|LatencySeriesUsesSnapshotMeasurementAndPercentile|RecomputeDoesNotTreatHistoryErrorAsSuccess|RecomputeKeepsCapturedScopeAcrossNewSelection|RecomputeRefreshFailurePreservesCachedRiskForScheduler|RecomputeWaitsForFreshReadAfterInflightReader|RecomputeIncompleteReadPreservesWholeObservation|LatencySeriesHandlerUsesEmptyArrayForNoHistory)$' -count=1 -v -timeout=5m) 2>&1 | tee "$RUNNER_TEMP/pr598-red/service.log"
+        for name in PriorityLatencySeriesNoHistorySerializesEmptyBuckets PriorityLatencySeriesUsesSnapshotMeasurementAndPercentile PriorityRecomputeDoesNotTreatHistoryErrorAsSuccess PriorityRecomputeKeepsCapturedScopeAcrossNewSelection PriorityRecomputeRefreshFailurePreservesCachedRiskForScheduler PriorityRecomputeWaitsForFreshReadAfterInflightReader PriorityRecomputeIncompleteReadPreservesWholeObservation PriorityLatencySeriesHandlerUsesEmptyArrayForNoHistory; do
+          grep -q -- "PASS: Test$name" "$RUNNER_TEMP/pr598-red/service.log"
+        done
+    - name: Repeat reader barriers under the race detector
+      run: |
+        set -euo pipefail
+        (cd backend && go test -race -tags=unit ./internal/service -run '^TestPriorityRecompute(RefreshFailurePreservesCachedRiskForScheduler|WaitsForFreshReadAfterInflightReader|IncompleteReadPreservesWholeObservation)$' -count=20 -v -timeout=2m) 2>&1 | tee "$RUNNER_TEMP/pr598-red/reader-race.log"
+    - name: Prove production sources remain unchanged after execution
+      run: git diff --exit-code HEAD
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: pr598-red-service-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/pr598-red/service.log
+          ${{ runner.temp }}/pr598-red/reader-race.log
+          ${{ runner.temp }}/pr598-source-proof/production.txt
+        if-no-files-found: error
+  pr598-repair-regression-queued-service-red:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Overlay only the queued regression on exact defective c0c production source
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git c0c7533badd6e4696e58d709f59eb7e10bf4b5f0
+        baseline="$RUNNER_TEMP/pr598-c0c-service"
+        git worktree add --detach "$baseline" c0c7533badd6e4696e58d709f59eb7e10bf4b5f0
+        trap 'git worktree remove --force "$baseline"' EXIT
+        mkdir -p "$baseline/backend/internal/service"
+        cp backend/internal/service/priority_scheduling_recompute_epoch_regression_test.go "$baseline/backend/internal/service/"
+        mkdir -p "$RUNNER_TEMP/pr598-c0c-red"
+        bash scripts/pr598-source-proof.sh "$baseline" c0c7533badd6e4696e58d709f59eb7e10bf4b5f0 \
+          backend/internal/service/priority_scheduling_history.go \
+          backend/internal/service/priority_scheduling_recompute.go \
+          backend/internal/service/priority_scheduling_snapshot.go \
+          backend/internal/service/priority_scheduling.go | tee "$RUNNER_TEMP/pr598-c0c-red/production.txt"
+        test "$(git hash-object backend/internal/service/priority_scheduling_recompute_epoch_regression_test.go)" = "$(git -C "$baseline" hash-object backend/internal/service/priority_scheduling_recompute_epoch_regression_test.go)"
+        set +e
+        (cd "$baseline/backend" && go test -tags=unit ./internal/service -run '^TestPriorityRecompute(RefreshFailurePreservesCachedRiskForScheduler|WaitsForFreshReadAfterInflightReader)$' -count=1 -v -timeout=10s) > "$RUNNER_TEMP/pr598-c0c-red/service.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/pr598-c0c-red/service.log"
+        test "$result" -ne 0
+        grep -q -- 'FAIL: TestPriorityRecomputeRefreshFailurePreservesCachedRiskForScheduler' "$RUNNER_TEMP/pr598-c0c-red/service.log"
+        grep -q -- 'FAIL: TestPriorityRecomputeWaitsForFreshReadAfterInflightReader' "$RUNNER_TEMP/pr598-c0c-red/service.log"
+        grep -q -- 'online scheduling must retain its last successful latency evidence' "$RUNNER_TEMP/pr598-c0c-red/service.log"
+        grep -q -- 'recompute finished before a post-request history read' "$RUNNER_TEMP/pr598-c0c-red/service.log"
+        ! grep -Eq 'build failed|undefined:|no tests to run|panic:|recompute must reach its force-refresh boundary' "$RUNNER_TEMP/pr598-c0c-red/service.log"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: pr598-c0c-service-red-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/pr598-c0c-red
+        if-no-files-found: error
+  pr598-repair-regression-queued-ui-red:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: pnpm install --frozen-lockfile
+    - name: Overlay only the queued UI regressions on exact defective c0c component
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git c0c7533badd6e4696e58d709f59eb7e10bf4b5f0
+        baseline="$RUNNER_TEMP/pr598-c0c-ui"
+        git worktree add --detach "$baseline" c0c7533badd6e4696e58d709f59eb7e10bf4b5f0
+        trap 'git worktree remove --force "$baseline"' EXIT
+        cp frontend/src/views/admin/__tests__/PrioritySchedulingView.spec.ts "$baseline/frontend/src/views/admin/__tests__/PrioritySchedulingView.spec.ts"
+        ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$baseline/frontend/node_modules"
+        mkdir -p "$RUNNER_TEMP/pr598-queued-red"
+        bash scripts/pr598-source-proof.sh "$baseline" c0c7533badd6e4696e58d709f59eb7e10bf4b5f0 \
+          frontend/src/views/admin/PrioritySchedulingView.vue \
+          frontend/src/api/admin/priorityScheduling.ts | tee "$RUNNER_TEMP/pr598-queued-red/production.txt"
+        test "$(git hash-object frontend/src/views/admin/__tests__/PrioritySchedulingView.spec.ts)" = "$(git -C "$baseline" hash-object frontend/src/views/admin/__tests__/PrioritySchedulingView.spec.ts)"
+        set +e
+        pnpm --dir "$baseline/frontend" exec vitest run src/views/admin/__tests__/PrioritySchedulingView.spec.ts -t 'reads back the recomputed group after automatically switching the sticky scope|supersedes an in-flight old latency window with the selected window' --maxWorkers=1 --minWorkers=1 --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/pr598-queued-red/ui.json" > "$RUNNER_TEMP/pr598-queued-red/ui.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/pr598-queued-red/ui.log"
+        test "$result" -ne 0
+        grep -q -- 'reads back the recomputed group after automatically switching the sticky scope' "$RUNNER_TEMP/pr598-queued-red/ui.log"
+        grep -q -- 'supersedes an in-flight old latency window with the selected window' "$RUNNER_TEMP/pr598-queued-red/ui.log"
+        ! grep -Eq 'Failed to resolve|SyntaxError|No test files found' "$RUNNER_TEMP/pr598-queued-red/ui.log"
+        node --input-type=module - "$RUNNER_TEMP/pr598-queued-red/ui.json" <<'JS'
+        import fs from 'node:fs'
+        const result = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+        const cases = result.testResults.flatMap(file => file.assertionResults)
+        for (const title of ['reads back the recomputed group after automatically switching the sticky scope', 'supersedes an in-flight old latency window with the selected window']) {
+          if (!cases.some(test => test.title === title && test.status === 'failed')) throw new Error(`Missing behavior RED: ${title}`)
+        }
+        JS
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: pr598-queued-red-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/pr598-queued-red
+        if-no-files-found: error
+  pr598-repair-regression-repository-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Prove clean exact-head production sources
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        git diff --exit-code HEAD
+        mkdir -p "$RUNNER_TEMP/pr598-source-proof"
+        bash scripts/pr598-source-proof.sh "$GITHUB_WORKSPACE" "$EXPECTED_HEAD" \
+          backend/internal/service/priority_scheduling_history.go \
+          backend/internal/service/priority_scheduling_recompute.go \
+          backend/internal/service/priority_scheduling_snapshot.go \
+          backend/internal/service/priority_scheduling.go \
+          backend/internal/service/priority_latency_series.go \
+          backend/internal/repository/priority_latency_series.go \
+          backend/internal/repository/priority_scheduling.go \
+          backend/internal/handler/admin/priority_scheduling_handler.go \
+          backend/internal/handler/admin/priority_scheduling_sticky.go \
+          frontend/src/views/admin/PrioritySchedulingView.vue \
+          frontend/src/api/admin/priorityScheduling.ts | tee "$RUNNER_TEMP/pr598-source-proof/production.txt"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Isolated PostgreSQL latency series regressions must pass
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/pr598-red"
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestPriorityLatencySeries(ErrorsOnlyBucket|UsesConfiguredMeasurementAndPercentile)$' -count=1 -v -timeout=15m) 2>&1 | tee "$RUNNER_TEMP/pr598-red/repository.log"
+        grep -q -- 'PASS: TestPriorityLatencySeriesErrorsOnlyBucket' "$RUNNER_TEMP/pr598-red/repository.log"
+        grep -q -- 'PASS: TestPriorityLatencySeriesUsesConfiguredMeasurementAndPercentile' "$RUNNER_TEMP/pr598-red/repository.log"
+        ! grep -Eq 'no tests to run|--- SKIP:' "$RUNNER_TEMP/pr598-red/repository.log"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: pr598-red-repository-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/pr598-red/repository.log
+          ${{ runner.temp }}/pr598-source-proof/production.txt
+        if-no-files-found: error
+  pr598-repair-regression-ui-green:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Prove clean exact-head production sources
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        git diff --exit-code HEAD
+        mkdir -p "$RUNNER_TEMP/pr598-source-proof"
+        bash scripts/pr598-source-proof.sh "$GITHUB_WORKSPACE" "$EXPECTED_HEAD" \
+          backend/internal/service/priority_scheduling_history.go \
+          backend/internal/service/priority_scheduling_recompute.go \
+          backend/internal/service/priority_scheduling_snapshot.go \
+          backend/internal/service/priority_scheduling.go \
+          backend/internal/service/priority_latency_series.go \
+          backend/internal/repository/priority_latency_series.go \
+          backend/internal/repository/priority_scheduling.go \
+          backend/internal/handler/admin/priority_scheduling_handler.go \
+          backend/internal/handler/admin/priority_scheduling_sticky.go \
+          frontend/src/views/admin/PrioritySchedulingView.vue \
+          frontend/src/api/admin/priorityScheduling.ts | tee "$RUNNER_TEMP/pr598-source-proof/production.txt"
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: pnpm install --frozen-lockfile
+    - name: Real priority scheduling Vue component regressions must pass
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/pr598-red"
+        pnpm --dir frontend exec vitest run src/views/admin/__tests__/PrioritySchedulingView.spec.ts --maxWorkers=1 --minWorkers=1 2>&1 | tee "$RUNNER_TEMP/pr598-red/ui.log"
+        ! grep -Eq 'no tests to run|No test files found|skipped' "$RUNNER_TEMP/pr598-red/ui.log"
+        pnpm --dir frontend run build
+        git diff --exit-code HEAD
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: pr598-red-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/pr598-red/ui.log
+          ${{ runner.temp }}/pr598-source-proof/production.txt
+        if-no-files-found: error
+  pr598-repair-regression-actual-ui-screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Prove clean exact-head production sources
+      env:
+        EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        git diff --exit-code HEAD
+        mkdir -p "$RUNNER_TEMP/pr598-source-proof"
+        bash scripts/pr598-source-proof.sh "$GITHUB_WORKSPACE" "$EXPECTED_HEAD" \
+          backend/internal/service/priority_scheduling_history.go \
+          backend/internal/service/priority_scheduling_recompute.go \
+          backend/internal/service/priority_scheduling_snapshot.go \
+          backend/internal/service/priority_scheduling.go \
+          backend/internal/service/priority_latency_series.go \
+          backend/internal/repository/priority_latency_series.go \
+          backend/internal/repository/priority_scheduling.go \
+          backend/internal/handler/admin/priority_scheduling_handler.go \
+          backend/internal/handler/admin/priority_scheduling_sticky.go \
+          frontend/src/views/admin/PrioritySchedulingView.vue \
+          frontend/src/api/admin/priorityScheduling.ts | tee "$RUNNER_TEMP/pr598-source-proof/production.txt"
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: pnpm install --frozen-lockfile
+    - name: Install isolated browser
+      run: |
+        npm install --prefix "$RUNNER_TEMP/pr598-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/pr598-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Render the actual priority scheduling component with offline synthetic data
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/pr598-browser/node_modules/playwright
+        PR598_SCREENSHOT_DIR: ${{ runner.temp }}/pr598-screenshots
+      run: node scripts/pr598-priority-scheduling-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: pr598-priority-scheduling-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/pr598-screenshots
+          ${{ runner.temp }}/pr598-source-proof/production.txt
+        if-no-files-found: error
+  upstream-channel-entities-regression-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - run: git rev-parse HEAD
+    - name: Mixed-cohort P1 RED on exact reviewed head and GREEN on current head
+      working-directory: backend
+      shell: bash
+      env:
+        PROFIT_COHORT_OLD_HEAD: ec820522203515e67823c267badb7b01be4b8b23
+        PROFIT_COHORT_NEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$PROFIT_COHORT_NEW_HEAD"
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$PROFIT_COHORT_OLD_HEAD"
+        old_tree="$RUNNER_TEMP/profit-cohort-old"
+        mkdir "$old_tree"
+        git -C .. archive "$PROFIT_COHORT_OLD_HEAD" | tar -x -C "$old_tree"
+        regression=internal/repository/profit_operations_cohort_integration_test.go
+        test ! -e "$old_tree/backend/$regression"
+        cp "$regression" "$old_tree/backend/$regression"
+        python3 - <<'PYPROVENANCE'
+        import hashlib,json,os,subprocess
+        from pathlib import Path
+        test=Path('internal/repository/profit_operations_cohort_integration_test.go')
+        out={k:os.environ[k] for k in ['PROFIT_COHORT_OLD_HEAD','PROFIT_COHORT_NEW_HEAD','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_JOB']}
+        out['old_tree_overlay']='Only the new regression test is copied into the exact old git archive; no implementation overlay.'
+        out['regression_sha256']=hashlib.sha256(test.read_bytes()).hexdigest()
+        out['old_repository_blob']=subprocess.check_output(['git','rev-parse',os.environ['PROFIT_COHORT_OLD_HEAD']+':backend/internal/repository/profit_operations.go'],text=True).strip()
+        Path(os.environ['RUNNER_TEMP'],'entity-cohort-provenance.json').write_text(json.dumps(out,indent=2)+'\n')
+        PYPROVENANCE
+        cat "$RUNNER_TEMP/entity-cohort-provenance.json"
+        set +e
+        (cd "$old_tree/backend" && go test -tags=integration ./internal/repository -run '^TestProfitOperationsMixedCohortMissingAccountDrilldown$' -count=1 -v) > "$RUNNER_TEMP/entity-cohort-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/entity-cohort-red.log"
+        test "$result" -ne 0
+        if grep -Eq '\[build failed\]|\[setup failed\]|no tests to run|panic:|--- SKIP:' "$RUNNER_TEMP/entity-cohort-red.log"; then exit 1; fi
+        grep -q 'missing-account drill-down must exclude configured accounts outside the selected cohort' "$RUNNER_TEMP/entity-cohort-red.log"
+        grep -q 'FAIL: TestProfitOperationsMixedCohortMissingAccountDrilldown' "$RUNNER_TEMP/entity-cohort-red.log"
+        go test -tags=integration ./internal/repository -run '^TestProfitOperationsMixedCohortMissingAccountDrilldown$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/entity-cohort-green.log"
+        grep -q '^--- PASS: TestProfitOperationsMixedCohortMissingAccountDrilldown' "$RUNNER_TEMP/entity-cohort-green.log"
+        if grep -Eq 'no tests to run|--- SKIP:' "$RUNNER_TEMP/entity-cohort-green.log"; then exit 1; fi
+    - name: DTO, URL identity and actual admin route authorization
+      working-directory: backend
+      run: go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run '^Test(UpstreamChannel|ProfitOperations|ExplicitChannelProfitFilter)'
+        -count=1 -v
+    - name: Explicit ownership regression RED against discarded binding
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        target=internal/repository/upstream_channels.go
+        cp "$target" "$RUNNER_TEMP/entity-current.go"
+        trap 'cp "$RUNNER_TEMP/entity-current.go" "$target"' EXIT
+        python3 - <<'PYRED'
+        from pathlib import Path
+        p=Path('internal/repository/upstream_channels.go')
+        s=p.read_text()
+        assert 'b.AccountID, m.ChannelID)' in s
+        p.write_text(s.replace('b.AccountID, m.ChannelID)', 'b.AccountID, 0)'))
+        PYRED
+        set +e
+        go test -tags=integration ./internal/repository -run '^TestUpstreamChannelEntityHTTPAccountProfitPersistence$' -count=1 -v > "$RUNNER_TEMP/entity-bind-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/entity-bind-red.log"
+        test "$result" -ne 0
+        grep -q 'explicit binding must persist independently of URL eligibility' "$RUNNER_TEMP/entity-bind-red.log"
+        grep -q 'FAIL: TestUpstreamChannelEntityHTTPAccountProfitPersistence' "$RUNNER_TEMP/entity-bind-red.log"
+    - name: Soft deletion ownership regression RED against implicit detachment
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        target=internal/repository/account_repo.go
+        cp "$target" "$RUNNER_TEMP/entity-account-current.go"
+        trap 'cp "$RUNNER_TEMP/entity-account-current.go" "$target"' EXIT
+        python3 - <<'PYRED'
+        from pathlib import Path
+        p=Path('internal/repository/account_repo.go')
+        s=p.read_text()
+        marker='func (r *accountRepository) Delete(ctx context.Context, id int64) error {'
+        assert s.count(marker)==1
+        mutation='\n if _,err:=r.sql.ExecContext(ctx,`DELETE FROM upstream_channel_bindings WHERE account_id=$1`,id);err!=nil{return err}\n'
+        p.write_text(s.replace(marker,marker+mutation))
+        PYRED
+        set +e
+        go test -tags=integration ./internal/repository -run '^TestUpstreamChannelEntitySoftDeleteRetainsOwnership$' -count=1 -v > "$RUNNER_TEMP/entity-soft-delete-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/entity-soft-delete-red.log"
+        test "$result" -ne 0
+        grep -q 'soft-deleted accounts must retain explicit analytics ownership' "$RUNNER_TEMP/entity-soft-delete-red.log"
+        grep -q 'FAIL: TestUpstreamChannelEntitySoftDeleteRetainsOwnership' "$RUNNER_TEMP/entity-soft-delete-red.log"
+    - name: Real API to private migrated PostgreSQL to GET; existing profit and upstream URL-attribution regressions
+      working-directory: backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test -tags=integration ./internal/repository -run '^Test(UpstreamChannelEntity|ProfitOperations|UpstreamOperations)' -count=1 -v | tee "$RUNNER_TEMP/entity-green.log"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: upstream-channel-postgres-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/entity-*.log
+          ${{ runner.temp }}/entity-cohort-provenance.json
+  upstream-channel-entities-regression-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm --dir frontend install --frozen-lockfile
+    - name: Actual account, channel entity and profit components
+      working-directory: frontend
+      run: pnpm exec vitest run src/views/admin/__tests__/ProfitOperationsView.spec.ts src/views/admin/__tests__/UpstreamChannelEntities.spec.ts
+        src/components/account/__tests__/UpstreamChannelBinding.spec.ts src/components/admin/operations/__tests__/UpstreamChannelManager.spec.ts
+        src/components/account/__tests__/CreateAccountModal.spec.ts src/components/account/__tests__/EditAccountModal.spec.ts
+        src/components/account/__tests__/BulkEditAccountModal.spec.ts --maxWorkers=1 --minWorkers=1 --no-file-parallelism
+    - run: pnpm --dir frontend run build
+    - name: Install isolated browser
+      run: |
+        npm install --prefix "$RUNNER_TEMP/upstream-channel-browser" --no-save --ignore-scripts playwright@1.56.1
+        "$RUNNER_TEMP/upstream-channel-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Exact profit page browser with synthetic data
+      env:
+        PLAYWRIGHT_ROOT: ${{ runner.temp }}/upstream-channel-browser/node_modules/playwright
+        UPSTREAM_SCREENSHOT_DIR: ${{ runner.temp }}/upstream-channel-screenshots
+      run: node scripts/upstream-channel-entities-screenshot.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: upstream-channel-ui-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+        path: ${{ runner.temp }}/upstream-channel-screenshots

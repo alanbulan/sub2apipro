@@ -1,11 +1,18 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/components/account/__tests__/AccountConnectionTiming.spec.ts \
+	src/components/account/__tests__/UpstreamChannelBinding.spec.ts \
+	src/components/admin/operations/__tests__/UpstreamChannelManager.spec.ts \
+	src/i18n/__tests__/translationHtmlSecurity.spec.ts \
+	src/views/admin/__tests__/UpstreamChannelEntities.spec.ts \
 	src/stores/__tests__/auth.spec.ts \
 	src/router/__tests__/title.spec.ts \
 	src/utils/__tests__/customMenu.spec.ts \
 	src/utils/__tests__/modelBilling.spec.ts \
 	src/components/admin/operations/__tests__/AutoConfigHistory.spec.ts \
+	src/components/account/__tests__/OpenAIAuthConnections.spec.ts \
+	src/views/admin/__tests__/RiskControlView.spec.ts \
 	src/i18n/__tests__/riskControlLocales.spec.ts \
 	src/components/common/__tests__/PlatformTypeBadge.openaiPlans.spec.ts \
 	src/components/common/__tests__/PlatformTypeBadge.grok.spec.ts \
@@ -18,7 +25,6 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/AccountsView.schedulableTimer.spec.ts \
 	src/views/admin/__tests__/PrioritySchedulingQuantile.spec.ts \
 	src/features/ip-audit/__tests__/IPAuditPanel.spec.ts \
-	src/views/admin/__tests__/RiskControlView.spec.ts \
 	src/features/prompt-audit/__tests__/PromptAuditView.spec.ts \
 	src/views/auth/__tests__/RegisterView.spec.ts \
 	src/views/auth/__tests__/EmailVerifyView.spec.ts \

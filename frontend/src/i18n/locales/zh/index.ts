@@ -1,5 +1,8 @@
 import poolDashboard from './poolDashboard'
 import feishu from './feishu'
+import accountTestTiming from './accountTestTiming'
+import openaiAuth from './openaiAuth'
+import upstreamEntities from './upstreamEntities'
 import profitOps from './profitOps'
 import upstreamOps from './upstreamOps'
 import channelOps from './channelOps'
@@ -34,6 +37,9 @@ import autoConfig from './autoConfig'
 export default {
   poolDashboard,
   feishu,
+  accountTestTiming,
+  openaiAuth,
+  upstreamEntities,
   traffic,
   ipAudit,
   connections,

@@ -3516,7 +3516,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				return nil
 			},
-			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+			BeforeRequestWithClientPayload: func(turn int, payload, clientPayload []byte, originalModel string) error {
 				conversationRecorder.beginTurn(turn, payload, originalModel, time.Now())
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
@@ -3542,7 +3542,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				cyberEnabled, _ := h.gatewayService.CyberSessionBlockRuntime(c.Request.Context())
 				cyberStrict := cyberEnabled && h.gatewayService.CyberSessionIdentityStrictEnabled(c.Request.Context())
-				identityDecision := cyberIdentityBinding.resolve(apiKey.ID, c, payload, cyberEnabled, cyberStrict)
+				identityDecision := cyberIdentityBinding.resolve(apiKey.ID, c, clientPayload, cyberEnabled, cyberStrict)
 				observeOpenAICyberSessionIdentity(identityDecision.observed, identityDecision.reject, identityDecision.identitySwap)
 				if identityDecision.reject {
 					metadata := cyberIdentityRejectionMetadata(identityDecision)
@@ -4807,6 +4807,7 @@ type cyberPolicyOpsErrorMeta struct {
 	IdentityKind      string
 	IdentitySource    string
 	IdentityInherited bool
+	WSTurnAdmission   bool
 }
 
 // buildCyberPolicyOpsErrorEntry builds the ops_error_logs entry for an upstream
@@ -4901,6 +4902,10 @@ func buildCyberSessionBlockedOpsEntry(meta cyberPolicyOpsErrorMeta) *service.Ops
 }
 
 func buildCyberSessionIdentityRejectedOpsEntry(meta cyberPolicyOpsErrorMeta) *service.OpsInsertErrorLogInput {
+	message := "cyber_session_identity_rejected: request rejected before account selection"
+	if meta.WSTurnAdmission {
+		message = "cyber_session_identity_rejected: websocket turn rejected during session identity admission"
+	}
 	rt := int16(service.RequestTypeCyberBlocked)
 	entry := &service.OpsInsertErrorLogInput{
 		RequestID:         meta.RequestID,
@@ -4918,7 +4923,7 @@ func buildCyberSessionIdentityRejectedOpsEntry(meta cyberPolicyOpsErrorMeta) *se
 		Severity:          "P3",
 		StatusCode:        http.StatusBadRequest,
 		IsBusinessLimited: true,
-		ErrorMessage:      appendCyberIdentityMetadata("cyber_session_identity_rejected: request rejected before account selection", meta),
+		ErrorMessage:      appendCyberIdentityMetadata(message, meta),
 		ErrorSource:       "gateway_local",
 		ErrorOwner:        "client",
 		CreatedAt:         meta.CreatedAt,
@@ -5119,6 +5124,7 @@ func (h *OpenAIGatewayHandler) enqueueCyberSessionIdentityRejectedOpsEntry(c *gi
 		IdentityKind:    metadata.Kind,
 		IdentitySource:  metadata.Source,
 	}
+	_, meta.WSTurnAdmission = c.Get(securityAuditWSTurnContextKey)
 	meta.RequestID = c.Writer.Header().Get("X-Request-Id")
 	if c.Request != nil && c.Request.URL != nil {
 		meta.RequestPath = c.Request.URL.Path
