@@ -51,6 +51,7 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 type AccountHandler struct {
 	poolDashboard           poolDashboardCache
 	poolGroupReader         poolGroupReader
+	performance             *service.AccountPerformanceService
 	upstreamChannels        *service.ChannelService
 	adminService            service.AdminService
 	oauthService            *service.OAuthService

@@ -1,3 +1,4 @@
+import accountPerformance from './accountPerformance'
 import poolDashboard from './poolDashboard'
 import feishu from './feishu'
 import lottery from './lottery'
@@ -37,6 +38,7 @@ import latencyObservability from './latencyObservability'
 import autoConfig from './autoConfig'
 
 export default {
+  accountPerformance,
   poolDashboard,
   feishu,
   lottery,

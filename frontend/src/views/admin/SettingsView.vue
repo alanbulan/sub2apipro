@@ -583,6 +583,16 @@
             </div>
           </div>
 
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 id="settings-section-account-performance" tabindex="-1" class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('accountPerformance.settings.title') }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('accountPerformance.settings.description') }}</p>
+            </div>
+            <AccountPerformanceSettings />
+          </div>
+
           <!-- OpenAI Response Header Timeout -->
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -9547,6 +9557,7 @@ import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import RequestTimezoneSettings from "@/components/settings/RequestTimezoneSettings.vue";
 import FeishuSettings from "@/components/settings/FeishuSettings.vue";
+import AccountPerformanceSettings from "@/components/settings/AccountPerformanceSettings.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
@@ -9762,7 +9773,7 @@ const openAIResponseHeaderTimeoutLoading = ref(true);
 const openAIResponseHeaderTimeoutLoadFailed = ref(false);
 const openAIResponseHeaderTimeoutSaving = ref(false);
 const openAIResponseHeaderTimeoutForm = reactive({
-  enabled: true,
+  enabled: false,
   seconds: 20,
 });
 
