@@ -4403,3 +4403,193 @@ jobs:
           test "$result" -ne 0
           ! grep -Eq 'build failed|no tests to run|undefined:' "$RUNNER_TEMP/performance-red.log"
           grep -q -- '--- FAIL: TestAccountPerformance' "$RUNNER_TEMP/performance-red.log"
+
+  upstream-key-policy-policy-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm --dir frontend install --frozen-lockfile
+      - name: Real key policy dialog and both-entry notice regressions
+        run: pnpm --dir frontend exec vitest run src/components/admin/user/__tests__/ApiKeyModelPolicyDialog.spec.ts src/components/admin/user/__tests__/ApiKeyModelPolicyNotices.spec.ts
+      - name: Install isolated browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/key-policy-browser" --no-save --ignore-scripts playwright@1.56.1
+          "$RUNNER_TEMP/key-policy-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Render real entry and dialog with fictional API fixtures
+        env:
+          PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+          PLAYWRIGHT_ROOT: ${{ runner.temp }}/key-policy-browser/node_modules/playwright
+          SCREENSHOT_DIR: ${{ runner.temp }}/key-policy-ui
+        run: node scripts/api-key-model-policy-screenshot.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: api-key-model-policy-ui-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/key-policy-ui
+  upstream-balance-forecast-forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: forecast_fixture_only
+          POSTGRES_DB: balance_forecast_task
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d balance_forecast_task"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      FORECAST_TEST_POSTGRES_DSN: postgres://postgres:forecast_fixture_only@127.0.0.1:5432/balance_forecast_task?sslmode=disable
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Require explicit PostgreSQL fixture
+        run: test -n "$FORECAST_TEST_POSTGRES_DSN"
+      - name: Settled SQL, durable concurrency, restart, jitter and conservative delivery cap
+        working-directory: backend
+        run: go test -race ./internal/balanceforecast -count=1 -v -timeout=5m
+      - name: PostgreSQL to actual SMTP and configuration compatibility
+        working-directory: backend
+        run: go test -race -tags=unit ./internal/service ./internal/handler/admin ./cmd/server -run 'TestBalanceForecast|TestProvideCleanup' -count=1 -v -timeout=10m
+      - name: Full migrations and real durable billing repository
+        working-directory: backend
+        env:
+          SUB2API_TEST_POSTGRES_IMAGE: postgres:16-alpine
+        run: go test -tags=integration ./internal/repository -run '^TestBalanceForecastRealBillingAndMigrations$' -count=1 -v -timeout=10m
+  upstream-balance-forecast-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm --dir frontend install --frozen-lockfile
+      - run: pnpm --dir frontend exec vitest run src/components/settings/BalanceForecastSettings.spec.ts src/views/admin/__tests__/SettingsView.spec.ts
+      - name: Install isolated browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/forecast-browser" --no-save --ignore-scripts playwright@1.56.1
+          "$RUNNER_TEMP/forecast-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Render actual forecast panel with project styles and fictional data
+        env:
+          PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+          PLAYWRIGHT_ROOT: ${{ runner.temp }}/forecast-browser/node_modules/playwright
+          SCREENSHOT_DIR: ${{ runner.temp }}/forecast-ui
+        run: node scripts/balance-forecast-screenshot.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: balance-forecast-ui-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/forecast-ui
+  upstream-serverless-routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Serverless routing, Redis cache and transport regressions
+        working-directory: backend
+        run: go test -race ./internal/serverless -count=1 -timeout=5m
+
+  upstream-serverless-settings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm --dir frontend install --frozen-lockfile
+      - name: Settings regressions
+        working-directory: frontend
+        run: pnpm exec vitest run src/components/settings/ServerlessSettings.spec.ts src/views/admin/__tests__/SettingsView.spec.ts
+      - name: Install isolated screenshot tool
+        run: |
+          npm install --prefix "$RUNNER_TEMP/serverless-browser" --no-save --ignore-scripts playwright@1.56.1
+          "$RUNNER_TEMP/serverless-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Render the actual settings component with fictional fixtures
+        env:
+          PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+          PLAYWRIGHT_ROOT: ${{ runner.temp }}/serverless-browser/node_modules/playwright
+          SCREENSHOT_DIR: ${{ runner.temp }}/serverless-ui
+          SOURCE_BASE: ${{ github.event.pull_request.base.sha || 'b827111805f1b5030b141dbcea4d4a9f6dd413e6' }}
+        run: node scripts/serverless-ip-routing-screenshot.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: serverless-settings-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/serverless-ui
+          if-no-files-found: warn
+  upstream-vip-credit-postgres-repository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: vip_credit_test
+          POSTGRES_INITDB_ARGS: --encoding=UTF8
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vip_credit_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      VIP_CREDIT_TEST_REDIS_ADDR: 127.0.0.1:6379
+      VIP_CREDIT_TEST_DSN: host=127.0.0.1 port=5432 user=postgres password=fixture-only dbname=vip_credit_test sslmode=disable
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Mandatory real PostgreSQL ledger, admission, concurrency and upgrade regressions
+        working-directory: backend
+        run: go test -race -p 1 -tags=vipcreditintegration ./internal/repository -run '^TestVipCredit' -count=1 -v -timeout=10m

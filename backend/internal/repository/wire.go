@@ -197,6 +197,7 @@ var ProviderSet = wire.NewSet(
 
 	ProvideEnt,
 	ProvideSQLDB,
+	NewAutoCreditRepository,
 	ProvideRedis,
 )
 

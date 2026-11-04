@@ -24,6 +24,14 @@ FRONTEND_CRITICAL_VITEST := \
 	src/utils/__tests__/customMenu.spec.ts \
 	src/utils/__tests__/modelBilling.spec.ts \
 	src/components/admin/operations/__tests__/AutoConfigHistory.spec.ts \
+	src/components/keys/__tests__/UseKeyModal.spec.ts \
+	src/utils/__tests__/codexQuickConfig.spec.ts \
+	src/utils/__tests__/ccswitchImport.spec.ts \
+	src/components/settings/BalanceForecastSettings.spec.ts \
+	src/components/admin/user/__tests__/UserAutoCreditModal.spec.ts \
+	src/components/common/__tests__/VipAutoCreditNotice.spec.ts \
+	src/components/admin/user/__tests__/ApiKeyModelPolicyDialog.spec.ts \
+	src/components/admin/user/__tests__/ApiKeyModelPolicyNotices.spec.ts \
 	src/components/account/__tests__/OpenAIAuthConnections.spec.ts \
 	src/views/admin/__tests__/RiskControlView.spec.ts \
 	src/i18n/__tests__/riskControlLocales.spec.ts \
@@ -98,6 +106,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/ChannelMonitorView.modeSwitch.spec.ts \
 	src/views/admin/__tests__/AccountQualityView.spec.ts \
 	src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts \
+	src/views/admin/__tests__/AccountsView.declarationRefresh.spec.ts \
 	src/utils/__tests__/qualityRulePatch.spec.ts \
 	src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts \
 	src/components/admin/operations/__tests__/QualityModelShortcuts.spec.ts \
