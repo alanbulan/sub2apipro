@@ -18,7 +18,7 @@ export const rows=[base,{...base,id:611,request_id:'synthetic-passthrough',model
 `
 const html = `<!doctype html><html><meta charset="utf-8"><div id="app"></div><script type="module">
 import {rows} from 'virtual:pr610-fixture';import {createApp,h} from 'vue';import {createPinia} from 'pinia';import {createI18n} from 'vue-i18n';import Table from '/src/components/admin/usage/UsageTable.vue';import en from '/src/i18n/locales/en/index.ts';import zh from '/src/i18n/locales/zh/index.ts';import '/src/style.css';
-createApp({render:()=>h('main',{class:'mx-auto max-w-6xl p-8'},[h('h1',{class:'mb-4 text-xl'},'PR610 · synthetic usage'),h(Table,{data:rows,loading:false,columns:[{key:'model',label:'Model'},{key:'latency',label:'Timing'},...(${before}?[]:[{key:'content_reasoning_first_ms',label:'First reasoning event'},{key:'content_visible_text_first_ms',label:'First visible text'},{key:'content_response_byte_first_ms',label:'First response byte'}])],enableTimingDetails:true})])}).use(createPinia()).use(createI18n({legacy:false,locale:new URL(location.href).searchParams.get('lang')||'en',messages:{en,zh}})).mount('#app')
+createApp({render:()=>h('main',{class:'mx-auto max-w-6xl p-8'},[h('h1',{class:'mb-4 text-xl'},'PR610 · synthetic usage'),h(Table,{data:rows,loading:false,columns:[{key:'model',label:'Model'},{key:'latency',label:'Timing'}],enableTimingDetails:true})])}).use(createPinia()).use(createI18n({legacy:false,locale:new URL(location.href).searchParams.get('lang')||'en',messages:{en,zh}})).mount('#app')
 </script></html>`
 process.chdir(frontend)
 const server = await createServer({root:frontend,configFile:false,plugins:[(vue.default||vue)(),{
@@ -39,11 +39,10 @@ try {
   if(!text.includes(before?'1m 2s':'32.00s'))throw new Error('passthrough overlap assertion: '+text)
   if(!before){
    if(text.includes('1m 2s'))throw new Error('queue added twice')
-   for(const [testId,value] of [['content-timing-reasoning-first','250ms'],['content-timing-visible-text-first','2.00s'],['content-timing-response-byte-first','80ms']]){
-    const cells=page.getByTestId(testId)
-    if(await cells.count()!==2 || (await cells.allTextContents()).some(text=>text!==value))throw new Error('typed content column lost: '+testId)
-    if(!(await cells.first().getAttribute('title')))throw new Error('typed content scope missing: '+testId)
+   for(const testId of ['content-timing-reasoning-first','content-timing-visible-text-first','content-timing-response-byte-first']){
+    if(await page.getByTestId(testId).count())throw new Error('retired content column returned: '+testId)
    }
+   if(!text.includes('50.00s'))throw new Error('measured server duration lost: '+text)
    if(await page.getByTestId('typed-content-timing').count() || await page.getByTestId('latency-e2e-uncollected').count())throw new Error('retired timing rows returned')
   }
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-table-${lang}-desktop.png`),fullPage:true,animations:'disabled'})
@@ -55,7 +54,10 @@ try {
   const bounds=await dialog.boundingBox()
   if(!bounds||bounds.x<0||bounds.x+bounds.width>1441)throw new Error('dialog did not settle inside desktop viewport')
   const body=await dialog.innerText()
-  if(!before && ((body.includes('62.00s')||body.includes('1m 2s'))||!body.includes(lang==='en'?'Server TTFT (including pre-forward wait)':'服务端首字（含转发前等待）')))throw new Error('dialog server timing label/value lost')
+  if(!before){
+   if(body.includes('62.00s')||body.includes('1m 2s')||!body.includes('32.00s')||!body.includes('50.00s')||!body.includes(lang==='en'?'Server TTFT':'服务端首字'))throw new Error('dialog server timing label/value lost')
+   if(body.includes(lang==='en'?'Pre-forward wait (queue + failed attempts)':'转发前等待（排队 + 失败尝试）'))throw new Error('retired pre-forward wait summary returned')
+  }
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-dialog-${lang}-desktop.png`),fullPage:true,animations:'disabled'})
   await page.setViewportSize({width:390,height:844})
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-dialog-${lang}-mobile.png`),fullPage:true,animations:'disabled'})

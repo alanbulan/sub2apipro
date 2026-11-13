@@ -1,6 +1,65 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/views/user/__tests__/CryptoPaymentView.spec.ts \
+	src/views/admin/__tests__/UsageView.platform.spec.ts \
+	src/views/admin/__tests__/ProfitOperationsView.spec.ts \
+	src/views/admin/__tests__/PrioritySchedulingView.spec.ts \
+	src/views/admin/__tests__/PrioritySchedulingReading.spec.ts \
+	src/views/admin/__tests__/PrioritySchedulingFilters.spec.ts \
+	src/views/admin/__tests__/PelicanTestsView.spec.ts \
+	src/views/admin/__tests__/DashboardView.spec.ts \
+	src/views/admin/__tests__/AccountsView.sparkShadow.spec.ts \
+	src/views/admin/__tests__/AccountsView.lite.spec.ts \
+	src/views/admin/__tests__/AccountOpsView.spec.ts \
+	src/views/admin/__tests__/AIOpsView.spec.ts \
+	src/utils/__tests__/settingsSearch.spec.ts \
+	src/utils/__tests__/rechargeBonus.spec.ts \
+	src/utils/__tests__/intervalPrices.spec.ts \
+	src/utils/__tests__/harvestAvailability.spec.ts \
+	src/features/ip-audit/__tests__/UserKeyRiskNotices.spec.ts \
+	src/features/ip-audit/__tests__/KeyRiskPanel.spec.ts \
+	src/components/user/__tests__/UserErrorTransport.spec.ts \
+	src/components/payment/__tests__/paymentFlow.spec.ts \
+	src/components/payment/__tests__/fees.spec.ts \
+	src/components/payment/__tests__/currency.spec.ts \
+	src/components/payment/__tests__/bepusdtNotices.spec.ts \
+	src/components/payment/__tests__/bepusdtFlow.spec.ts \
+	src/components/payment/__tests__/ProviderFeeNotices.spec.ts \
+	src/components/payment/__tests__/PaymentProviderDialog.spec.ts \
+	src/components/payment/__tests__/BEpusdtManager.spec.ts \
+	src/components/payment/__tests__/AmountInput.spec.ts \
+	src/components/modelPlaza/__tests__/PlazaModelPricingTable.video.spec.ts \
+	src/components/modelPlaza/__tests__/PlazaModelPricingTable.spec.ts \
+	src/components/admin/user/__tests__/UserApiKeysModal.spec.ts \
+	src/components/admin/usage/__tests__/UsageTable.apiKeyName.spec.ts \
+	src/components/admin/usage/__tests__/UsageLatencyDisplay.spec.ts \
+	src/components/admin/operations/__tests__/QualityAccountSelector.spec.ts \
+	src/components/admin/operations/__tests__/OAuthInitialModelSelection.spec.ts \
+	src/components/admin/operations/__tests__/AccountOpsGroupSelector.spec.ts \
+	src/components/admin/operations/__tests__/AIOpsRecoveryProbes.spec.ts \
+	src/components/admin/operations/__tests__/AIOpsControls.spec.ts \
+	src/components/admin/channel/__tests__/types.spec.ts \
+	src/components/admin/channel/__tests__/PricingEntryCard.cacheTTL.spec.ts \
+	src/components/admin/account/__tests__/ScheduledTestsPanel.results.spec.ts \
+	src/components/admin/account/__tests__/ScheduledTestsPanel.pelican.spec.ts \
+	src/components/account/__tests__/SchedulableTimerControl.daily.spec.ts \
+	src/components/account/__tests__/OpenAITwoFAImport.spec.ts \
+	src/components/account/__tests__/OpenAITwoFAImport.parallel.spec.ts \
+	src/components/account/__tests__/OpenAITwoFAImport.ownership.spec.ts \
+	src/components/account/__tests__/EditAccountModal.grokUpstream.spec.ts \
+	src/components/account/__tests__/CredentialOperationFailure.spec.ts \
+	src/components/account/__tests__/CNProviderBalanceCell.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.spec.ts \
+	src/components/account/__tests__/AccountUpstreamErrorNotice.spec.ts \
+	src/components/account/__tests__/AccountTestModal.spec.ts \
+	src/components/account/__tests__/AccountStatusIndicator.spec.ts \
+	src/api/admin/__tests__/aiOpsControl.spec.ts \
+	src/api/admin/__tests__/aiOps.spec.ts \
+	src/api/admin/__tests__/accountTokenGuard.spec.ts \
+	src/api/__tests__/settings.authSourceDefaults.spec.ts \
+	src/api/__tests__/admin.accounts.grokModelDiagnostics.spec.ts \
+	src/__tests__/integration/usage-reasoning-effort.spec.ts \
 	src/components/common/__tests__/AnnouncementBell.spec.ts \
 	src/components/common/__tests__/NewFeatureBadge.spec.ts \
 	src/components/lottery/reel.spec.ts \
@@ -24,12 +83,31 @@ FRONTEND_CRITICAL_VITEST := \
 	src/utils/__tests__/customMenu.spec.ts \
 	src/utils/__tests__/modelBilling.spec.ts \
 	src/components/admin/operations/__tests__/AutoConfigHistory.spec.ts \
+	src/components/admin/group/__tests__/GroupAntiDistillationSettings.spec.ts \
+	src/views/admin/__tests__/ChannelsView.modelSync.spec.ts \
+	src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts \
+	src/views/admin/__tests__/channelPricingTransfer.spec.ts \
+	src/views/admin/__tests__/channelPricingBundle.spec.ts \
+	src/views/admin/__tests__/ChannelsView.pricingTransfer.spec.ts \
+	src/components/admin/channel/__tests__/BulkEditChannelDialog.spec.ts \
+	src/components/keys/__tests__/UseKeyModal.spec.ts \
+	src/utils/__tests__/codexQuickConfig.spec.ts \
+	src/utils/__tests__/ccswitchImport.spec.ts \
+	src/components/settings/SmartOpsSidebarSettings.spec.ts \
+	src/utils/__tests__/smartOpsSidebar.spec.ts \
+	src/components/settings/BalanceForecastSettings.spec.ts \
+	src/components/admin/user/__tests__/UserAutoCreditModal.spec.ts \
+	src/components/admin/user/__tests__/UserBalanceHistoryModal.spec.ts \
+	src/components/common/__tests__/VipAutoCreditNotice.spec.ts \
+	src/components/admin/user/__tests__/ApiKeyModelPolicyDialog.spec.ts \
+	src/components/admin/user/__tests__/ApiKeyModelPolicyNotices.spec.ts \
 	src/components/account/__tests__/OpenAIAuthConnections.spec.ts \
 	src/views/admin/__tests__/RiskControlView.spec.ts \
 	src/i18n/__tests__/riskControlLocales.spec.ts \
 	src/components/common/__tests__/PlatformTypeBadge.openaiPlans.spec.ts \
 	src/components/common/__tests__/PlatformTypeBadge.grok.spec.ts \
 	src/views/admin/__tests__/AutoConfigView.spec.ts \
+	src/views/admin/__tests__/OAuthDegradationActions.spec.ts \
 	src/utils/__tests__/openaiTwoFAAdmission.spec.ts \
 	src/components/admin/account/__tests__/BulkExport2FADialog.spec.ts \
 	src/components/admin/account/__tests__/AccountBulkActionsBar.spec.ts \
@@ -58,15 +136,19 @@ FRONTEND_CRITICAL_VITEST := \
 	src/__tests__/rememberMePro.spec.ts \
 	src/__tests__/useAppTheme.spec.ts \
 	src/components/account/__tests__/OpenAISessionExportDialog.spec.ts \
+	src/components/admin/account/__tests__/AccountTableFilters.spec.ts \
+	src/features/security-penalties/__tests__/SecurityRecords.spec.ts \
+	src/views/user/__tests__/ProfileView.spec.ts \
+	src/components/account/__tests__/SIWCAccountSettings.spec.ts \
 	src/api/admin/__tests__/modelTrace.spec.ts \
 	src/components/admin/account/__tests__/ModelTracePanel.spec.ts \
 	src/components/admin/account/__tests__/IQTestModal.modelTrace.spec.ts \
 	src/components/admin/account/__tests__/IQTestModal.spec.ts \
 	src/components/admin/account/__tests__/AccountTestModal.spec.ts \
 	src/components/admin/account/__tests__/PoolDiagnostics.spec.ts \
-	src/features/security-penalties/__tests__/SecurityRecords.spec.ts \
-	src/views/user/__tests__/ProfileView.spec.ts \
-	src/components/account/__tests__/SIWCAccountSettings.spec.ts \
+	src/components/admin/account/__tests__/PelicanPromptMode.spec.ts \
+	src/utils/__tests__/pelicanQuestionRound.spec.ts \
+	src/components/admin/account/__tests__/PelicanTestFields.spec.ts \
 	src/components/admin/account/__tests__/PelicanRecordsDashboard.spec.ts \
 	src/api/admin/__tests__/scheduledTests.spec.ts \
 	src/components/admin/__tests__/CyberEvidence.spec.ts \
@@ -98,6 +180,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/ChannelMonitorView.modeSwitch.spec.ts \
 	src/views/admin/__tests__/AccountQualityView.spec.ts \
 	src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts \
+	src/views/admin/__tests__/AccountsView.declarationRefresh.spec.ts \
+	src/utils/__tests__/accountUpstreamModelAutoSync.spec.ts \
 	src/utils/__tests__/qualityRulePatch.spec.ts \
 	src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts \
 	src/components/admin/operations/__tests__/QualityModelShortcuts.spec.ts \
@@ -108,6 +192,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/operations/__tests__/SmartOpsNav.spec.ts \
 	src/components/layout/__tests__/AppSidebar.spec.ts \
 	src/components/layout/__tests__/AppHeader.feishu.spec.ts \
+	src/components/layout/__tests__/AppHeader.spec.ts \
 	src/components/account/__tests__/CreateAccountModal.autoBPS.spec.ts \
 	src/components/account/__tests__/EditAccountModal.autoBPS.spec.ts \
 	src/stores/__tests__/accountQuality.spec.ts \
@@ -129,6 +214,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/user/__tests__/PelicanShowcaseView.spec.ts \
 	src/utils/__tests__/usageTps.spec.ts \
 	src/utils/__tests__/usageCacheRate.spec.ts \
+	src/utils/__tests__/usageRate.spec.ts \
 	src/views/admin/ops/components/__tests__/OpsErrorDetailModal.spec.ts \
 	src/router/__tests__/feature-access.spec.ts \
 	src/api/admin/__tests__/requestCaptures.spec.ts \
@@ -140,6 +226,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/keys.bulkUpdate.spec.ts \
 	src/composables/__tests__/useModelWhitelist.spec.ts \
+	src/components/account/__tests__/ModelWhitelistSelector.spec.ts \
 	src/components/account/__tests__/UpstreamBillingRateCell.spec.ts \
 	src/components/account/__tests__/OpenAIReferralCell.spec.ts \
 	src/components/account/__tests__/OpenAIReferralCell.transport.spec.ts \
@@ -158,6 +245,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/moderation/__tests__/ModerationUserQuickEnable.spec.ts \
 	src/api/__tests__/admin.users.spec.ts \
 	src/views/user/__tests__/KeysView.spec.ts \
+	src/api/__tests__/usage.apiKeysRange.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
 	src/views/auth/__tests__/WechatCallbackView.spec.ts \
@@ -169,6 +257,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/settings/AccountPerformanceSettings.spec.ts \
 	src/components/account/__tests__/AccountPerformanceCell.spec.ts \
 	src/components/account/__tests__/AccountPerformanceDialog.spec.ts \
+	src/api/__tests__/admin.accounts.performance.spec.ts \
 	src/components/user/profile/__tests__/ProfileIdentityBindingsSection.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts \
 	src/views/admin/__tests__/MiniMaxH3VideoPricing.spec.ts \

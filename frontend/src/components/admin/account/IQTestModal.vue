@@ -133,8 +133,17 @@
         <Select data-testid="question-select" :model-value="questionKind" :options="questionOptions" :disabled="running" @update:model-value="selectQuestion" />
         <p v-if="questionKind === 'candy'" class="mt-2 text-xs text-gray-500">{{ t('admin.accounts.pelicanTest.candyHint') }}</p>
       </div>
+      <template v-if="!poolContext && questionKind === 'pelican'">
+        <PelicanPromptMode :model-value="promptMode" @update:model-value="selectPromptMode" :disabled="running || preparingQuestion" />
+        <template v-if="promptMode === 'random'">
+          <button type="button" class="btn btn-secondary" data-testid="pelican-next-round" :disabled="running || preparingQuestion" @click="prepareQuestion">{{ t('pelicanTests.questionBank.next') }}</button>
+          <p v-if="questionError" role="alert">{{ questionError }}</p>
+          <PelicanQuestionSnapshot v-if="questionSnapshot" :question="questionSnapshot.pelican_question" :actual-prompt="questionSnapshot.actual_prompt" />
+        </template>
+      </template>
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <TextArea
+          v-if="promptMode !== 'random'"
           v-model="prompt"
           :label="t('admin.accounts.pelicanTest.promptLabel')"
           :disabled="running || !!poolContext"
@@ -204,7 +213,7 @@
 
       <ScheduledTestsPanel v-if="!poolContext && show && account && activeTab === 'schedule'" :key="account.id" :show="true" embedded
         :account-id="account.id" :default-model="modelId" :model-options="[{ value: modelId, label: modelId }]"
-        :pelican-config="{ question_kind: questionKind, prompt, reasoning_effort: reasoningEffort, parallel_count: Number(parallelCount) }"
+        :pelican-config="{ question_kind: questionKind, prompt_mode: promptMode, prompt, reasoning_effort: reasoningEffort, parallel_count: Number(parallelCount) }"
         :disabled="running" @preview="previewScheduled" @history="scheduledRecords = $event" />
       <div v-else-if="activeTab === 'history'" class="space-y-2">
         <button v-for="result in scheduledRecords" :key="`scheduled-${result.id}`" type="button"
@@ -303,10 +312,14 @@ import Input from '@/components/common/Input.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import Select from '@/components/common/Select.vue'
 import { Icon } from '@/components/icons'
+import PelicanPromptMode from './PelicanPromptMode.vue'
+import PelicanQuestionSnapshot from './PelicanQuestionSnapshot.vue'
+import { useAuthStore } from '@/stores/auth'
+import { currentPelicanQuestionRound, preparePelicanQuestionRound } from '@/utils/pelicanQuestionRound'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { getAvailableModels, getModelReasoning, probeOpenAICodexState, type OpenAICodexStateProbeResult, type OpenAICodexStateVerdict } from '@/api/admin/accounts'
-import type { Account, AccountListItem, PelicanTestConfig, ScheduledTestResult } from '@/types'
+import type { Account, AccountListItem, PelicanQuestion, PelicanTestConfig, ScheduledTestResult } from '@/types'
 import { getPoolDiagnosticModels, getPoolDiagnosticReasoning, poolDiagnosticPath, poolTestError, type PoolDiagnosticContext } from '@/api/poolDashboard'
 import ScheduledTestsPanel from './ScheduledTestsPanel.vue'
 import PelicanRecordsDashboard from './PelicanRecordsDashboard.vue'
@@ -314,6 +327,7 @@ import TestModelSelect from './TestModelSelect.vue'
 import ModelTracePanel from './ModelTracePanel.vue'
 
 const { t } = useI18n()
+const auth = useAuthStore()
 
 const STORAGE_PREFIX = 'sub2api-pelican-test:'
 const PROBE_CONTROLLER_KEY = 'state-probe'
@@ -341,6 +355,8 @@ interface TestRun {
   reasoningEffort?: string
 }
 interface TestRecord {
+  pelicanQuestion?: PelicanQuestion
+  actualPrompt?: string
   questionKind?: IntelligenceQuestion
   id: string
   createdAt: string
@@ -356,6 +372,31 @@ const emit = defineEmits<{ (event: 'close'): void }>()
 
 const questionKind = ref<IntelligenceQuestion>('candy')
 const prompt = ref(questionPrompt('candy'))
+const promptMode = ref<'custom' | 'random'>('custom')
+const questionSnapshot = ref<PelicanTestConfig | null>(null)
+const questionError = ref('')
+const preparingQuestion = ref(false)
+async function prepareQuestion() {
+  if (running.value || preparingQuestion.value) return
+  preparingQuestion.value = true
+  questionError.value = ''
+  const controller = new AbortController()
+  controllers.set('question', controller)
+  try {
+    questionSnapshot.value = await preparePelicanQuestionRound(auth.user?.id ?? null, controller.signal)
+  } catch {
+    if (!controller.signal.aborted) questionError.value = t('pelicanTests.questionBank.error')
+  } finally {
+    preparingQuestion.value = false
+    controllers.delete('question')
+  }
+}
+function selectPromptMode(mode: 'custom' | 'random') {
+  promptMode.value = mode
+  if (mode !== 'random') return
+  questionSnapshot.value = currentPelicanQuestionRound(auth.user?.id ?? null)
+  if (!questionSnapshot.value) void prepareQuestion()
+}
 // Claude accounts cannot serve the OpenAI default.
 const defaultModel = computed(() => account.value?.platform === 'anthropic' ? 'claude-opus-5-5' : 'gpt-6-astra')
 const modelId = ref(defaultModel.value)
@@ -394,13 +435,14 @@ const questionOptions = computed(() => ['candy', 'pelican'].map(value => ({ valu
 function selectQuestion(value: string | number | boolean | null) {
   if (running.value || (value !== 'candy' && value !== 'pelican')) return
   questionKind.value = value
+  promptMode.value = 'custom'
   prompt.value = questionPrompt(value)
 }
 const reasoningOptions = computed(() => reasoningLevels.value.map((value) => ({
   value,
   label: ({ low: t('admin.accounts.pelicanTest.reasoningLow'), medium: t('admin.accounts.pelicanTest.reasoningMedium'), high: t('admin.accounts.pelicanTest.reasoningHigh'), none: t('admin.accounts.pelicanTest.reasoningNone'), minimal: t('admin.accounts.pelicanTest.reasoningMinimal'), xhigh: t('admin.accounts.pelicanTest.reasoningXHigh'), max: t('admin.accounts.pelicanTest.reasoningMax'), ultra: t('admin.accounts.pelicanTest.reasoningUltra') } as Record<string, string>)[value] || value
 })))
-const canStart = computed(() => Boolean(account.value && prompt.value.trim() && modelId.value.trim() && normalizeCount() > 0
+const canStart = computed(() => Boolean(account.value && !preparingQuestion.value && (promptMode.value === 'random' ? (questionSnapshot.value?.actual_prompt && questionSnapshot.value.pelican_question?.round_id.startsWith('manual:')) : prompt.value.trim()) && modelId.value.trim() && normalizeCount() > 0
   && (!props.poolContext || availableModels.value.some(model => model.id === modelId.value.trim()))))
 const hasDownloadable = computed(() => runs.value.some((run) => Boolean(run.output)))
 const probeSupported = computed(() => account.value?.platform === 'openai' && (account.value.type === 'oauth' || account.value.type === 'setup-token'))
@@ -536,6 +578,8 @@ function editSchedule(config: PelicanTestConfig, model: string) {
   if (config.question_kind === STATE_PROBE_QUESTION || config.question_kind === 'random_reasoning') return
   questionKind.value = config.question_kind || 'pelican'
   prompt.value = config.prompt
+  promptMode.value = config.prompt_mode || 'custom'
+  questionSnapshot.value = config.pelican_question ? JSON.parse(JSON.stringify(config)) : null
   modelId.value = model
   reasoningEffort.value = config.reasoning_effort
   parallelCount.value = config.parallel_count
@@ -565,6 +609,8 @@ function loadRecord(record: TestRecord) {
   if (running.value) return
   questionKind.value = record.questionKind || 'pelican'
   prompt.value = record.prompt
+  promptMode.value = record.pelicanQuestion ? 'random' : 'custom'
+  questionSnapshot.value = record.pelicanQuestion ? { prompt: record.prompt, reasoning_effort: record.reasoningEffort, parallel_count: record.runs.length, pelican_question: record.pelicanQuestion, actual_prompt: record.actualPrompt } : null
   modelId.value = record.modelId
   reasoningEffort.value = record.reasoningEffort || 'medium'
   runs.value = record.runs.map((run) => ({ ...run, questionKind: run.questionKind || record.questionKind || 'pelican', modelId: run.modelId || record.modelId, reasoningEffort: run.reasoningEffort || record.reasoningEffort }))
@@ -579,8 +625,17 @@ function handleClose() {
   emit('close')
 }
 
-async function consumeRun(run: TestRun, signal: AbortSignal) {
-  const response = await fetch(buildApiUrl(props.poolContext ? poolDiagnosticPath(props.poolContext, 'pelican-test') : `/admin/accounts/${account.value!.id}/pelican-test`), {
+interface ManualRound {
+  accountId: number
+  questionKind: IntelligenceQuestion
+  modelId: string
+  reasoningEffort: string
+  prompt: string
+  actualPrompt: string
+  question?: PelicanQuestion
+}
+async function consumeRun(run: TestRun, signal: AbortSignal, round: ManualRound) {
+  const response = await fetch(buildApiUrl(props.poolContext ? poolDiagnosticPath(props.poolContext, 'pelican-test') : `/admin/accounts/${round.accountId}/pelican-test`), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${getAuthItem(AUTH_TOKEN_KEY)}`,
@@ -588,12 +643,14 @@ async function consumeRun(run: TestRun, signal: AbortSignal) {
       ...(!props.poolContext ? { [ADMIN_UI_REQUEST_HEADER]: '1' } : {})
     },
     body: JSON.stringify(props.poolContext ? {
-      model_id: modelId.value.trim(), question_kind: questionKind.value, reasoning_effort: reasoningEffort.value === 'none' ? '' : reasoningEffort.value
+      model_id: round.modelId, question_kind: round.questionKind, reasoning_effort: round.reasoningEffort === 'none' ? '' : round.reasoningEffort
     } : {
-      model_id: modelId.value.trim(),
-      prompt: `${prompt.value.trim()}\n\n${deliveryContract.value}`,
+      model_id: round.modelId,
+      prompt: round.actualPrompt,
+      prompt_mode: round.question ? 'random' : 'custom',
+      pelican_question: round.question,
       mode: 'default',
-      reasoning_effort: reasoningEffort.value
+      reasoning_effort: round.reasoningEffort
     }),
     signal
   })
@@ -635,13 +692,13 @@ async function consumeRun(run: TestRun, signal: AbortSignal) {
   run.status = 'success'
 }
 
-async function startOne(run: TestRun) {
+async function startOne(run: TestRun, round: ManualRound) {
   const started = performance.now()
   run.startedAt = new Date().toISOString()
   const controller = new AbortController()
   controllers.set(run.id, controller)
   try {
-    await consumeRun(run, controller.signal)
+    await consumeRun(run, controller.signal, round)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return
     run.status = 'error'
@@ -656,6 +713,14 @@ async function startOne(run: TestRun) {
 async function startTest() {
   if (running.value || !account.value || !canStart.value) return
   viewingScheduled.value = false
+  const question = promptMode.value === 'random' ? questionSnapshot.value?.pelican_question : undefined
+  const round: ManualRound = {
+    accountId: account.value.id, questionKind: questionKind.value,
+    modelId: modelId.value.trim(), reasoningEffort: reasoningEffort.value,
+    prompt: question?.prompt || prompt.value.trim(),
+    actualPrompt: question ? questionSnapshot.value!.actual_prompt! : `${prompt.value.trim()}\n\n${deliveryContract.value}`,
+    question: question ? JSON.parse(JSON.stringify(question)) : undefined,
+  }
   const count = normalizeCount()
   parallelCount.value = count
   runs.value = Array.from({ length: count }, (_, index) => ({
@@ -671,15 +736,18 @@ async function startTest() {
   }))
   activeTab.value = 'results'
   running.value = true
-  await Promise.all(runs.value.map((run) => startOne(run)))
+  await Promise.all(runs.value.map((run) => startOne(run, round)))
   running.value = false
+  if (account.value?.id !== round.accountId || !props.show) return
   const record: TestRecord = {
     id: `${Date.now()}`,
     createdAt: new Date().toISOString(),
-    questionKind: questionKind.value,
-    prompt: prompt.value.trim(),
-    modelId: modelId.value.trim(),
-    reasoningEffort: reasoningEffort.value,
+    questionKind: round.questionKind,
+    prompt: round.prompt,
+    actualPrompt: round.actualPrompt,
+    pelicanQuestion: round.question,
+    modelId: round.modelId,
+    reasoningEffort: round.reasoningEffort,
     runs: runs.value.map((run) => ({ ...run }))
   }
   records.value = [record, ...records.value.filter((item) => item.id !== record.id)]
@@ -736,6 +804,9 @@ watch(() => [props.show, account.value?.id, props.poolContext?.groupId] as const
     viewingScheduled.value = false
     scheduledRecords.value = []
     questionKind.value = 'candy'
+    promptMode.value = 'custom'
+    questionSnapshot.value = null
+    questionError.value = ''
     prompt.value = questionPrompt('candy')
     modelId.value = defaultModel.value
     reasoningEffort.value = 'medium'
