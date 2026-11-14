@@ -21,7 +21,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 
-defineProps<{
+withDefaults(defineProps<{
   id: string
   modelValue: string
   options: Array<{ value: string; label: string }>
@@ -29,7 +29,7 @@ defineProps<{
   hint: string
   disabled?: boolean
   allowCustom?: boolean
-}>()
+}>(), { allowCustom: true })
 const emit = defineEmits<{ (event: 'update:modelValue', value: string): void }>()
 const { t } = useI18n()
 const manual = ref(false)
