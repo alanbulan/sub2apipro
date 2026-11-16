@@ -1,0 +1,15 @@
+name: sync-20261116-dashboard-account-concurrency-backend
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Account concurrency summary regressions
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=unit ./internal/handler/admin -run ''^TestAccountConcurrencySummary'' -count=1 -v'
+    shell: bash

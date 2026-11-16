@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { nextDifferentNominal, questionAt } from '../../scripts/pelican-nominal-round.mjs'
+import { nextDifferentNominal, questionAt } from '../../../scripts/pelican-nominal-round.mjs'
 
 test('selection oracle agrees with two prior real Go scheduler result artifacts', () => {
   // PR832 run43405643066 attempt1, PG result projections; no model-quality claim.

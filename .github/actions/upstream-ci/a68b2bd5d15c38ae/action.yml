@@ -1,0 +1,68 @@
+name: sync-20261116-issue715-agent-recovery-red-recovery
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Original business chain with retained new handler regressions
+    shell: bash
+    run: "set -euo pipefail\ngit rev-parse HEAD\noriginal=6df0cd5bb0ce4d774d34004008f9dd661d236468\nbash scripts/historical-recovery-timezone-callers.sh\n\
+      targets=(backend/internal/handler/openai_gateway_handler.go backend/internal/service/openai_account_scheduler.go backend/internal/service/openai_gateway_forward.go\
+      \ backend/internal/service/openai_gateway_response_handling.go backend/internal/service/openai_gateway_service.go backend/internal/service/openai_ws_forwarder_ingress.go\
+      \ backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/service/openai_ws_http_bridge.go backend/internal/service/openai_ws_pool.go)\n\
+      added=(backend/internal/service/openai_agent_message_recovery.go backend/internal/service/openai_agent_message_recovery_cache.go\
+      \ backend/internal/service/openai_agent_message_delivery.go backend/internal/repository/gateway_cache_agent_recovery.go\
+      \ backend/internal/repository/gateway_cache_agent_shadow_epoch.go backend/internal/service/openai_ws_agent_recovery.go\
+      \ backend/internal/service/openai_agent_message_recovery_wait.go backend/internal/service/openai_ws_search_activation.go\
+      \ backend/internal/service/openai_409_omit_history.go backend/internal/service/openai_409_readable_shadow.go backend/internal/repository/gateway_cache_readable_shadow.go\
+      \ backend/internal/service/openai_400_omit_history.go backend/internal/service/openai_history_omission.go)\n# The exact\
+      \ original gateway struct predates analysis admission state.\nadded+=(backend/internal/service/openai_ws_readable_continuation.go\
+      \ backend/internal/service/openai_agent_replay_metadata.go backend/internal/service/openai_agent_recovery_diagnostics.go\
+      \ backend/internal/service/openai_tool_provenance.go backend/internal/repository/gateway_cache_tool_provenance.go)\n\
+      handler_compat=aa8e596e6d6f3e4648d6beba73b39b240dd5357a\nhandler_leaf=backend/internal/handler/openai_agent_message_recovery.go\n\
+      error_leaf=backend/internal/service/openai_agent_message_recovery_error.go\n# Pin this unrelated leaf to its pre-admission\
+      \ version, preserving all\n# Issue715 business-chain blobs and the retained handler regressions.\n# Issue842 compatibility-body\
+      \ callers depend on the later recovery\n# helper. Keep its exact pre-Issue842 blob in this historical assembly.\nmetadata_compat=aa8e596e6d6f3e4648d6beba73b39b240dd5357a\n\
+      metadata_leaf=backend/internal/service/openai_gateway_request_body.go\nanalysis_compat=e395038e98fbc5a0c44944f0edcfbfe714570f71\n\
+      analysis_leaf=backend/internal/service/priority_analysis.go\n# The restored usage struct also predates the 30m/12h counters.\n\
+      # Retain the pre-TTL billing leaf without changing recovery behavior.\nbilling_compat=6fa7fb86eae7c732794450646dc13831dce87ff1\n\
+      billing_leaf=backend/internal/service/openai_gateway_usage.go\n# The original snapshot type has no weekly provenance\
+      \ field. Restore\n# the unrelated quota policy and its callers together, preserving the\n# exact Issue715 recovery blobs\
+      \ and all retained handler assertions.\nweekly_compat=f895ea743f34a4c4ab6c9d01c01e13c931625a6e\nweekly_leaves=(backend/internal/service/openai_disable_scheduling_429.go\
+      \ backend/internal/service/openai_gateway_passthrough.go backend/internal/service/openai_plugin_transport.go backend/internal/service/openai_quota_service.go\
+      \ backend/internal/service/openai_quota_usage_snapshot.go backend/internal/service/openai_ws_forwarder_support.go backend/internal/service/openai_ws_forwarder_v2.go)\n\
+      projection_types=backend/internal/service/openai_ws_plaintext_projection.go\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
+      \ \"$original\"\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git \"$metadata_compat\"\ngit fetch\
+      \ --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git \"$analysis_compat\"\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
+      \ \"$billing_compat\"\ntrap 'git restore --source=HEAD -- \"${targets[@]}\" \"${added[@]}\" \"$analysis_leaf\" \"$billing_leaf\"\
+      \ \"${weekly_leaves[@]}\" \"$handler_leaf\" \"$error_leaf\" \"$metadata_leaf\" \"$projection_types\" backend/internal/service/openai_request_timezone_egress.go\
+      \ backend/internal/service/openai_ws_client.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
+      ${targets[@]}\"\ngit restore --source=\"$metadata_compat\" -- \"$metadata_leaf\"\ntest \"$(git hash-object \"$metadata_leaf\"\
+      )\" = \"$(git rev-parse \"$metadata_compat:$metadata_leaf\")\"\necho \"compatibility_leaf_baseline=$metadata_compat\
+      \ path=$metadata_leaf blob=$(git hash-object \"$metadata_leaf\")\"\ngit restore --source=\"$analysis_compat\" -- \"\
+      $analysis_leaf\"\ngit restore --source=\"$billing_compat\" -- \"$billing_leaf\"\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
+      \ \"$weekly_compat\"\ngit restore --source=\"$weekly_compat\" -- \"${weekly_leaves[@]}\"\nfor leaf in \"${weekly_leaves[@]}\"\
+      ; do\n  expected=$(git rev-parse \"$weekly_compat:$leaf\")\n  actual=$(git hash-object \"$leaf\")\n  echo \"compatibility_leaf_baseline=$weekly_compat\
+      \ path=$leaf expected_blob=$expected tested_blob=$actual\"\n  test \"$expected\" = \"$actual\"\ndone\nexpected=$(git\
+      \ rev-parse \"$billing_compat:$billing_leaf\")\nactual=$(git hash-object \"$billing_leaf\")\necho \"compatibility_leaf_baseline=$billing_compat\
+      \ path=$billing_leaf expected_blob=$expected tested_blob=$actual\"\ntest \"$expected\" = \"$actual\"\nexpected=$(git\
+      \ rev-parse \"$analysis_compat:$analysis_leaf\")\nactual=$(git hash-object \"$analysis_leaf\")\necho \"compatibility_leaf_baseline=$analysis_compat\
+      \ path=$analysis_leaf expected_blob=$expected tested_blob=$actual\"\ntest \"$expected\" = \"$actual\"\ngit fetch --no-tags\
+      \ --depth=1 https://github.com/ranxi2001/sub2api.git \"$handler_compat\"\ngit restore --source=\"$handler_compat\" --\
+      \ \"$handler_leaf\" \"$error_leaf\"\ntest \"$(git hash-object \"$error_leaf\")\" = \"$(git rev-parse \"$handler_compat:$error_leaf\"\
+      )\"\necho \"error_compatibility_baseline=$handler_compat path=$error_leaf blob=$(git hash-object \"$error_leaf\")\"\n\
+      test \"$(git hash-object \"$handler_leaf\")\" = \"$(git rev-parse \"$handler_compat:$handler_leaf\")\"\necho \"handler_compatibility_baseline=$handler_compat\
+      \ path=$handler_leaf\"\nrm -- \"${added[@]}\"\nfor target in \"${targets[@]}\"; do\n  expected=$(git rev-parse \"$original:$target\"\
+      )\n  actual=$(git hash-object \"$target\")\n  echo \"baseline=$original path=$target expected_blob=$expected tested_blob=$actual\"\
+      \n  test \"$expected\" = \"$actual\"\ndone\nfor path in \"${added[@]}\"; do test ! -e \"$path\"; done\nbash scripts/historical-ws-projection-types.sh\
+      \ \"$original\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n(cd backend && go test -tags=unit\
+      \ ./internal/handler -run '^TestIssue715HTTPResumesSameTaskAcrossTwoTurns$' -count=1 -v -timeout=10m) > \"$RUNNER_TEMP/issue715-recovery-red.log\"\
+      \ 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/issue715-recovery-red.log\"\npython3 scripts/assert-readable-continuation.py\
+      \ --clean-log \"$RUNNER_TEMP/issue715-recovery-red.log\"\ntest \"$result\" -ne 0\nif grep -Eq 'build failed|no tests\
+      \ to run|undefined:|panic:' \"$RUNNER_TEMP/issue715-recovery-red.log\"; then exit 1; fi\ngrep -q -- '--- FAIL: TestIssue715HTTPResumesSameTaskAcrossTwoTurns/false'\
+      \ \"$RUNNER_TEMP/issue715-recovery-red.log\"\ngrep -q -- '--- FAIL: TestIssue715HTTPResumesSameTaskAcrossTwoTurns/true'\
+      \ \"$RUNNER_TEMP/issue715-recovery-red.log\"\ngrep -q 'same task and tool context must survive route drift' \"$RUNNER_TEMP/issue715-recovery-red.log\"\
+      \n"

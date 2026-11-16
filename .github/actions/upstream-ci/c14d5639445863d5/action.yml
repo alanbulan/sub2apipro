@@ -1,0 +1,25 @@
+name: sync-20261116-reauth-runtime-package
+description: Current upstream checks, retaining matrix parameters and regression assertions.
+inputs:
+  sync_matrix_arch:
+    description: Upstream matrix parameter arch.
+    required: true
+runs:
+  using: composite
+  steps:
+  - name: Assert exact head
+    run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+    shell: bash
+  - uses: docker/setup-buildx-action@v3
+  - name: Package and validate without publishing
+    env:
+      ARCH: ${{ inputs.sync_matrix_arch }}
+      VERSION: 0.0.0-test
+    run: bash tools/reauth-runtime/build.sh
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    with:
+      name: sync-20261116-reauth-runtime-package-reauth-runtime-test-${{ inputs.sync_matrix_arch }}-${{ github.event.pull_request.head.sha
+        || github.sha }}
+      path: reauth-output/*.tar.gz
+      retention-days: 3

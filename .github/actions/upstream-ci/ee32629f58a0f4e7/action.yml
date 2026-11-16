@@ -1,0 +1,28 @@
+name: sync-20261116-issue715-agent-recovery-red
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Pinned original production with the same new regression
+    shell: bash
+    run: "set -euo pipefail\ngit rev-parse HEAD\noriginal=6df0cd5bb0ce4d774d34004008f9dd661d236468\nbash scripts/historical-recovery-timezone-callers.sh\n\
+      targets=(backend/internal/service/openai_codex_model_metadata.go backend/internal/service/openai_codex_models_service.go\
+      \ backend/internal/service/openai_excel_bps_models_manifest.go)\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
+      \ \"$original\"\ntrap 'git restore --source=HEAD -- \"${targets[@]}\" backend/internal/service/openai_request_timezone_egress.go\
+      \ backend/internal/service/openai_ws_client.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
+      ${targets[@]}\"\nfor target in \"${targets[@]}\"; do\n  expected=$(git rev-parse \"$original:$target\")\n  actual=$(git\
+      \ hash-object \"$target\")\n  echo \"baseline=$original path=$target expected_blob=$expected tested_blob=$actual\"\n\
+      \  test \"$expected\" = \"$actual\"\ndone\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n\
+      (cd backend && go test -tags=unit ./internal/service -run '^TestIssue715(BridgeDoesNotAdvertiseEncryptedAgent|FetchedAndPinnedBridgeCapabilities|LiveBridgeCapabilityCannotOverrideWire)$'\
+      \ -count=1 -v -timeout=10m) > \"$RUNNER_TEMP/issue715-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/issue715-red.log\"\
+      \ntest \"$result\" -ne 0\nif grep -Eq 'build failed|no tests to run|undefined:|panic:' \"$RUNNER_TEMP/issue715-red.log\"\
+      ; then exit 1; fi\ngrep -q -- '--- FAIL: TestIssue715BridgeDoesNotAdvertiseEncryptedAgent' \"$RUNNER_TEMP/issue715-red.log\"\
+      \ngrep -q 'bridge must not create unreadable encrypted tasks' \"$RUNNER_TEMP/issue715-red.log\"\ngrep -q -- '--- FAIL:\
+      \ TestIssue715FetchedAndPinnedBridgeCapabilities' \"$RUNNER_TEMP/issue715-red.log\"\ngrep -q 'bridge capability repair\
+      \ must invalidate the native ETag' \"$RUNNER_TEMP/issue715-red.log\"\ngrep -q -- '--- FAIL: TestIssue715LiveBridgeCapabilityCannotOverrideWire'\
+      \ \"$RUNNER_TEMP/issue715-red.log\"\ngrep -q 'live bridge manifest must not restore v2' \"$RUNNER_TEMP/issue715-red.log\"\
+      \n"

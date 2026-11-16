@@ -1,0 +1,103 @@
+name: sync-20261116-ws-tool-provenance-pending-deadline
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Validate named behavioral evidence gates
+    run: python3 -m unittest discover -s scripts -p 'test_issue871_evidence.py'
+    shell: bash
+  - name: Pending wait RED on exact baseline with identical candidate tests
+    shell: bash
+    run: 'set -euo pipefail
+
+      evidence_dir="$RUNNER_TEMP/ws-pending-evidence"
+
+      red_dir="$RUNNER_TEMP/ws-pending-red"
+
+      fixture=backend/internal/service/openai_ws_owner_conflict_test.go
+
+      mkdir -p "$evidence_dir"
+
+      test "$(git rev-parse HEAD)" = "$CANDIDATE"
+
+      test -z "$(git status --porcelain)"
+
+      git rev-parse HEAD HEAD^{tree} > "$evidence_dir/candidate.txt"
+
+      git rev-parse "$PENDING_BASELINE" "$PENDING_BASELINE^{tree}" > "$evidence_dir/baseline.txt"
+
+      git worktree add --detach "$red_dir" "$PENDING_BASELINE"
+
+      git show "$CANDIDATE:$fixture" > "$red_dir/$fixture"
+
+      test "$(git hash-object "$red_dir/$fixture")" = "$(git rev-parse "$CANDIDATE:$fixture")"
+
+      git rev-parse "$CANDIDATE:$fixture" > "$evidence_dir/fixture-blob.txt"
+
+      cp "$red_dir/$fixture" "$evidence_dir/pending_test.go"
+
+      git -C "$red_dir" diff --exit-code "$PENDING_BASELINE" -- . ":(exclude)$fixture"
+
+      git -C "$red_dir" diff --stat > "$evidence_dir/red-diff.txt"
+
+      git ls-tree -r "$PENDING_BASELINE" -- backend > "$evidence_dir/baseline-blobs.txt"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$red_dir/backend"
+
+      set +e
+
+      (cd "$red_dir/backend" && go test -tags=unit,ownerconflict ./internal/service -run ''^TestOpenAIToolProvenancePendingDeadline$/^function$/^pending_deadline$''
+      -count=1 -json -timeout=5m) > "$evidence_dir/red.jsonl" 2> "$evidence_dir/red.stderr"
+
+      status=$?
+
+      set -e
+
+      printf ''%s\n'' "$status" > "$evidence_dir/red-exit.txt"
+
+      python3 scripts/issue871-evidence.py RED "$status" "$evidence_dir/red.jsonl" "$evidence_dir/red.stderr" pending_deadline
+
+      test "$(git -C "$red_dir" rev-parse HEAD)" = "$PENDING_BASELINE"
+
+      git -C "$red_dir" diff --exit-code "$PENDING_BASELINE" -- . ":(exclude)$fixture"
+
+      '
+  - name: Pending wait GREEN and deterministic backend error controls with race detection
+    shell: bash
+    run: "set -euo pipefail\nevidence_dir=\"$RUNNER_TEMP/ws-pending-evidence\"\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\
+      \ntest -z \"$(git status --porcelain)\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n\
+      (cd backend && go test -race -tags=unit,ownerconflict ./internal/service -run '^TestOpenAIToolProvenancePendingDeadline$/^function$/^pending_deadline$'\
+      \ -count=1 -json -timeout=5m) > \"$evidence_dir/green.jsonl\" 2> \"$evidence_dir/green.stderr\"\nstatus=$?\nset -e\n\
+      printf '%s\\n' \"$status\" > \"$evidence_dir/green-exit.txt\"\npython3 scripts/issue871-evidence.py GREEN \"$status\"\
+      \ \"$evidence_dir/green.jsonl\" \"$evidence_dir/green.stderr\" pending_deadline\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ backend\n(cd backend && go test -race -tags=unit,ownerconflict ./internal/service -run '^TestOpenAIToolProvenancePendingDeadline$'\
+      \ -count=1 -json -timeout=5m) > \"$evidence_dir/controls.jsonl\" 2>&1\npython3 scripts/assert-readable-continuation.py\
+      \ --clean-log \"$evidence_dir/controls.jsonl\"\npython3 - \"$evidence_dir/controls.jsonl\" <<'PY'\nimport json,sys\n\
+      rows=[json.loads(line) for line in open(sys.argv[1]) if line.startswith('{')]\nfor kind in ('function','custom'):\n\
+      \    for case in ('pending_deadline','initial_deadline','initial_store_failure','initial_backend_deadline','pending_store_failure','pending_backend_deadline','pending_store_failure_at_deadline'):\n\
+      \        name=f'TestOpenAIToolProvenancePendingDeadline/{kind}/{case}'\n        assert sum(r.get('Action')=='pass' and\
+      \ r.get('Test')==name for r in rows)==1,name\nassert not any(r.get('Action') in ('fail','skip') for r in rows)\nPY\n"
+  - name: Build production server at exact candidate
+    working-directory: backend
+    shell: bash
+    run: 'set -euo pipefail
+
+      test "$(git rev-parse HEAD)" = "$CANDIDATE"
+
+      CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/ws-pending-server" ./cmd/server
+
+      sha256sum "$RUNNER_TEMP/ws-pending-server" > "$RUNNER_TEMP/ws-pending-evidence/server-sha256.txt"
+
+      test -z "$(git status --porcelain)"
+
+      '
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-ws-tool-provenance-pending-deadline-ws-pending-deadline-${{ github.event.pull_request.head.sha ||
+        github.sha }}
+      path: ${{ runner.temp }}/ws-pending-evidence

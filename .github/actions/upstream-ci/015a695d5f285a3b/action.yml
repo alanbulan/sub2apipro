@@ -1,0 +1,50 @@
+name: sync-20261116-mature-provider-session-repair-session
+description: Current upstream checks, retaining matrix parameters and regression assertions.
+inputs:
+  sync_matrix_phase:
+    description: Upstream matrix parameter phase.
+    required: true
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Bind candidate assertions and exact defective production blobs
+    run: "set -euo pipefail\nmkdir -p \"$RUNNER_TEMP/session-evidence\"\ntest \"$(git rev-parse HEAD)\" = '${{ github.sha\
+      \ }}'\ntest -z \"$(git status --porcelain)\"\ngit rev-parse HEAD HEAD^{tree} > \"$RUNNER_TEMP/session-evidence/candidate.txt\"\
+      \nsha256sum backend/internal/server/routes/repair_provider_session_budget_test.go backend/internal/server/routes/mature_providers_refresh_postgres_test.go\
+      \ > \"$RUNNER_TEMP/session-evidence/test-sha256.txt\"\nbaseline=ae7598867c9a9138f5f36ed7a67bc2fa97e48bad\ngit fetch\
+      \ --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git \"$baseline\"\nprintf '%s\\n' \"$baseline\" > \"$RUNNER_TEMP/session-evidence/baseline.txt\"\
+      \nfor path in backend/internal/service/mature_providers.go backend/internal/repository/mature_providers_session.go backend/internal/handler/admin/mature_provider_keys.go\
+      \ backend/internal/handler/admin/mature_provider_connection.go; do\n  if [ \"$PHASE\" = red ]; then\n    git show \"\
+      $baseline:$path\" > \"$path\"\n    test \"$(git hash-object \"$path\")\" = \"$(git rev-parse \"$baseline:$path\")\"\n\
+      \  fi\n  printf '%s %s\\n' \"$(git hash-object \"$path\")\" \"$path\" >> \"$RUNNER_TEMP/session-evidence/production-blobs.txt\"\
+      \ndone\n"
+    shell: bash
+  - name: Real Create handler PostgreSQL rotation and signed balance oracle
+    run: "set -euo pipefail\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n(cd backend && go test\
+      \ -tags=integration ./internal/server/routes -run '^TestMatureProvider(ImportRotationBudget|NegativeBalanceEpisodes)$'\
+      \ -parallel=12 -count=1 -json -timeout=4m) > \"$RUNNER_TEMP/session-evidence/test.jsonl\" 2>&1\nresult=$?\nset -e\n\
+      printf '%s\\n' \"$result\" > \"$RUNNER_TEMP/session-evidence/exit-code.txt\"\ncat \"$RUNNER_TEMP/session-evidence/test.jsonl\"\
+      \npython3 - <<'PY'\nimport json, os\nfrom pathlib import Path\np = Path(os.environ['RUNNER_TEMP']) / 'session-evidence'\n\
+      raw = (p / 'test.jsonl').read_text()\nevents = [json.loads(line) for line in raw.splitlines() if line.startswith('{')]\n\
+      outcomes = {e['Test']:e['Action'] for e in events if e.get('Test') and e['Action'] in ('pass','fail','skip')}\nassert\
+      \ not any(e['Action']=='skip' for e in events), 'No skipped evidence'\nassert not any(s in raw.lower() for s in ('build\
+      \ failed','no tests to run','undefined:','panic:')), 'Invalid fixture/build evidence'\nrejected = ['TestMatureProviderImportRotationBudget/'+auth+'/'+case\
+      \ for auth in ('refresh_only','401_renewal') for case in ('slow_pages','lock_wait','depleted_lock_budget')]\ncontrols\
+      \ = ['TestMatureProviderImportRotationBudget/'+auth+'/'+case for auth in ('refresh_only','401_renewal') for case in\
+      \ ('cancel','failure')]\nassert all(outcomes.get(c)=='pass' for c in controls), outcomes\nassert outcomes.get('TestMatureProviderNegativeBalanceEpisodes')=='pass',\
+      \ outcomes\nif os.environ['PHASE']=='red':\n    assert int((p/'exit-code.txt').read_text()) != 0\n    assert all(outcomes.get(c)=='fail'\
+      \ for c in rejected), outcomes\n    assert raw.count('rotation must survive slow pagination, lock wait, cancellation\
+      \ and remote failure in durable PG') >= 4\n    assert raw.count('budget guard must not consume a single-use credential\
+      \ after lock wait exhausted persistence reserve') >= 2\nelse:\n    assert int((p/'exit-code.txt').read_text()) == 0\n\
+      \    assert all(outcomes.get(c)=='pass' for c in rejected), outcomes\nPY\n"
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-mature-provider-session-repair-session-mature-provider-session-${{ inputs.sync_matrix_phase }}-${{
+        github.sha }}
+      path: ${{ runner.temp }}/session-evidence/

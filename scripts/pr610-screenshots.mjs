@@ -39,11 +39,8 @@ try {
   if(!text.includes(before?'1m 2s':'32.00s'))throw new Error('passthrough overlap assertion: '+text)
   if(!before){
    if(text.includes('1m 2s'))throw new Error('queue added twice')
-   for(const testId of ['content-timing-reasoning-first','content-timing-visible-text-first','content-timing-response-byte-first']){
-    if(await page.getByTestId(testId).count())throw new Error('retired content column returned: '+testId)
-   }
-   if(!text.includes('50.00s'))throw new Error('measured server duration lost: '+text)
-   if(await page.getByTestId('typed-content-timing').count() || await page.getByTestId('latency-e2e-uncollected').count())throw new Error('retired timing rows returned')
+   if(await page.getByTestId('typed-content-timing').count()!==2)throw new Error('typed content columns lost')
+   if(!(await page.getByTestId('latency-e2e-uncollected').first().getAttribute('title'))?.includes(lang==='en'?'none':'无'))throw new Error('client E2E source must remain none')
   }
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-table-${lang}-desktop.png`),fullPage:true,animations:'disabled'})
   await pass.getByRole('button',{name:lang==='en'?'Request timing details':'请求耗时详情'}).click()
@@ -54,10 +51,7 @@ try {
   const bounds=await dialog.boundingBox()
   if(!bounds||bounds.x<0||bounds.x+bounds.width>1441)throw new Error('dialog did not settle inside desktop viewport')
   const body=await dialog.innerText()
-  if(!before){
-   if(body.includes('62.00s')||body.includes('1m 2s')||!body.includes('32.00s')||!body.includes('50.00s')||!body.includes(lang==='en'?'Server TTFT':'服务端首字'))throw new Error('dialog server timing label/value lost')
-   if(body.includes(lang==='en'?'Pre-forward wait (queue + failed attempts)':'转发前等待（排队 + 失败尝试）'))throw new Error('retired pre-forward wait summary returned')
-  }
+  if(!before && ((body.includes('62.00s')||body.includes('1m 2s'))||!body.includes(lang==='en'?'Server TTFT (including pre-forward wait)':'服务端首字（含转发前等待）')))throw new Error('dialog server timing label/value lost')
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-dialog-${lang}-desktop.png`),fullPage:true,animations:'disabled'})
   await page.setViewportSize({width:390,height:844})
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-dialog-${lang}-mobile.png`),fullPage:true,animations:'disabled'})

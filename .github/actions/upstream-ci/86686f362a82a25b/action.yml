@@ -1,0 +1,161 @@
+name: sync-20261116-issue733-priority-filters-backend
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Review F3 bounded readers checkpoint behavioral RED
+    shell: bash
+    run: "set -euo pipefail\nmkdir -p \"$RUNNER_TEMP/filters-pg\"\ndefect=e395038e98fbc5a0c44944f0edcfbfe714570f71\ngit fetch\
+      \ origin \"$defect\"\ngit worktree add --detach \"$RUNNER_TEMP/analysis-budget-red\" \"$defect\"\nfor file in backend/internal/service/priority_analysis.go\
+      \ backend/internal/service/openai_gateway_service.go backend/internal/handler/admin/priority_scheduling_handler.go backend/internal/repository/account_repo.go\
+      \ backend/internal/repository/priority_scheduling.go backend/internal/repository/priority_latency_series.go; do\n  expected=$(git\
+      \ rev-parse \"$defect:$file\")\n  actual=$(git hash-object \"$RUNNER_TEMP/analysis-budget-red/$file\")\n  test \"$actual\"\
+      \ = \"$expected\"\n  echo \"$file $expected $actual\" >> \"$RUNNER_TEMP/filters-pg/followup-red-blobs.txt\"\ndone\n\
+      regression=backend/internal/service/priority_analysis_admission_regression_test.go\ngit show d79c1044914e7924c38cc4a239e42ff8980698e6:\"\
+      $regression\" > \"$RUNNER_TEMP/analysis-budget-red/$regression\"\ngit show d79c1044914e7924c38cc4a239e42ff8980698e6:\"\
+      $regression\" | cmp - \"$RUNNER_TEMP/analysis-budget-red/$regression\"\ngit hash-object \"$RUNNER_TEMP/analysis-budget-red/$regression\"\
+      \ >> \"$RUNNER_TEMP/filters-pg/followup-red-blobs.txt\"\ngit rev-parse HEAD >> \"$RUNNER_TEMP/filters-pg/followup-red-blobs.txt\"\
+      \npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$RUNNER_TEMP/analysis-budget-red/backend\"\nset +e\n(cd\
+      \ \"$RUNNER_TEMP/analysis-budget-red/backend\" && go test -tags=unit ./internal/service -run '^TestPriorityAnalysisConcurrentScopesHaveBoundedSQLReaders$'\
+      \ -count=1 -v -timeout=5m) > \"$RUNNER_TEMP/filters-pg/followup-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/filters-pg/followup-red.log\"\
+      \ntest \"$result\" -ne 0\ngrep -q -- '--- FAIL: TestPriorityAnalysisConcurrentScopesHaveBoundedSQLReaders' \"$RUNNER_TEMP/filters-pg/followup-red.log\"\
+      \ngrep -q -- 'diagnostic SQL readers must never exceed two active scopes' \"$RUNNER_TEMP/filters-pg/followup-red.log\"\
+      \n! grep -Eq 'build failed|undefined:|no tests to run|panic:|--- SKIP' \"$RUNNER_TEMP/filters-pg/followup-red.log\"\n"
+  - name: Fixed mapped-catalog error-cache behavioral RED
+    shell: bash
+    run: 'set -euo pipefail
+
+      mkdir -p "$RUNNER_TEMP/filters-pg"
+
+      git fetch origin 82e27a58c9b49c42c0afc6aa22ee8b536e5a2958
+
+      git worktree add --detach "$RUNNER_TEMP/filters-mapping-baseline" 82e27a58c9b49c42c0afc6aa22ee8b536e5a2958
+
+      cp backend/internal/service/priority_analysis_channel_regression_test.go "$RUNNER_TEMP/filters-mapping-baseline/backend/internal/service/"
+
+      git show 82e27a58c9b49c42c0afc6aa22ee8b536e5a2958:backend/internal/service/priority_analysis.go > "$RUNNER_TEMP/filters-pg/mapping-baseline.go"
+
+      cmp "$RUNNER_TEMP/filters-pg/mapping-baseline.go" "$RUNNER_TEMP/filters-mapping-baseline/backend/internal/service/priority_analysis.go"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$RUNNER_TEMP/filters-mapping-baseline/backend"
+
+      set +e
+
+      (cd "$RUNNER_TEMP/filters-mapping-baseline/backend" && go test -tags=unit ./internal/service -run ''^TestPriorityAnalysisMappingErrorCannotBecomeEmptySuccess$''
+      -count=1 -v -timeout=5m) > "$RUNNER_TEMP/filters-pg/mapping-red.log" 2>&1
+
+      result=$?
+
+      set -e
+
+      cat "$RUNNER_TEMP/filters-pg/mapping-red.log"
+
+      test "$result" -ne 0
+
+      grep -q -- ''--- FAIL: TestPriorityAnalysisMappingErrorCannotBecomeEmptySuccess'' "$RUNNER_TEMP/filters-pg/mapping-red.log"
+
+      grep -q -- ''a failed mapping read must never become an empty successful catalog'' "$RUNNER_TEMP/filters-pg/mapping-red.log"
+
+      ! grep -Eq ''build failed|undefined:|no tests to run|panic:'' "$RUNNER_TEMP/filters-pg/mapping-red.log"
+
+      '
+  - name: Fixed composite-alias behavioral RED
+    shell: bash
+    run: 'set -euo pipefail
+
+      git fetch origin 256266c405ebceb4198576da08a3fbf0aa69c493
+
+      git worktree add --detach "$RUNNER_TEMP/filters-platform-baseline" 256266c405ebceb4198576da08a3fbf0aa69c493
+
+      cp backend/internal/service/priority_analysis_platform_test.go "$RUNNER_TEMP/filters-platform-baseline/backend/internal/service/"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$RUNNER_TEMP/filters-platform-baseline/backend"
+
+      set +e
+
+      (cd "$RUNNER_TEMP/filters-platform-baseline/backend" && go test -tags=unit ./internal/service -run ''^TestPriorityAnalysisCompositeAliasStaysInOpenAIScope$''
+      -count=1 -v -timeout=5m) > "$RUNNER_TEMP/filters-pg/platform-red.log" 2>&1
+
+      result=$?
+
+      set -e
+
+      cat "$RUNNER_TEMP/filters-pg/platform-red.log"
+
+      test "$result" -ne 0
+
+      grep -q -- ''--- FAIL: TestPriorityAnalysisCompositeAliasStaysInOpenAIScope'' "$RUNNER_TEMP/filters-pg/platform-red.log"
+
+      grep -q -- ''OpenAI analysis must not resolve an Anthropic alias'' "$RUNNER_TEMP/filters-pg/platform-red.log"
+
+      ! grep -Eq ''build failed|undefined:|no tests to run|panic:'' "$RUNNER_TEMP/filters-pg/platform-red.log"
+
+      '
+  - name: Real adapters and read-only scope unit regressions
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      (cd backend && go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run ''^(TestPriorityAnalysis|TestPriorityRecompute|TestPriorityLatencySeries|TestPriorityCacheWeight)''
+      -count=1 -v -timeout=10m) 2>&1 | tee "$RUNNER_TEMP/filters-pg/unit-green.log"
+
+      '
+    shell: bash
+  - name: Fixed baseline real PostgreSQL upper-bound RED
+    shell: bash
+    run: 'set -euo pipefail
+
+      mkdir -p "$RUNNER_TEMP/filters-pg"
+
+      git fetch origin 8a203b43231c1192cee17f854633a23308d73e7e
+
+      git worktree add --detach "$RUNNER_TEMP/filters-pg-baseline" 8a203b43231c1192cee17f854633a23308d73e7e
+
+      cp backend/internal/repository/priority_analysis_window_integration_test.go "$RUNNER_TEMP/filters-pg-baseline/backend/internal/repository/"
+
+      git show 8a203b43231c1192cee17f854633a23308d73e7e:backend/internal/repository/priority_latency_series.go > "$RUNNER_TEMP/filters-pg/baseline.go"
+
+      cmp "$RUNNER_TEMP/filters-pg/baseline.go" "$RUNNER_TEMP/filters-pg-baseline/backend/internal/repository/priority_latency_series.go"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$RUNNER_TEMP/filters-pg-baseline/backend"
+
+      set +e
+
+      (cd "$RUNNER_TEMP/filters-pg-baseline/backend" && go test -tags=integration ./internal/repository -run ''^TestPriorityAnalysisLatencyCapturedUpperBound$''
+      -count=1 -v -timeout=10m) > "$RUNNER_TEMP/filters-pg/red.log" 2>&1
+
+      result=$?
+
+      set -e
+
+      cat "$RUNNER_TEMP/filters-pg/red.log"
+
+      test "$result" -ne 0
+
+      grep -q -- ''--- FAIL: TestPriorityAnalysisLatencyCapturedUpperBound'' "$RUNNER_TEMP/filters-pg/red.log"
+
+      grep -q -- ''analysis latency must honor the captured window end'' "$RUNNER_TEMP/filters-pg/red.log"
+
+      ! grep -Eq ''build failed|undefined:|no tests to run|panic:'' "$RUNNER_TEMP/filters-pg/red.log"
+
+      '
+  - name: Real PostgreSQL scope regressions
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      (cd backend && go test -tags=integration ./internal/repository -run ''^TestPriorityAnalysis'' -count=1 -v -timeout=10m)
+      2>&1 | tee "$RUNNER_TEMP/filters-pg/green.log"
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-issue733-priority-filters-backend-issue733-pg-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: ${{ runner.temp }}/filters-pg

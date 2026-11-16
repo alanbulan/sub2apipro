@@ -59,14 +59,7 @@ try {
   for (const lang of ['en','zh']) {
     await page.goto(`http://127.0.0.1:4193/admin/usage?lang=${lang}`,{waitUntil:'networkidle'})
     await page.getByText('synthetic-model',{exact:true}).first().waitFor()
-    if (!before) {
-      // Current upstream exposes observations in a dedicated latency tab.
-      await page.getByTestId('usage-detail-tab').last().click()
-      await page.getByTestId('latency-observability').waitFor()
-      await page.getByTestId('latency-group').waitFor()
-      if(!(await page.getByTestId('latency-group').innerText()).includes('synthetic-model'))throw new Error('latency observation missing')
-      if(await page.getByTestId('latency-e2e').count())throw new Error('uncollected client timing row returned')
-    }
+    if (!before) { await page.getByTestId('latency-observability').waitFor();await page.getByTestId('latency-group').waitFor();if(!(await page.getByTestId('latency-e2e').innerText()).includes(lang==='en'?'Source: none':'来源：无'))throw new Error('missing explicit E2E source') }
     await page.screenshot({path:path.join(output,`${before?'before':'after'}-usage-${lang}-desktop.png`),fullPage:true})
     await page.setViewportSize({width:390,height:844})
     await page.screenshot({path:path.join(output,`${before?'before':'after'}-usage-${lang}-mobile.png`),fullPage:true})

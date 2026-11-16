@@ -1,0 +1,36 @@
+name: sync-20261116-backend-ci-release-helpers
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Assert exact candidate head
+    run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+    shell: bash
+  - uses: actions/setup-python@v6
+    with:
+      python-version: '3.12'
+  - run: python -m pip install -r .github/release-tools/requirements-release.txt
+    shell: bash
+  - run: python -m unittest discover -s .github/release-tools -p 'test_release_matrix.py'
+    shell: bash
+  - run: bash -n .github/release-tools/release-images.sh
+    shell: bash
+  - run: bash -n deploy/upgrade-k3s.sh
+    shell: bash
+  - run: python -m unittest discover -s deploy/tests -p 'test_upgrade_k3s.py'
+    shell: bash
+  - name: Install checksum-pinned Kustomize for offline gateway rendering
+    run: "mkdir -p \"$RUNNER_TEMP/sub2api-kustomize\"\ncurl --fail --show-error --silent --location \\\n  https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.7.1/kustomize_v5.7.1_linux_amd64.tar.gz\
+      \ \\\n  --output \"$RUNNER_TEMP/sub2api-kustomize/kustomize.tar.gz\"\nprintf '%s  %s\\n' 'ea375e7372f9aa029129d4b2d16c66b7750b7f1213c4f66f910d981c895818d8'\
+      \ \\\n  \"$RUNNER_TEMP/sub2api-kustomize/kustomize.tar.gz\" | sha256sum --check -\ntar -xzf \"$RUNNER_TEMP/sub2api-kustomize/kustomize.tar.gz\"\
+      \ -C \"$RUNNER_TEMP/sub2api-kustomize\" kustomize\necho \"$RUNNER_TEMP/sub2api-kustomize\" >> \"$GITHUB_PATH\"\n"
+    shell: bash
+  - run: python -m unittest discover -s deploy/tests -p 'test_gateway_render*.py'
+    shell: bash
+  - name: Offline multi-host contract checks
+    run: python -m unittest discover -s deploy/tests -p 'test_multihost_preflight.py'
+    shell: bash
+  - run: python -m unittest discover -s deploy/tests -p 'test_migrate_reauth_managed.py'
+    shell: bash
+  - run: python -m unittest discover -s deploy/connection-diagnostics -p 'test_collect.py'
+    shell: bash

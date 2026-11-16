@@ -1,0 +1,31 @@
+name: sync-20261116-quality-retest-rest-storage
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Validation and reusable inputs
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=unit ./internal/service -run ''^TestQualityRetestRest'' -count=1 -v'
+    shell: bash
+  - name: Durable deadlines and all claim sources on isolated PostgreSQL
+    shell: bash
+    env:
+      CI: 'true'
+    run: "set -euo pipefail\nmkdir -p evidence\ngit rev-parse HEAD > evidence/head.txt\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ backend\n(cd backend && go test -tags=integration ./internal/repository -run '^TestQualityRetestRest' -count=1 -v\
+      \ -timeout=15m) 2>&1 | tee evidence/storage.log\nif grep -Eq -- '--- SKIP:|no tests to run' evidence/storage.log; then\
+      \ exit 1; fi\nfor name in BlocksEveryClaimUntilDeadline UnknownDoesNotExtendAndZeroKeepsSchedule UsesIndependentModelVerdicts\
+      \ LegacyModelCooldown; do\n  grep -F -- \"--- PASS: TestQualityRetestRest$name\" evidence/storage.log\ndone\n"
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-quality-retest-rest-storage-quality-retest-rest-storage-${{ github.event.pull_request.head.sha ||
+        github.sha }}
+      path: evidence/
+      if-no-files-found: error

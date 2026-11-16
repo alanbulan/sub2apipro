@@ -1,0 +1,25 @@
+name: sync-20261116-backend-ci-frontend
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Assert exact candidate head
+    run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+    shell: bash
+  - name: Setup pnpm
+    uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - name: Setup Node.js
+    uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - name: Install frontend dependencies
+    working-directory: frontend
+    run: pnpm install --frozen-lockfile
+    shell: bash
+  - name: Frontend typecheck and critical vitest
+    run: make test-frontend
+    shell: bash

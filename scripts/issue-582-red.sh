@@ -16,6 +16,7 @@ trap 'git restore --source=HEAD -- "${targets[@]}"' EXIT
 for target in "${targets[@]}"; do
   git show "$baseline:$target" > "$target"
 done
+python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
 set +e
 (cd backend && go test -tags=integration ./internal/repository -run '^TestIssue582(SnapshotMemberUpdate|SingleUseSessions|FixedWindow|PasskeyTake)$|^TestUserMsgQueueCacheSuite$' -count=1 -v) > "$log" 2>&1
 result=$?

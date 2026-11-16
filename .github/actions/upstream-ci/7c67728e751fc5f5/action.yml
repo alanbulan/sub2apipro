@@ -1,0 +1,103 @@
+name: sync-20261116-oauth-degradation-actions-integration-race
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Use Ubuntu HTTPS mirror for CI dependencies
+    run: 'bash "${GITHUB_WORKSPACE}/candidate/scripts/ci-ubuntu-mirrors.sh"
+
+      '
+    shell: bash
+  - uses: actions/checkout@v6
+    with:
+      ref: 1411d0fc6e1fca51d4b657c21837cd74c87bf84e
+      path: baseline
+  - uses: actions/checkout@v6
+    with:
+      ref: cf1612fb550404d5a468d9d7114dea4efd6e62cd
+      path: reviewed
+  - uses: actions/checkout@v6
+    with:
+      ref: fb75b87cebe8314d9eba171948367451511f9417
+      path: historical-fixtures
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: candidate/backend/go.sum
+      go-version: 1.27.4
+  - name: Record exact sources and remote toolchain
+    shell: bash
+    run: "set -euo pipefail\nmkdir -p evidence\ngit -C candidate rev-parse HEAD > evidence/candidate-head.txt\ngit -C baseline\
+      \ rev-parse HEAD > evidence/baseline-head.txt\ngit -C reviewed rev-parse HEAD > evidence/reviewed-head.txt\ngit -C historical-fixtures\
+      \ rev-parse HEAD > evidence/historical-fixtures-head.txt\ngo version > evidence/toolchain.txt\ngo env GOOS GOARCH CGO_ENABLED\
+      \ GOFLAGS >> evidence/toolchain.txt\nuname -a > evidence/kernel.txt\ndocker version > evidence/docker.txt\ndocker info\
+      \ > evidence/docker-info.txt\nif ! command -v gdb >/dev/null; then\n  bash \"${GITHUB_WORKSPACE}/candidate/scripts/ci-ubuntu-mirrors.sh\"\
+      \n  sudo apt-get update\n  sudo apt-get install -y --no-install-recommends gdb\nfi\nbash -n candidate/scripts/oauth-degradation-integration-race.sh\n\
+      gofmt -d candidate/backend/internal/repository/oauth_degradation_chain_integration_test.go candidate/backend/internal/repository/oauth_degradation_race_integration_test.go\
+      \ > evidence/gofmt.diff\ntest ! -s evidence/gofmt.diff\n"
+  - name: New full-chain regression on isolated production checkout (behavioral RED)
+    shell: bash
+    run: 'set -euo pipefail
+
+      cp historical-fixtures/backend/internal/repository/oauth_degradation_chain_integration_test.go baseline/backend/internal/repository/
+
+      set +e
+
+      bash candidate/scripts/oauth-degradation-integration-race.sh chain-red "$GITHUB_WORKSPACE/baseline" ''^TestOAuthDegradationOutboxSchedulerChain$''
+      10m
+
+      result=$?
+
+      set -e
+
+      cat evidence/chain-red.log
+
+      printf ''%s\n'' "$result" > evidence/chain-red-exit.txt
+
+      test "$result" -ne 0
+
+      ! grep -Eq -- ''build failed|setup failed|undefined:|syntax error:|no tests to run|panic:|signal:|SIGSEGV|fatal error:|WARNING:
+      DATA RACE|--- SKIP:'' evidence/chain-red.log
+
+      grep -F ''real degradation worker must commit treatment before cache compensation'' evidence/chain-red.log
+
+      grep -F -- ''--- FAIL: TestOAuthDegradationOutboxSchedulerChain'' evidence/chain-red.log
+
+      '
+  - name: Reviewed implementation control (coverage gap versus new defect)
+    shell: bash
+    run: 'set -euo pipefail
+
+      cp historical-fixtures/backend/internal/repository/oauth_degradation_chain_integration_test.go historical-fixtures/backend/internal/repository/oauth_degradation_race_integration_test.go
+      reviewed/backend/internal/repository/
+
+      bash candidate/scripts/oauth-degradation-integration-race.sh reviewed-integration-race "$GITHUB_WORKSPACE/reviewed"
+      ''^TestOAuthDegradationOutboxSchedulerChain$|^TestOAuthDegradationDeterministic|^TestOAuthDegradationTransactionFailures$''
+      15m
+
+      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/reviewed-integration-race.log
+
+      '
+  - name: Exact head real PostgreSQL Redis evaluator outbox and scheduler race GREEN
+    shell: bash
+    run: 'set -euo pipefail
+
+      (cd candidate/backend && go list -deps -test -race -tags=integration ./internal/repository) > evidence/instrumented-dependencies.txt
+
+      bash candidate/scripts/oauth-degradation-integration-race.sh integration-race "$GITHUB_WORKSPACE/candidate" ''^TestOAuthDegradation|^TestAutoConfigConcurrent|^TestAccountPerformancePostgres|^TestAstraGroups|^TestAstraSchedulingModes|^TestOpenAITwoFAAdmission|^TestQualityActionsRestore|^TestQualityIsolation|^TestQualityBPSAndQuarantineCoexist|^TestQualityCoexist''
+      15m
+
+      bash candidate/scripts/oauth-degradation-integration-race.sh timezone-integration-race "$GITHUB_WORKSPACE/candidate"
+      ''^TestGroupUsage|^TestUsageTrendAggregateTimezoneRealBuckets$|^TestUsageLogRolling24HoursHalfOpenBoundaries$|^TestPelicanGroupTestRepo_CostsSurviveRetentionAndPlanDeletion$''
+      15m
+
+      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/timezone-integration-race.log
+
+      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/integration-race.log
+
+      '
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-oauth-degradation-actions-integration-race-oauth-degradation-integration-race-${{ github.run_id
+        }}-${{ github.run_attempt }}
+      path: evidence/

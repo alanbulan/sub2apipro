@@ -1,0 +1,40 @@
+name: sync-20261116-http-task-rebuild-review-counterexamples
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Install isolated Redis fixture
+    run: "bash \"${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh\"\nif ! command -v redis-server >/dev/null; then\n  bash\
+      \ \"${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh\"\n  sudo apt-get update\n  sudo apt-get install -y --no-install-recommends\
+      \ redis-server\nfi\n"
+    shell: bash
+  - name: Reproduce concrete HTTP review failures in disposable baseline
+    shell: bash
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE_SHA\"\ntest -z \"$(git status --porcelain)\"\n\
+      mkdir -p \"$RUNNER_TEMP/http-review-red-evidence\"\ngit rev-parse HEAD \"$REVIEW_BASELINE\" > \"$RUNNER_TEMP/http-review-red-evidence/provenance.txt\"\
+      \ngit worktree add --detach \"$RUNNER_TEMP/http-review-red\" \"$CANDIDATE_SHA\"\ncd \"$RUNNER_TEMP/http-review-red\"\
+      \nwhile IFS= read -r target; do\n  case \"$target\" in *_test.go) continue ;; esac\n  if git cat-file -e \"$REVIEW_BASELINE:$target\"\
+      \ 2>/dev/null; then\n    mkdir -p -- \"$(dirname -- \"$target\")\"\n    git show \"$REVIEW_BASELINE:$target\" > \"$target\"\
+      \n    git add -N -- \"$target\"\n  else\n    rm -- \"$target\"\n  fi\ndone < <(git diff --no-renames --name-only \"\
+      $REVIEW_BASELINE\" \"$CANDIDATE_SHA\" -- 'backend/**/*.go')\ngit diff --exit-code \"$REVIEW_BASELINE\" -- 'backend/**/*.go'\
+      \ ':!backend/**/*_test.go'\ngit diff --exit-code \"$CANDIDATE_SHA\" -- 'backend/**/*_test.go'\nbash \"$GITHUB_WORKSPACE/scripts/exclude-later-400-red-fixtures.sh\"\
+      \ \"$REVIEW_BASELINE\"\nbash \"$GITHUB_WORKSPACE/scripts/exclude-later-http2-red-fixtures.sh\" \"$REVIEW_BASELINE\"\n\
+      bash \"$GITHUB_WORKSPACE/scripts/prepare-replay-red-fixtures.sh\" \"$REVIEW_BASELINE\" . \"$CANDIDATE_SHA\" | tee \"\
+      $RUNNER_TEMP/http-review-red-evidence/replay-fixtures.txt\"\nbash \"$GITHUB_WORKSPACE/scripts/prepare-moderation-red-fixtures.sh\"\
+      \ \"$REVIEW_BASELINE\" . \"$CANDIDATE_SHA\" | tee \"$RUNNER_TEMP/http-review-red-evidence/moderation-fixtures.txt\"\n\
+      for suite in pointer-waiver normalization; do\n  test_name=TestOpenAI409HTTPUnownedPointerMustDetach\n  if [ \"$suite\"\
+      \ = normalization ]; then test_name=TestOpenAI409HTTPControlNormalization; fi\n  python3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ backend\n  set +e\n  (cd backend && go test -race -json -tags=unit ./internal/handler -run \"^$test_name$\" -count=1\
+      \ -timeout=5m) > \"$RUNNER_TEMP/http-review-red-evidence/$suite.jsonl\" 2>&1\n  result=$?\n  set -e\n  cat \"$RUNNER_TEMP/http-review-red-evidence/$suite.jsonl\"\
+      \n  python3 \"$GITHUB_WORKSPACE/scripts/assert-http-task-rebuild.py\" RED \"$result\" \"$RUNNER_TEMP/http-review-red-evidence/$suite.jsonl\"\
+      \ \"--$suite\"\ndone\n"
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-http-task-rebuild-review-counterexamples-http-review-counterexamples-${{ env.CANDIDATE_SHA }}
+      path: ${{ runner.temp }}/http-review-red-evidence/
+      if-no-files-found: error

@@ -1,0 +1,17 @@
+name: sync-20261116-backend-ci-prism-adapter
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Assert exact candidate head
+    run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+    shell: bash
+  - uses: actions/setup-python@v6
+    with:
+      python-version: '3.12'
+  - name: Install adapter wheels
+    run: 'python -m pip install --only-binary=:all: -r prism-adapter/requirements.txt'
+    shell: bash
+  - name: Run offline adapter and cache tests
+    run: python -m unittest discover -s prism-adapter -p 'test_*.py' -v
+    shell: bash

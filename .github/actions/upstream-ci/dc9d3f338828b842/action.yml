@@ -1,0 +1,74 @@
+name: sync-20261116-issue605-p1-repair-intended-red
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Exact defective production sources and candidate tests
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD\"\nmkdir -p \"$RUNNER_TEMP/issue605-p1-red\"\
+      \ngit rev-parse HEAD > \"$RUNNER_TEMP/issue605-p1-red/test-head.txt\"\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
+      \ \"$DEFECTIVE_HEAD\"\ngit worktree add --detach \"$RUNNER_TEMP/issue605-p1-source\" \"$DEFECTIVE_HEAD\"\nfor path in\
+      \ \\\n  backend/internal/service/openai_ws_smart_protocol_network_test.go \\\n  backend/internal/service/openai_ws_passthrough_partial_usage_test.go\
+      \ \\\n  backend/internal/repository/issue605_passthrough_partial_billing_integration_test.go; do\n  cp \"$path\" \"\
+      $RUNNER_TEMP/issue605-p1-source/$path\"\ndone\ngit -C \"$RUNNER_TEMP/issue605-p1-source\" rev-parse HEAD > \"$RUNNER_TEMP/issue605-p1-red/source-head.txt\"\
+      \ngit -C \"$RUNNER_TEMP/issue605-p1-source\" diff --exit-code -- '*.go' ':!**/*_test.go'\nfor path in backend/internal/service/openai_ws_v2/passthrough_relay.go\
+      \ backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/handler/openai_gateway_handler.go; do\n\
+      \  test \"$(git -C \"$RUNNER_TEMP/issue605-p1-source\" hash-object \"$path\")\" = \"$(git rev-parse \"$DEFECTIVE_HEAD:$path\"\
+      )\"\n  git -C \"$RUNNER_TEMP/issue605-p1-source\" hash-object \"$path\" >> \"$RUNNER_TEMP/issue605-p1-red/production-blobs.txt\"\
+      \ndone\n"
+    shell: bash
+  - name: RED actual service must lose authoritative current-turn result
+    working-directory: ${{ runner.temp }}/issue605-p1-source/backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      set +e
+
+      go test -race -tags=unit ./internal/service -run ''^TestSmartProtocolPassthroughPartialUsage$'' -count=1 -timeout=10m
+      -json > "$RUNNER_TEMP/issue605-p1-red/service.jsonl" 2>&1
+
+      result=$?
+
+      printf ''%s\n'' "$result" > "$RUNNER_TEMP/issue605-p1-red/service-exit.txt"
+
+      test "$result" -ne 0
+
+      '
+    shell: bash
+  - name: RED authenticated handler PG Redis must miss observed settlement
+    if: ${{ !cancelled() }}
+    working-directory: ${{ runner.temp }}/issue605-p1-source/backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      set +e
+
+      go test -race -tags=integration ./internal/repository -run ''^TestSmartProtocolPassthroughPartialBilling$'' -count=1
+      -timeout=10m -json > "$RUNNER_TEMP/issue605-p1-red/integration.jsonl" 2>&1
+
+      result=$?
+
+      printf ''%s\n'' "$result" > "$RUNNER_TEMP/issue605-p1-red/integration-exit.txt"
+
+      test "$result" -ne 0
+
+      '
+    shell: bash
+  - name: Require intended behavioral RED and whitelist evidence
+    if: always()
+    run: timeout 120s python3 scripts/issue605-p1-proof.py red "$RUNNER_TEMP/issue605-p1-red"
+    shell: bash
+  - uses: actions/upload-artifact@v6
+    if: always()
+    with:
+      name: sync-20261116-issue605-p1-repair-intended-red-issue605-p1-red-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: '${{ runner.temp }}/issue605-p1-red/*.txt
+
+        ${{ runner.temp }}/issue605-p1-red/summary.json
+
+        ${{ runner.temp }}/issue605-p1-red/whitelist.jsonl
+
+        '
+      if-no-files-found: error

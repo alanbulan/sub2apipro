@@ -1,0 +1,76 @@
+name: sync-20261116-openai-multi-auth-lease-proof-red
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Lease takeover service RED on dd0a7fb5a
+    env:
+      CI: 'true'
+    run: 'set -euo pipefail
+
+      baseline="$RUNNER_TEMP/issue594-lease-baseline"
+
+      mkdir "$baseline"
+
+      git archive dd0a7fb5a44bf1db881bd13f45a22a1238849384 | tar -x -C "$baseline"
+
+      cp backend/internal/repository/openai_auth_connections_lease_takeover_integration_test.go "$baseline/backend/internal/repository/"
+
+      cp backend/internal/service/openai_auth_connection_egress_export_test.go backend/internal/service/openai_auth_connection_siwc_boundary_integration_test.go
+      "$baseline/backend/internal/service/"
+
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$baseline/backend"
+
+      set +e
+
+      (cd "$baseline/backend" && go test -race -tags=integration ./internal/repository -run ''^TestIssue594LeaseTakeoverCannotAdoptAnotherOwnersProof$''
+      -count=1 -v) > "$RUNNER_TEMP/issue594-lease-proof-red.log" 2>&1
+
+      result=$?
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$baseline/backend"
+
+      (cd "$baseline/backend" && go test -race -tags=integration ./internal/service -run ''^TestIssue594SIWCFinalEgress''
+      -count=1 -v) > "$RUNNER_TEMP/issue594-siwc-boundary-red.log" 2>&1
+
+      siwc_result=$?
+
+      set -e
+
+      cat "$RUNNER_TEMP/issue594-siwc-boundary-red.log"
+
+      test "$siwc_result" -ne 0
+
+      ! grep -E ''build failed|setup failed|undefined:|syntax error:|no tests to run|panic:'' "$RUNNER_TEMP/issue594-siwc-boundary-red.log"
+
+      grep -F -- ''--- FAIL: TestIssue594SIWCFinalEgress'' "$RUNNER_TEMP/issue594-siwc-boundary-red.log"
+
+      cat "$RUNNER_TEMP/issue594-lease-proof-red.log"
+
+      test "$result" -ne 0
+
+      ! grep -E ''build failed|setup failed|undefined:|syntax error:|no tests to run|panic:'' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+
+      grep -F -- ''--- FAIL: TestIssue594LeaseTakeoverCannotAdoptAnotherOwnersProof'' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+
+      ! grep -E ''Messages:.*must exercise A lease'' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+
+      grep -F ''a stolen lease snapshot cannot authorize an OAuth network operation'' "$RUNNER_TEMP/issue594-lease-proof-red.log"
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v6
+    if: always()
+    with:
+      name: sync-20261116-openai-multi-auth-lease-proof-red-issue594-lease-proof-red-${{ github.event_name }}-${{ github.event.pull_request.head.sha
+        || github.sha }}
+      path: '${{ runner.temp }}/issue594-lease-proof-red.log
+
+        ${{ runner.temp }}/issue594-siwc-boundary-red.log
+
+        '

@@ -1,0 +1,91 @@
+name: sync-20261116-openai-connection-account-type-regression-backend
+description: Current upstream checks, retaining matrix parameters and regression assertions.
+inputs:
+  sync_matrix_mode:
+    description: Upstream matrix parameter mode.
+    required: true
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Prove source identity and keep head tests
+    env:
+      MODE: ${{ inputs.sync_matrix_mode }}
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD\"\ngit diff --exit-code HEAD\nmkdir -p \"$RUNNER_TEMP/connection-proof\"\
+      \nif [ \"$MODE\" = red ]; then\n  git restore --source=\"$BASELINE\" --worktree -- \\\n    backend/internal/service/openai_auth_connections.go\
+      \ \\\n    backend/internal/service/openai_auth_connection_oauth.go \\\n    backend/internal/service/openai_auth_connection_legacy.go\
+      \ \\\n    backend/internal/service/openai_auth_connection_routing.go\n  # The new status endpoint compiles with a management\
+      \ helper absent\n  # from this old baseline. Retain that exact helper only: the restored\n  # List/Create methods still\
+      \ run their historical account-type logic.\n  python3 - <<'PYCODE'\nimport pathlib, re, subprocess\nsource = subprocess.check_output(['git',\
+      \ 'show', 'HEAD:backend/internal/service/openai_auth_connections.go'], text=True)\nhelper = re.search(r'func \\(s \\\
+      *OpenAIOAuthReauthService\\) managementConnectionAccount\\(.*?\\n\\}', source, re.S)\nassert helper is not None\ntarget\
+      \ = pathlib.Path('backend/internal/service/connection_type_red_compat.go')\nassert not target.exists()\ntarget.write_text('package\
+      \ service\\nimport (\"context\"; infraerrors \"github.com/Wei-Shaw/sub2api/internal/pkg/errors\")\\n' + helper.group(0)\
+      \ + '\\n')\nPYCODE\nfi\ngit rev-parse HEAD | tee \"$RUNNER_TEMP/connection-proof/head.txt\"\ngit diff --name-only |\
+      \ tee \"$RUNNER_TEMP/connection-proof/restored-paths.txt\"\ngit diff --exit-code HEAD -- '*test.go'\ngit hash-object\
+      \ backend/internal/service/openai_auth_connections.go | tee \"$RUNNER_TEMP/connection-proof/source-blob.txt\"\nif [\
+      \ \"$MODE\" = red ]; then\n  test \"$(git hash-object backend/internal/service/openai_auth_connections.go)\" = \"$(git\
+      \ rev-parse \"$BASELINE:backend/internal/service/openai_auth_connections.go\")\"\nfi\n"
+    shell: bash
+  - name: Baseline must fail the intended service and HTTP assertions
+    if: matrix.mode == 'red'
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      set +e
+
+      (cd backend && go test -tags=unit ./internal/service -run ''^(TestOpenAIConnectionManagementRejectsAPIKey|TestOpenAIConnectionCreationRejectsMixedCredentials)$/(list|api_key)$''
+      -count=1 -json -timeout=20m) > "$RUNNER_TEMP/connection-proof/service.jsonl" 2>&1
+
+      service_result=$?
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      (cd backend && go test -tags=unit ./internal/handler/admin -run ''^TestOpenAIConnectionHandlerAccountType$/(apikey|oauth)/(list|reject_mixed)$''
+      -count=1 -json -timeout=20m) > "$RUNNER_TEMP/connection-proof/handler.jsonl" 2>&1
+
+      handler_result=$?
+
+      set -e
+
+      cat "$RUNNER_TEMP/connection-proof/service.jsonl"
+
+      cat "$RUNNER_TEMP/connection-proof/handler.jsonl"
+
+      test "$service_result" -ne 0
+
+      test "$handler_result" -ne 0
+
+      python3 scripts/openai-connection-account-type-proof.py backend-red "$RUNNER_TEMP/connection-proof"
+
+      '
+    shell: bash
+  - name: Current head service handler and production repository adapter must compile and pass
+    if: matrix.mode == 'green'
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      (cd backend && go test -tags=unit ./internal/service ./internal/handler/admin -run ''^TestOpenAIConnection|^TestIssue594''
+      -count=1 -json -timeout=20m) > "$RUNNER_TEMP/connection-proof/backend.jsonl" 2>&1 || { cat "$RUNNER_TEMP/connection-proof/backend.jsonl";
+      exit 1; }
+
+      cat "$RUNNER_TEMP/connection-proof/backend.jsonl"
+
+      python3 scripts/openai-connection-account-type-proof.py backend-green "$RUNNER_TEMP/connection-proof"
+
+      git diff --exit-code HEAD
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-openai-connection-account-type-regression-backend-connection-type-backend-${{ inputs.sync_matrix_mode
+        }}-${{ github.event.pull_request.head.sha || github.sha }}
+      path: ${{ runner.temp }}/connection-proof
+      if-no-files-found: error

@@ -1,0 +1,50 @@
+name: sync-20261116-ws-followup-capture-capture
+description: Current upstream checks, retaining matrix parameters and regression assertions.
+inputs:
+  sync_matrix_phase:
+    description: Upstream matrix parameter phase.
+    required: true
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Restore original readers
+    if: matrix.phase == 'RED'
+    run: "for file in backend/internal/service/openai_ws_forwarder_ingress.go backend/internal/service/openai_ws_v2_passthrough_adapter.go\
+      \ backend/internal/service/openai_ws_request_capture.go backend/internal/requestcapture/websocket.go; do\n  git show\
+      \ \"2927209f5492d8cb690b83a1964b2f093c19ad7a:$file\" > \"$file\"\ndone\n"
+    shell: bash
+  - name: Successful first turn followed by captured error
+    env:
+      PHASE: ${{ inputs.sync_matrix_phase }}
+    shell: bash
+    run: "set -euo pipefail\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n(cd backend && go test\
+      \ -race -json -tags=unit,plaintextowner,followupcapture ./internal/handler -run '^TestOpenAIWSFollowupErrorCapture$'\
+      \ -count=1 -timeout=3m) > \"$RUNNER_TEMP/ws-followup-capture.jsonl\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/ws-followup-capture.jsonl\"\
+      \npython3 scripts/assert-readable-continuation.py --clean-log \"$RUNNER_TEMP/ws-followup-capture.jsonl\"\npython3 -\
+      \ \"$PHASE\" \"$result\" \"$RUNNER_TEMP/ws-followup-capture.jsonl\" <<'PY'\nimport json,sys\nphase,code,path=sys.argv[1],int(sys.argv[2]),sys.argv[3]\n\
+      rows=[json.loads(l) for l in open(path) if l.startswith('{')]\nnames={'TestOpenAIWSFollowupErrorCapture/'+m for m in\
+      \ ('http_bridge','ctx_pool','shared','dedicated','passthrough')}\nif phase=='RED':\n    assert code!=0\n    for name\
+      \ in names:\n        assert any(r.get('Action')=='fail' and r.get('Test')==name for r in rows),name\n        # Old passthrough\
+      \ captures the upstream failure into turn 1;\n        # the other modes discard turn 2 after the first terminal.\n \
+      \       marker = 'FOLLOWUP_ERROR_CAPTURE_WRONG_TURN' if name.endswith('/passthrough') else 'FOLLOWUP_ERROR_CAPTURE_MISSING'\n\
+      \        assert marker in ''.join(r.get('Output','') for r in rows if r.get('Test')==name),name\nelse:\n    assert code==0\n\
+      \    for name in names: assert any(r.get('Action')=='pass' and r.get('Test')==name for r in rows),name\nPY\n"
+  - name: Restore refusal diagnostics contain no task or response identities
+    if: matrix.phase == 'GREEN'
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit,followupcapture ./internal/service -run ''^TestOpenAIWSUnsentHistoryDiagnostics$'' -count=1
+      -timeout=2m'
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-ws-followup-capture-capture-ws-followup-capture-${{ inputs.sync_matrix_phase }}-${{ github.event.pull_request.head.sha
+        || github.sha }}
+      path: ${{ runner.temp }}/ws-followup-capture.jsonl
+      if-no-files-found: error

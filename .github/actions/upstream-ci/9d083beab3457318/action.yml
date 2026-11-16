@@ -1,0 +1,40 @@
+name: sync-20261116-openai-connection-account-type-regression-frontend
+description: Current upstream checks, retaining matrix parameters and regression assertions.
+inputs:
+  sync_matrix_mode:
+    description: Upstream matrix parameter mode.
+    required: true
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Real Vue child and editor mounts with actual Axios adapter
+    env:
+      MODE: ${{ inputs.sync_matrix_mode }}
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD\"\ngit diff --exit-code HEAD\nmkdir -p \"$RUNNER_TEMP/connection-proof\"\
+      \nif [ \"$MODE\" = red ]; then\n  git restore --source=\"$BASELINE\" --worktree -- \\\n    frontend/src/components/account/OpenAIAuthConnections.vue\
+      \ \\\n    frontend/src/components/account/EditAccountModal.vue \\\n    frontend/src/api/admin/openaiAuthConnections.ts\n\
+      fi\ngit rev-parse HEAD | tee \"$RUNNER_TEMP/connection-proof/head.txt\"\ngit diff --name-only | tee \"$RUNNER_TEMP/connection-proof/restored-paths.txt\"\
+      \ngit diff --exit-code HEAD -- '*spec.ts'\nset +e\npnpm --dir frontend exec vitest run \\\n  src/components/account/__tests__/OpenAIAuthConnections.spec.ts\
+      \ \\\n  src/components/account/__tests__/EditAccountModal.spec.ts \\\n  --maxWorkers=1 --minWorkers=1 --reporter=default\
+      \ --reporter=json \\\n  --outputFile=\"$RUNNER_TEMP/connection-proof/ui.json\" > \"$RUNNER_TEMP/connection-proof/ui.log\"\
+      \ 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/connection-proof/ui.log\"\nif [ \"$MODE\" = red ]; then\n  test \"$result\"\
+      \ -ne 0\nelse\n  test \"$result\" -eq 0\n  pnpm --dir frontend run typecheck\n  git diff --exit-code HEAD\nfi\npython3\
+      \ scripts/openai-connection-account-type-proof.py \"ui-$MODE\" \"$RUNNER_TEMP/connection-proof\"\n"
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-openai-connection-account-type-regression-frontend-connection-type-ui-${{ inputs.sync_matrix_mode
+        }}-${{ github.event.pull_request.head.sha || github.sha }}
+      path: ${{ runner.temp }}/connection-proof
+      if-no-files-found: error

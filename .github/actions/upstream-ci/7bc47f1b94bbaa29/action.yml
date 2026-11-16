@@ -1,0 +1,63 @@
+name: sync-20261116-vip-credit-email-ui-ui-and-build
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Notification UI and A to B to C persistence regressions
+    run: pnpm --dir frontend exec vitest run src/components/admin/user/__tests__/UserAutoCreditModal.spec.ts src/components/common/__tests__/NewFeatureBadge.spec.ts
+    shell: bash
+  - name: Prepare capture browser remotely
+    run: 'bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      npm install --prefix "$RUNNER_TEMP/vip-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      node "$RUNNER_TEMP/vip-browser/node_modules/playwright/cli.js" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Actual component before and after with CSS geometry and synthetic save and reload
+    env:
+      SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/vip-browser/node_modules/playwright/index.mjs
+    run: node scripts/vip-credit-email-preview.mjs "$GITHUB_WORKSPACE" "$RUNNER_TEMP/vip-credit-ui"
+    shell: bash
+  - name: Settlement confirmation visibility and explicit collection regression
+    env:
+      SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/vip-browser/node_modules/playwright/index.mjs
+    run: node scripts/vip-credit-settlement-preview.mjs "$GITHUB_WORKSPACE" "$RUNNER_TEMP/vip-credit-ui/settlement"
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-vip-credit-email-ui-ui-and-build-vip-credit-ui-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: ${{ runner.temp }}/vip-credit-ui
+      if-no-files-found: error
+  - name: Official frontend production build
+    if: ${{ !cancelled() }}
+    run: pnpm --dir frontend run build
+    shell: bash
+  - name: Backend production embed build and worker lifecycle race
+    if: ${{ !cancelled() }}
+    working-directory: backend
+    run: "vip_build_version=$(./scripts/resolve-version.sh)\nvip_build_commit=$(git rev-parse HEAD)\nCGO_ENABLED=0 go build\
+      \ -tags embed -trimpath \\\n  -ldflags=\"-X main.Version=$vip_build_version -X main.Commit=$vip_build_commit\" \\\n\
+      \  -o \"$RUNNER_TEMP/sub2api-vip-credit\" ./cmd/server\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"\
+      $PWD\"\ngo test -race -p 1 -tags=unit ./cmd/server ./internal/service ./internal/handler/admin -run 'TestProvideCleanup|TestAutoCreditEmail|TestNotificationEmail'\
+      \ -count=1 -v -timeout=5m\n"
+    shell: bash

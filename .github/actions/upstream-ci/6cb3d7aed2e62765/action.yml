@@ -1,0 +1,56 @@
+name: sync-20261116-openai-multi-auth-green
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Compile production adapters and run exact-head connection regressions
+    working-directory: backend
+    run: 'set -euo pipefail
+
+      test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit ./internal/service ./internal/repository ./internal/handler/admin ./internal/pkg/openai -run
+      ''^TestIssue594|^TestSIWC'' -count=1 -v | tee "$RUNNER_TEMP/issue594-green.log"
+
+      '
+    shell: bash
+  - name: Actual HTTP service repository PostgreSQL connection lifecycle
+    working-directory: backend
+    env:
+      CI: 'true'
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=integration ./internal/repository -run ''^TestIssue594'' -count=1 -v | tee "$RUNNER_TEMP/issue594-integration.log"
+
+      ! grep -E -- ''--- SKIP: TestIssue594|no tests to run'' "$RUNNER_TEMP/issue594-integration.log"
+
+      '
+    shell: bash
+  - name: Actual SIWC final send boundary with isolated PostgreSQL
+    working-directory: backend
+    env:
+      CI: 'true'
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=integration ./internal/service -run ''^TestIssue594SIWCFinalEgress'' -count=1 -v | tee "$RUNNER_TEMP/issue594-siwc-final-egress.log"
+
+      ! grep -E -- ''--- SKIP: TestIssue594|no tests to run'' "$RUNNER_TEMP/issue594-siwc-final-egress.log"
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v6
+    if: always()
+    with:
+      name: sync-20261116-openai-multi-auth-green-issue594-green-${{ github.event_name }}-${{ github.event.pull_request.head.sha
+        || github.sha }}
+      path: ${{ runner.temp }}/issue594-*.log

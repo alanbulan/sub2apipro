@@ -1,0 +1,36 @@
+name: sync-20261116-qwen-cache-regression-actual-component
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Capture actual Qwen component with synthetic state
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}/qwen-cache-evidence
+      PLAYWRIGHT_ROOT: ${{ runner.temp }}/qwen-cache-browser/node_modules/playwright
+    run: 'npm install --prefix "$RUNNER_TEMP/qwen-cache-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      node "$PLAYWRIGHT_ROOT/cli.js" install --with-deps chromium
+
+      node scripts/qwen-cache-preview.mjs
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-qwen-cache-regression-actual-component-qwen-cache-ui-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: ${{ runner.temp }}/qwen-cache-evidence
+      if-no-files-found: error

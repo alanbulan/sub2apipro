@@ -1,0 +1,46 @@
+name: sync-20261116-oauth-initial-model-selection-selection-ui
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Actual Vue model selection, notice lifecycle and locales
+    run: pnpm --dir frontend exec vitest run src/views/admin/__tests__/AutoConfigView.spec.ts src/components/admin/operations/__tests__/OAuthInitialModelSelection.spec.ts
+      src/components/account/__tests__/EditAccountModal.spec.ts src/components/admin/operations/__tests__/SmartOpsNav.spec.ts
+      src/i18n/__tests__/localeKeyCompleteness.spec.ts --maxWorkers=1 --minWorkers=1
+    shell: bash
+  - name: Install isolated mock browser
+    run: 'bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      npm install --prefix "$RUNNER_TEMP/oauth-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      "$RUNNER_TEMP/oauth-browser/node_modules/.bin/playwright" install --with-deps chromium
+
+      '
+    shell: bash
+  - run: git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git 7eb2e271acdc4b36d62f1b542b16b5abb5b1bb09
+    shell: bash
+  - name: Real Vue desktop and mobile interactions with synthetic APIs
+    env:
+      PLAYWRIGHT_ROOT: ${{ runner.temp }}/oauth-browser/node_modules/playwright
+      OAUTH_SELECTION_SCREENSHOT_DIR: ${{ github.workspace }}/evidence/screenshots
+    run: node scripts/oauth-initial-model-selection-browser.mjs
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-oauth-initial-model-selection-selection-ui-oauth-initial-selection-ui-${{ github.event_name }}-${{
+        github.run_id }}
+      path: evidence/
+      retention-days: 14

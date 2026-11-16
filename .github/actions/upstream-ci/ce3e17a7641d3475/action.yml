@@ -1,0 +1,22 @@
+name: sync-20261116-oauth-initial-ws-frontend
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Initial WS form, notice lifecycle and locales
+    run: pnpm --dir frontend exec vitest run src/views/admin/__tests__/AutoConfigView.spec.ts src/components/common/__tests__/NewFeatureBadge.spec.ts
+      src/i18n/__tests__/localeKeyCompleteness.spec.ts --maxWorkers=1 --minWorkers=1
+    shell: bash
+  - name: Typecheck and production build
+    run: pnpm --dir frontend build
+    shell: bash

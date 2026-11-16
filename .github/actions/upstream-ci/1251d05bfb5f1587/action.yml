@@ -1,0 +1,93 @@
+name: sync-20261116-issue603-observability-ui
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm install --frozen-lockfile
+    working-directory: frontend
+    shell: bash
+  - name: RED - original real usage page and labels
+    shell: bash
+    run: "set -euo pipefail\nold=\"$RUNNER_TEMP/issue603-ui-red\"\ngit worktree add --detach \"$old\" \"$SOURCE_HEAD\"\ntrap\
+      \ 'git worktree remove --force \"$old\"' EXIT\nfor file in frontend/src/views/admin/UsageView.vue frontend/src/components/admin/usage/UsageTable.vue\
+      \ frontend/src/i18n/locales/en/dashboard.ts frontend/src/i18n/locales/zh/dashboard.ts; do\n  git -C \"$old\" restore\
+      \ --source=\"$BASELINE\" -- \"$file\"\n  test \"$(git -C \"$old\" hash-object \"$file\")\" = \"$(git rev-parse \"$BASELINE:$file\"\
+      )\"\ndone\nln -s \"$GITHUB_WORKSPACE/frontend/node_modules\" \"$old/frontend/node_modules\"\nset +e\n(cd \"$old/frontend\"\
+      \ && pnpm test:run src/views/admin/__tests__/UsageView.spec.ts src/components/admin/usage/__tests__/UsageTable.spec.ts\
+      \ -t 'Issue60[35]') > \"$RUNNER_TEMP/issue603-ui-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/issue603-ui-red.log\"\
+      \ntest \"$result\" -ne 0\n! grep -Eq 'Failed to resolve|Cannot find|No test files found|SyntaxError|TypeError|ReferenceError'\
+      \ \"$RUNNER_TEMP/issue603-ui-red.log\"\ngrep -F 'Issue603 embeds latency observations in the real admin usage page'\
+      \ \"$RUNNER_TEMP/issue603-ui-red.log\"\ngrep -F 'Issue603 labels real usage table server timing explicitly' \"$RUNNER_TEMP/issue603-ui-red.log\"\
+      \n"
+  - name: GREEN - actual page and component regressions
+    shell: bash
+    run: 'set -euo pipefail
+
+      git diff --exit-code
+
+      (cd frontend && pnpm test:run src/views/admin/__tests__/UsageView.spec.ts src/components/admin/usage/__tests__/UsageTable.spec.ts
+      src/components/admin/usage/__tests__/UsageTimingDialog.spec.ts src/components/admin/usage/__tests__/LatencyObservabilityPanel.spec.ts
+      src/views/admin/ops/components/__tests__/OpsNetworkChart.spec.ts) 2>&1 | tee "$RUNNER_TEMP/issue603-ui-green.log"
+
+      '
+  - name: GREEN - frontend production typecheck and build
+    shell: bash
+    run: 'set -euo pipefail
+
+      (cd frontend && pnpm build) 2>&1 | tee "$RUNNER_TEMP/issue603-ui-build.log"
+
+      '
+  - name: Install isolated browser for actual usage page screenshots
+    run: 'npm install --prefix "$RUNNER_TEMP/issue603-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      "$RUNNER_TEMP/issue603-browser/node_modules/.bin/playwright" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Render exact baseline and head with offline synthetic data
+    env:
+      PLAYWRIGHT_ROOT: ${{ runner.temp }}/issue603-browser/node_modules/playwright
+      SCREENSHOT_DIR: ${{ runner.temp }}/issue603-screenshots
+    shell: bash
+    run: 'set -euo pipefail
+
+      old="$RUNNER_TEMP/issue603-before-browser"
+
+      git worktree add --detach "$old" "$BASELINE"
+
+      trap ''git worktree remove --force "$old"'' EXIT
+
+      ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$old/frontend/node_modules"
+
+      VIEW_ROOT="$old" SCREENSHOT_MODE=before node scripts/issue603-screenshots.mjs
+
+      test "$(git -C "$old" hash-object frontend/src/views/admin/UsageView.vue)" = "$(git rev-parse "$BASELINE:frontend/src/views/admin/UsageView.vue")"
+
+      git diff --exit-code
+
+      test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+
+      SCREENSHOT_MODE=after node scripts/issue603-screenshots.mjs
+
+      '
+  - uses: actions/upload-artifact@v6
+    if: always()
+    with:
+      name: sync-20261116-issue603-observability-ui-issue603-ui-${{ github.event.pull_request.head.sha || github.sha }}
+      path: '${{ runner.temp }}/issue603-*.log
+
+        ${{ runner.temp }}/issue603-screenshots
+
+        '
+      if-no-files-found: error
+      retention-days: 14

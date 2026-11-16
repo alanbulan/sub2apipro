@@ -1,0 +1,45 @@
+name: sync-20261116-pelican-random-questions-browser
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - run: 'bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      '
+    shell: bash
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Targeted component, history, and round assertions
+    run: pnpm --dir frontend exec vitest run src/utils/__tests__/pelicanQuestionRound.spec.ts src/components/admin/account/__tests__/IQTestModal.spec.ts
+      src/components/admin/account/__tests__/PelicanPromptMode.spec.ts src/components/admin/account/__tests__/PelicanTestFields.spec.ts
+      src/components/admin/account/__tests__/ScheduledTestsPanel.pelican.spec.ts src/components/admin/account/__tests__/PelicanRecordsDashboard.spec.ts
+      src/views/admin/__tests__/PelicanTestsView.spec.ts
+    shell: bash
+  - name: Install isolated browser
+    run: 'npm install --prefix "$RUNNER_TEMP/pelican-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      "$RUNNER_TEMP/pelican-browser/node_modules/.bin/playwright" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Render actual controls and snapshot with fixture data
+    env:
+      PLAYWRIGHT_ROOT: ${{ runner.temp }}/pelican-browser/node_modules/playwright
+      PELICAN_SCREENSHOT_DIR: ${{ github.workspace }}/evidence
+    run: node scripts/pelican-question-browser.mjs
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-pelican-random-questions-browser-pelican-random-question-ui-${{ github.run_id }}
+      path: evidence/

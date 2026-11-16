@@ -218,6 +218,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
+	qqBotHandler *QQBotHandler,
 	lotteryHandler *LotteryHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
@@ -254,6 +255,7 @@ func ProvideHandlers(
 		adminHandlers.Account.SetPoolGroupReader(apiKeyHandler.apiKeyService)
 	}
 	return &Handlers{
+		QQBot:            qqBotHandler,
 		Lottery:          lotteryHandler,
 		Auth:             authHandler,
 		User:             userHandler,
@@ -284,6 +286,7 @@ func ProvideHandlers(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	NewQQBotHandler,
 	// Top-level handlers
 	NewLotteryHandler,
 	NewAuthHandler,
@@ -345,7 +348,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAccountOpsHandler,
 	admin.NewAccountTokenGuardHandler,
 	admin.NewAccountTokenGuardV2Handler,
-	admin.NewChannelHandler,
+	admin.ProvideMatureChannelHandler,
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewContentModerationHandlerWithSafetyPrompt,

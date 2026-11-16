@@ -1,0 +1,19 @@
+name: sync-20261116-ws-readable-continuation-validator
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Evidence self-tests
+    run: 'set -euo pipefail
+
+      python3 -B -m unittest discover -s scripts -p ''test_assert_ws_readable.py'' -v 2>&1 | tee "$RUNNER_TEMP/ws-validator.log"
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-ws-readable-continuation-validator-ws-readable-validator-${{ github.event.pull_request.head.sha
+        || github.sha }}
+      path: ${{ runner.temp }}/ws-validator.log
+      if-no-files-found: error

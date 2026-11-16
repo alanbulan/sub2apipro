@@ -1,0 +1,36 @@
+name: sync-20261116-issue733-priority-ui-regression
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - run: mkdir -p "$RUNNER_TEMP/issue733-evidence"
+    shell: bash
+  - name: Candidate reading and existing safety regressions GREEN
+    run: 'set -euo pipefail
+
+      pnpm --dir frontend exec vitest run src/views/admin/__tests__/PrioritySchedulingReading.spec.ts src/views/admin/__tests__/PrioritySchedulingView.spec.ts
+      src/views/admin/__tests__/PrioritySchedulingQuantile.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts --maxWorkers=1
+      --minWorkers=1 2>&1 | tee "$RUNNER_TEMP/issue733-evidence/green.log"
+
+      '
+    shell: bash
+  - name: Lint changed frontend sources
+    run: pnpm --dir frontend exec eslint src/views/admin/PrioritySchedulingView.vue src/views/admin/__tests__/PrioritySchedulingReading.spec.ts
+      src/i18n/locales/en/priorityScheduling.ts src/i18n/locales/zh/priorityScheduling.ts
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-issue733-priority-ui-regression-issue733-unit-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: ${{ runner.temp }}/issue733-evidence

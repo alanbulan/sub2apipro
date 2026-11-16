@@ -1,0 +1,38 @@
+name: sync-20261116-oauth-degradation-native-controls-postgres
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Use Ubuntu HTTPS mirror for CI dependencies
+    run: 'bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      '
+    shell: bash
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Record integration runtime and prepare crash diagnostics
+    shell: bash
+    run: "set -euo pipefail\nmkdir -p evidence\ngit rev-parse HEAD > evidence/head.txt\ngo version > evidence/toolchain.txt\n\
+      go env GOOS GOARCH CGO_ENABLED GOFLAGS >> evidence/toolchain.txt\nuname -a > evidence/kernel.txt\ndocker version > evidence/docker-version.txt\n\
+      docker info > evidence/docker-info.txt\nif ! command -v gdb >/dev/null; then\n  bash \"${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh\"\
+      \n  sudo apt-get update\n  sudo apt-get install -y --no-install-recommends gdb\nfi\n(cd backend && go list -deps -test\
+      \ -race -tags=integration ./internal/repository) > evidence/instrumented-dependencies.txt\n"
+  - name: Native account edits, migration and scheduler cache with PostgreSQL and Redis
+    shell: bash
+    run: 'set -euo pipefail
+
+      bash scripts/oauth-degradation-integration-race.sh postgres "$GITHUB_WORKSPACE" ''^(TestOAuthDegradation|TestOAuthRefresh|TestAutoConfigConcurrent|TestOpenAITwoFAAdmission|TestQualityActionsRestore|TestQualityIsolation|TestQualityBPSAndQuarantineCoexist|TestQualityCoexist|TestAstraGroups)''
+      25m
+
+      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/postgres.log
+
+      '
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-oauth-degradation-native-controls-postgres-oauth-native-controls-postgres-${{ github.run_id }}-${{
+        github.run_attempt }}
+      path: evidence/
+      retention-days: 14

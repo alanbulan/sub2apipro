@@ -1,0 +1,44 @@
+name: sync-20261116-serverless-ip-routing-settings
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Settings regressions
+    working-directory: frontend
+    run: pnpm exec vitest run src/components/settings/ServerlessSettings.spec.ts src/views/admin/__tests__/SettingsView.spec.ts
+    shell: bash
+  - name: Install isolated screenshot tool
+    run: 'bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      npm install --prefix "$RUNNER_TEMP/serverless-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      "$RUNNER_TEMP/serverless-browser/node_modules/.bin/playwright" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Render the actual settings component with fictional fixtures
+    env:
+      PLAYWRIGHT_ROOT: ${{ runner.temp }}/serverless-browser/node_modules/playwright
+      SCREENSHOT_DIR: ${{ runner.temp }}/serverless-ui
+      SOURCE_BASE: ${{ github.event.pull_request.base.sha || 'b827111805f1b5030b141dbcea4d4a9f6dd413e6' }}
+    run: node scripts/serverless-ip-routing-screenshot.mjs
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-serverless-ip-routing-settings-serverless-settings-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: ${{ runner.temp }}/serverless-ui
+      if-no-files-found: warn

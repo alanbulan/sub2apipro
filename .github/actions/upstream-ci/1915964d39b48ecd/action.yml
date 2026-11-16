@@ -1,0 +1,40 @@
+name: sync-20261116-qwen-platform-screenshots
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Qwen form and announcement regressions
+    run: pnpm --dir frontend exec vitest run src/components/account/__tests__/CreateAccountModal.spec.ts src/components/account/__tests__/credentialsBuilder.platformCatalog.spec.ts
+      src/components/common/__tests__/NewFeatureBadge.spec.ts src/constants/__tests__/platforms.spec.ts
+    shell: bash
+  - name: Prepare isolated browser
+    run: 'npm install --prefix "$RUNNER_TEMP/fallback-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      node "$RUNNER_TEMP/fallback-browser/node_modules/playwright/cli.js" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Capture Qwen account creation
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}/qwen-platform-${{ github.sha }}
+      SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/fallback-browser/node_modules/playwright/index.mjs
+    run: node scripts/qwen-platform-preview.mjs
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-qwen-platform-screenshots-qwen-platform-${{ github.sha }}
+      path: ${{ runner.temp }}/qwen-platform-${{ github.sha }}
+      if-no-files-found: error

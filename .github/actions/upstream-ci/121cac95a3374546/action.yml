@@ -1,0 +1,22 @@
+name: sync-20261116-bps-wire-contract-contract
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: BPS wire contract and existing protocol regressions
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test ./internal/service/basispoints -count=1'
+    shell: bash
+  - name: Gateway identity, model, effort, tier policy and correction
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=unit ./internal/service -run ''^Test(ExcelBPSWire|ExcelBPSToolCorrectionPreservesRouteAndUsage|ExcelBPSUsagePreservesRequestedEffortBeforeGroupMapping|ExcelBPSAccess)''
+      -count=1 -v -timeout=10m'
+    shell: bash

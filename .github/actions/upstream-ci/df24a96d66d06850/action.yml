@@ -1,0 +1,62 @@
+name: sync-20261116-smart-ops-sidebar-evidence-rendered-before-after
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Preserve the complete pre-change frontend
+    env:
+      SOURCE_BASE: c115bef917eae22fc2f5a4d0ba6ac6cbe600e8e4
+    run: 'set -euo pipefail
+
+      mkdir -p "$RUNNER_TEMP/smart-ops-base"
+
+      git archive "$SOURCE_BASE" | tar -x -C "$RUNNER_TEMP/smart-ops-base"
+
+      cmp frontend/package.json "$RUNNER_TEMP/smart-ops-base/frontend/package.json"
+
+      cmp frontend/pnpm-lock.yaml "$RUNNER_TEMP/smart-ops-base/frontend/pnpm-lock.yaml"
+
+      ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$RUNNER_TEMP/smart-ops-base/frontend/node_modules"
+
+      '
+    shell: bash
+  - name: Install isolated browser
+    run: 'npm install --prefix "$RUNNER_TEMP/smart-ops-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      "$RUNNER_TEMP/smart-ops-browser/node_modules/.bin/playwright" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Render originals and exercise defaults and explicit preferences
+    env:
+      SOURCE_BASE: c115bef917eae22fc2f5a4d0ba6ac6cbe600e8e4
+      BASELINE_ROOT: ${{ runner.temp }}/smart-ops-base/frontend
+      PLAYWRIGHT_ROOT: ${{ runner.temp }}/smart-ops-browser/node_modules/playwright
+      SCREENSHOT_DIR: ${{ runner.temp }}/smart-ops-evidence
+    run: 'set -euo pipefail
+
+      mkdir -p "$SCREENSHOT_DIR"
+
+      node scripts/smart-ops-sidebar-screenshot.mjs 2>&1 | tee "$SCREENSHOT_DIR/render.log"
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-smart-ops-sidebar-evidence-rendered-before-after-smart-ops-sidebar-${{ github.event.pull_request.head.sha
+        || github.sha }}-${{ github.event_name }}
+      path: ${{ runner.temp }}/smart-ops-evidence
+      if-no-files-found: error

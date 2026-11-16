@@ -1,0 +1,26 @@
+name: sync-20261116-issue715-agent-recovery-ws-real-redis
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Exact-head WS socket chain using real Redis adapters
+    env:
+      ISSUE715_REDIS_ADDR: 127.0.0.1:6379
+    run: 'set -euo pipefail
+
+      git rev-parse HEAD
+
+      test -z "$(git status --porcelain)"
+
+      cd backend
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit ./internal/handler -run ''^TestIssue715WS'' -count=1 -v -timeout=5m
+
+      '
+    shell: bash

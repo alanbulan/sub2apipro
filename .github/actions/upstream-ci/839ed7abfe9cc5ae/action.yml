@@ -1,0 +1,30 @@
+name: sync-20261116-collection-reliability-frontend
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Payment UI, administrator notices and translations
+    run: pnpm --dir frontend exec vitest run src/components/payment/__tests__ src/views/user/__tests__/CryptoPaymentView.spec.ts
+      src/views/admin/__tests__/SettingsView.spec.ts src/components/common/__tests__/NewFeatureBadge.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts
+    shell: bash
+  - name: Frontend production build
+    run: pnpm --dir frontend run build
+    shell: bash
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Embedded server build
+    working-directory: backend
+    run: CGO_ENABLED=0 go build -tags embed -trimpath -o "$RUNNER_TEMP/sub2api-bepusdt" ./cmd/server
+    shell: bash

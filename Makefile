@@ -1,6 +1,49 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/views/user/__tests__/UserCouponsView.spec.ts \
+	src/views/auth/__tests__/QQBotTransferView.spec.ts \
+	src/views/auth/__tests__/QQBotBindView.spec.ts \
+	src/views/admin/orders/__tests__/AdminOrdersView.recoveryReview.spec.ts \
+	src/views/admin/orders/__tests__/AdminCouponsView.spec.ts \
+	src/views/admin/ops/components/__tests__/OpsErrorLogTable.spec.ts \
+	src/views/admin/__tests__/UpstreamChannelOperationsView.spec.ts \
+	src/views/admin/__tests__/QQBotView.spec.ts \
+	src/views/admin/__tests__/QQBotSetup.spec.ts \
+	src/views/admin/__tests__/QQBotRecords.spec.ts \
+	src/views/admin/__tests__/QQBotActivities.spec.ts \
+	src/views/admin/__tests__/MatureProviders.spec.ts \
+	src/views/admin/__tests__/MatureCommunityNav.spec.ts \
+	src/views/admin/__tests__/GroupsView.streamOnly.spec.ts \
+	src/views/admin/__tests__/GroupsView.freeUltrafast.spec.ts \
+	src/views/admin/__tests__/GroupsView.codexManifest.spec.ts \
+	src/views/admin/__tests__/GroupsView.codexCLIOnly.spec.ts \
+	src/utils/__tests__/magpieImport.spec.ts \
+	src/utils/__tests__/customerCostDetails.ultrafast.spec.ts \
+	src/components/user/profile/__tests__/ProfileQQBotCard.spec.ts \
+	src/components/payment/__tests__/RechargeCouponPicker.spec.ts \
+	src/components/admin/qqbot/__tests__/checkinSettings.spec.ts \
+	src/components/admin/qqbot/__tests__/autonomousDefaults.spec.ts \
+	src/components/admin/qqbot/__tests__/QQMemberPicker.spec.ts \
+	src/components/admin/qqbot/__tests__/QQMemberEntryPoints.spec.ts \
+	src/components/admin/qqbot/__tests__/QQJobRecords.spec.ts \
+	src/components/admin/qqbot/__tests__/QQDraft.spec.ts \
+	src/components/admin/qqbot/__tests__/QQCommandInventory.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotSiteAISettings.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotRewardCodes.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotRankingSettings.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotKnowledgeSettings.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotImageAISettings.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotGrowthDailyTasks.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotChatPreview.spec.ts \
+	src/components/admin/qqbot/__tests__/QQBotAnnouncement.spec.ts \
+	src/components/admin/operations/__tests__/OAuthAPIKeyDispositionCard.spec.ts \
+	src/components/admin/operations/__tests__/AccountOpsTeam.spec.ts \
+	src/components/admin/operations/__tests__/AccountOpsGroupDialog.spec.ts \
+	src/components/admin/__tests__/QQBotBindings.spec.ts \
+	src/components/account/__tests__/MatureProviderImport.spec.ts \
+	src/components/account/__tests__/ExcelBPSSearchOptions.spec.ts \
+	src/api/__tests__/qqbot.spec.ts \
 	src/components/admin/operations/__tests__/AccountOpsRuleList.spec.ts \
 	src/components/admin/operations/__tests__/AccountOpsBalanceStatus.spec.ts \
 	src/components/admin/moderation/__tests__/ModerationUpstreamAccountSelector.spec.ts \
@@ -64,6 +107,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/admin.accounts.grokModelDiagnostics.spec.ts \
 	src/__tests__/integration/usage-reasoning-effort.spec.ts \
 	src/components/common/__tests__/AnnouncementBell.spec.ts \
+	src/views/admin/__tests__/UsersView.spec.ts \
+	src/components/user/__tests__/UserLiveUsageCell.spec.ts \
 	src/components/common/__tests__/NewFeatureBadge.spec.ts \
 	src/components/lottery/reel.spec.ts \
 	src/components/lottery/LotteryReel.spec.ts \
@@ -98,7 +143,6 @@ FRONTEND_CRITICAL_VITEST := \
 	src/utils/__tests__/ccswitchImport.spec.ts \
 	src/components/settings/SmartOpsSidebarSettings.spec.ts \
 	src/utils/__tests__/smartOpsSidebar.spec.ts \
-	src/components/settings/BalanceForecastSettings.spec.ts \
 	src/components/admin/user/__tests__/UserAutoCreditModal.spec.ts \
 	src/components/admin/user/__tests__/UserBalanceHistoryModal.spec.ts \
 	src/components/common/__tests__/VipAutoCreditNotice.spec.ts \
@@ -133,7 +177,6 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts \
 	src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts \
 	src/utils/__tests__/userEmail.spec.ts \
-	src/views/admin/__tests__/UsersView.spec.ts \
 	src/components/admin/user/__tests__/BulkEditUserModal.spec.ts \
 	src/components/settings/FeishuSettings.spec.ts \
 	src/__tests__/rememberMePro.spec.ts \

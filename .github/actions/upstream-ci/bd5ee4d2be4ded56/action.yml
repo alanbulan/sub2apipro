@@ -1,0 +1,84 @@
+name: sync-20261116-oauth-initial-model-selection-admission
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/checkout@v6
+    with:
+      ref: 7eb2e271acdc4b36d62f1b542b16b5abb5b1bb09
+      path: baseline
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: candidate/backend/go.sum
+      go-version: 1.27.4
+  - name: Install Redis for shared HTTP and WS regression fixtures
+    shell: bash
+    run: "bash \"${GITHUB_WORKSPACE}/candidate/scripts/ci-ubuntu-mirrors.sh\"\nif ! command -v redis-server >/dev/null; then\n\
+      \  bash \"${GITHUB_WORKSPACE}/candidate/scripts/ci-ubuntu-mirrors.sh\"\n  sudo apt-get update\n  sudo apt-get install\
+      \ -y --no-install-recommends redis-server\nfi\nredis-server --version\n"
+  - name: Baseline must fail unchanged admission assertions
+    shell: bash
+    run: 'set -euo pipefail
+
+      mkdir -p evidence
+
+      git -C baseline rev-parse HEAD > evidence/red-head.txt
+
+      cp candidate/backend/internal/service/oauth_initial_model_selection_test.go baseline/backend/internal/service/
+
+      python3 "$GITHUB_WORKSPACE/candidate/scripts/prepare-sync-ci.py" baseline/backend
+
+      set +e
+
+      (cd baseline/backend && go test -tags=unit ./internal/service -run ''^TestOAuthInitialModelSelectionAdmission$'' -count=1
+      -v) > evidence/red.log 2>&1
+
+      result=$?
+
+      set -e
+
+      cat evidence/red.log
+
+      test "$result" -ne 0
+
+      if grep -Eq ''\[build failed\]|\[setup failed\]|undefined:|syntax error:|no tests to run|panic:|--- SKIP:'' evidence/red.log;
+      then exit 1; fi
+
+      grep -F ''excluded model admission'' evidence/red.log
+
+      grep -F -- ''--- FAIL: TestOAuthInitialModelSelectionAdmission/selected'' evidence/red.log
+
+      grep -F -- ''--- FAIL: TestOAuthInitialModelSelectionAdmission/none'' evidence/red.log
+
+      '
+  - name: Clean exact candidate service and HTTP regressions
+    shell: bash
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    run: 'set -euo pipefail
+
+      git -C candidate rev-parse HEAD | tee evidence/green-head.txt
+
+      test "$(git -C candidate rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      git -C candidate diff --exit-code
+
+      python3 "$GITHUB_WORKSPACE/candidate/scripts/prepare-sync-ci.py" candidate/backend
+
+      (cd candidate/backend && go test -tags=unit ./internal/service ./internal/handler ./internal/handler/admin -run ''^(TestOAuthInitial|TestApplyOAuthCredentialsPreservesExistingNonAuthCredentials|TestAutoConfigSelectedModels|TestOAuthModelMapping|TestAutoConfig|TestApplyUpstreamModels|TestAutomaticUpstreamModels|TestAccountIsModelSupported|TestOpenAI.*Model)''
+      -count=1 -v) 2>&1 | tee evidence/green.log
+
+      if grep -Eq -- ''--- SKIP:|no tests to run'' evidence/green.log; then exit 1; fi
+
+      grep -F -- ''--- PASS: TestOAuthInitialModelSelectionAdmission'' evidence/green.log
+
+      grep -F -- ''--- PASS: TestAutoConfigSelectedModels'' evidence/green.log
+
+      '
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-oauth-initial-model-selection-admission-oauth-initial-admission-${{ github.event_name }}-${{ github.run_id
+        }}
+      path: evidence/
+      retention-days: 14

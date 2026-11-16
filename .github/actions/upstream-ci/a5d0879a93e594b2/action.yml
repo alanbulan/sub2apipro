@@ -1,0 +1,29 @@
+name: sync-20261116-encrypted-history-400-protocol
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Install isolated Redis fixture
+    run: 'bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      sudo apt-get update
+
+      sudo apt-get install -y --no-install-recommends redis-server
+
+      '
+    shell: bash
+  - name: Native recovery and unchanged 409 regressions
+    working-directory: backend
+    run: 'git rev-parse HEAD
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -json -p 2 -tags=unit ./internal/service ./internal/handler ./internal/handler/admin -run ''^Test(OpenAI400|OpenAI409|OmitOpenAIHistorical|ForwardEncryptedContentSSERetry|UpdateSettingsOpenAI400|UpdateSettingsOpenAI409)''
+      -count=1 -timeout=5m
+
+      '
+    shell: bash

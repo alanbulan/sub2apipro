@@ -1,0 +1,41 @@
+name: sync-20261116-account-ops-team-frontend
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - run: pnpm --dir frontend exec vitest run src/components/admin/operations/__tests__/AccountOps src/components/common/__tests__/NewFeatureBadge.spec.ts
+      src/views/admin/__tests__/AccountOpsView.spec.ts src/views/admin/__tests__/MatureProviders.spec.ts
+    shell: bash
+  - run: pnpm --dir frontend run build
+    shell: bash
+  - name: Install screenshot browser
+    run: 'npm install --prefix "$RUNNER_TEMP/ops-team-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      node "$RUNNER_TEMP/ops-team-browser/node_modules/playwright/cli.js" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Render actual components with synthetic provider and account data
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}/account-ops-team-ui
+      SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/ops-team-browser/node_modules/playwright/index.mjs
+    run: node scripts/account-ops-team-screenshots.mjs
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-account-ops-team-frontend-account-ops-team-ui-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: ${{ runner.temp }}/account-ops-team-ui

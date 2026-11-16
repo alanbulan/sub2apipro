@@ -1,0 +1,39 @@
+name: sync-20261116-account-daily-schedule-regressions
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm install --frozen-lockfile
+    working-directory: frontend
+    shell: bash
+  - name: Timer time, persistence contract and administrator API regressions
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race ./internal/accounttimer ./internal/handler/admin/accounttimerapi -count=1'
+    shell: bash
+  - name: Daily schedule PostgreSQL regressions
+    working-directory: backend
+    env:
+      ACCOUNT_TIMER_TEST_DSN: postgres://timer_fixture:timer_fixture@127.0.0.1:5432/schedulable_timer_fixture?sslmode=disable
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=integration ./internal/accounttimer -count=1 -v'
+    shell: bash
+  - name: Account timer UI and feature notice regressions
+    working-directory: frontend
+    run: pnpm test:run src/components/account/__tests__/SchedulableTimerControl.spec.ts src/components/account/__tests__/SchedulableTimerControl.daily.spec.ts
+      src/views/admin/__tests__/AccountsView.schedulableTimer.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts src/stores/__tests__/newFeatureNotices.spec.ts
+    shell: bash

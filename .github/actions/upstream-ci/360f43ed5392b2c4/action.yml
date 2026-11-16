@@ -1,0 +1,35 @@
+name: sync-20261116-moderation-upstream-scope-postgres-persistence
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Authenticated handler and real PostgreSQL persistence
+    run: 'mkdir -p "$RUNNER_TEMP/moderation-scope-postgres"
+
+      git rev-parse HEAD > "$RUNNER_TEMP/moderation-scope-postgres/head.txt"
+
+      set -o pipefail
+
+      cd backend
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=integration ./internal/repository -run ''^TestModerationUpstreamPostgresAdminRoundTrip$'' -count=1 -v
+      -timeout=10m 2>&1 | tee "$RUNNER_TEMP/moderation-scope-postgres/postgres.log"
+
+      if grep -Eiq ''build failed|no tests to run|undefined:|--- SKIP:|panic:|fatal error:|DATA RACE|signal:|segmentation
+      fault'' "$RUNNER_TEMP/moderation-scope-postgres/postgres.log"; then exit 1; fi
+
+      grep -q -- ''--- PASS: TestModerationUpstreamPostgresAdminRoundTrip'' "$RUNNER_TEMP/moderation-scope-postgres/postgres.log"
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-moderation-upstream-scope-postgres-persistence-moderation-scope-postgres-${{ github.sha }}
+      path: ${{ runner.temp }}/moderation-scope-postgres

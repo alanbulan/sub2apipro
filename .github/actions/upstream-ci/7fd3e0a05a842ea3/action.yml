@@ -1,0 +1,97 @@
+name: sync-20261116-account-connection-timing-backend
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Exact source identity
+    run: 'test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      git diff --exit-code HEAD
+
+      mkdir -p "$RUNNER_TEMP/timing-proof"
+
+      printf ''exact_head=%s\nbaseline=%s\n'' "$EXPECTED_HEAD" "$BASELINE" | tee "$RUNNER_TEMP/timing-proof/source.txt"
+
+      '
+    shell: bash
+  - name: RED in an isolated baseline directory, without modifying delivery checkout
+    shell: bash
+    run: 'set -euo pipefail
+
+      mkdir -p "$RUNNER_TEMP/timing-baseline"
+
+      git archive "$BASELINE" | tar -x -C "$RUNNER_TEMP/timing-baseline"
+
+      cp backend/internal/service/account_connection_timing_test.go "$RUNNER_TEMP/timing-baseline/backend/internal/service/"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$RUNNER_TEMP/timing-baseline/backend"
+
+      set +e
+
+      (cd "$RUNNER_TEMP/timing-baseline/backend" && go test -tags=unit ./internal/service -run ''^TestAccountConnectionTimingLifecycle$''
+      -count=1 -json -timeout=15m) > "$RUNNER_TEMP/timing-proof/red.jsonl" 2>&1
+
+      result=$?
+
+      set -e
+
+      cat "$RUNNER_TEMP/timing-proof/red.jsonl"
+
+      test "$result" -ne 0
+
+      python3 - "$RUNNER_TEMP/timing-proof/red.jsonl" <<''PY''
+
+      import json, sys
+
+      events = [json.loads(s) for s in open(sys.argv[1]) if s.startswith(''{'')]
+
+      assert any(e.get(''Action'') == ''fail'' and e.get(''Test'', '''').startswith(''TestAccountConnectionTimingLifecycle/'')
+      for e in events), ''RED must be an executed assertion failure''
+
+      assert any(''one start and one final timing event'' in e.get(''Output'', '''') for e in events), ''expected timing assertion
+      missing''
+
+      PY
+
+      git diff --exit-code HEAD
+
+      '
+  - name: GREEN actual service, handler and collector packages with race detection
+    working-directory: backend
+    shell: bash
+    run: 'set -euo pipefail
+
+      export ACCOUNT_TIMING_FIXTURES_DIR="$RUNNER_TEMP/timing-proof/fixtures"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit ./internal/service ./internal/handler/admin ./internal/integration/accountconnectiontiming
+      -run ''TestAccountConnectionTiming|TestAccountTest|TestProcessGeminiStream|TestTypeSafeAccountTest|TestExcelBPS.*(Test|Probe)|TestOpenAIConnectionManagementRejectsAPIKey|TestOpenAIConnectionCreationRejectsMixedCredentials|TestOpenAIConnectionHandlerAccountType''
+      -count=1 -v -timeout=20m 2>&1 | tee "$RUNNER_TEMP/timing-proof/green.log"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race ./internal/pkg/requesttiming -count=1 -v -timeout=5m 2>&1 | tee "$RUNNER_TEMP/timing-proof/collector.log"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test ./internal/service ./internal/handler/admin -run ''^$'' -timeout=10m 2>&1 | tee "$RUNNER_TEMP/timing-proof/normal-packages.log"
+
+      test -f "$ACCOUNT_TIMING_FIXTURES_DIR/apikey-responses.sse"
+
+      test -f "$ACCOUNT_TIMING_FIXTURES_DIR/oauth-responses.sse"
+
+      git diff --exit-code HEAD
+
+      '
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-account-connection-timing-backend-account-timing-backend-${{ github.event.pull_request.head.sha
+        || github.sha }}
+      path: ${{ runner.temp }}/timing-proof
+      if-no-files-found: error

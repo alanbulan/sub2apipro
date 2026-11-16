@@ -1,0 +1,20 @@
+name: sync-20261116-bps-diagnostics-auth-protocol-and-receipt
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race ./internal/service/basispoints -count=1 -v'
+    shell: bash
+  - working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit ./internal/service ./internal/handler/admin ./internal/server/middleware -run ''Test(ExcelBPSToolArgumentsDiagnostic|ConnectionAuthorizationStatus|OpenAIConnectionManagement|OpenAIConnectionHandlerAccountType|OpenAIAuthConnection|Audit)''
+      -count=1 -v -timeout=10m'
+    shell: bash

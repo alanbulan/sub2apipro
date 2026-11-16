@@ -1,0 +1,77 @@
+name: sync-20261116-pr597-stream-timing-regression
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Record exact source and production baseline
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      PRODUCTION_BASE: ${{ github.event.pull_request.base.sha || '99f25942738ff12056ac82d97ee6b74cb07cd163' }}
+    run: 'test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+
+      printf ''exact_head=%s\nproduction_baseline=%s\nred_scanner_baseline=%s\n'' "$SOURCE_HEAD" "$PRODUCTION_BASE" e7b6e505560fbe810c36c2bbd50b57b1f437ff49
+
+      git cat-file -p HEAD | sed -n ''s/^parent /merge_parent=/p''
+
+      '
+    shell: bash
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Fetch the reviewed original head for RED
+    run: git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git e7b6e505560fbe810c36c2bbd50b57b1f437ff49
+    shell: bash
+  - name: RED - new tests against only the original scanner production file
+    run: python3 scripts/pr597-stream-timing-red.py "$RUNNER_TEMP/pr597-red.jsonl"
+    shell: bash
+  - name: Verify production source restored before GREEN
+    run: git diff --exit-code -- backend/internal/service/openai_sse_json_documents.go backend/internal/service/openai_sse_timing_context_test.go
+    shell: bash
+  - name: GREEN - actual service scanner and native timing boundaries
+    working-directory: backend
+    shell: bash
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit ./internal/service -run ''^Test(OpenAISSEScannerTiming|OpenAINativeSSETiming|ToolConversionTiming|OpenAIVisibleOutputClassification|OpenAIResponsesTTFT|OpenAINativeMetadataAndKeepalive|OpenAINativeFirstOutput|OpenAIStreaming.*RepairsConcatenatedJSON|SplitOpenAIConcatenatedJSON)''
+      -count=1 -timeout=10m -v 2>&1 | tee "$RUNNER_TEMP/pr597-service-green.log"
+
+      '
+  - name: GREEN - actual repository transport and timing persistence
+    working-directory: backend
+    shell: bash
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit ./internal/repository -run ''^Test(StreamDecompressionBeforeEOF|StreamTimingDoesNotLabelUndecodedBodyAsDecoded|TimingWriteJoinsBillingIdentityAndKeepsDistinctTraces|TimingBindingDoesNotWriteUntilRequestFinished)$''
+      -count=1 -timeout=5m -v 2>&1 | tee "$RUNNER_TEMP/pr597-repository-green.log"
+
+      '
+  - name: GREEN - actual attempt timing and HTTP lifecycle package
+    working-directory: backend
+    shell: bash
+    run: 'set -euo pipefail
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race ./internal/pkg/requesttiming -count=1 -timeout=5m -v 2>&1 | tee "$RUNNER_TEMP/pr597-timing-green.log"
+
+      '
+  - name: Preserve RED and GREEN evidence
+    if: always()
+    uses: actions/upload-artifact@v6
+    with:
+      name: sync-20261116-pr597-stream-timing-regression-pr597-stream-timing-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: '${{ runner.temp }}/pr597-red.jsonl
+
+        ${{ runner.temp }}/pr597-red.stderr.log
+
+        ${{ runner.temp }}/pr597-*-green.log
+
+        '
+      if-no-files-found: error
+      retention-days: 14

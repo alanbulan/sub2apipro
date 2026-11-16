@@ -1,0 +1,25 @@
+name: sync-20261116-backend-ci-shell
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Assert exact candidate head
+    run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+    shell: bash
+  - name: Check deployment scripts
+    run: '/bin/bash -n deploy/install.sh deploy/install-mihomo-codex.sh deploy/migrate-mihomo-managed.sh
+
+      /bin/bash -n deploy/apple-container.sh
+
+      /bin/bash deploy/tests/apple-container-test.sh
+
+      /bin/sh deploy/tests/docker-compose-security-test.sh
+
+      /bin/sh deploy/tests/docker-compose-gateway-env-test.sh
+
+      /bin/sh deploy/tests/docker-runtime-resources-test.sh
+
+      /bin/sh deploy/test-caddyfile-cache.sh
+
+      '
+    shell: bash

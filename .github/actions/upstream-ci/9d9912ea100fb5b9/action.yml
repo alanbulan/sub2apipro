@@ -1,0 +1,36 @@
+name: sync-20261116-pr598-repair-regression-queued-service-red
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Overlay only the queued regression on exact defective c0c production source
+    shell: bash
+    run: "set -euo pipefail\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git c0c7533badd6e4696e58d709f59eb7e10bf4b5f0\n\
+      baseline=\"$RUNNER_TEMP/pr598-c0c-service\"\ngit worktree add --detach \"$baseline\" c0c7533badd6e4696e58d709f59eb7e10bf4b5f0\n\
+      trap 'git worktree remove --force \"$baseline\"' EXIT\nmkdir -p \"$baseline/backend/internal/service\"\ngit show d79c1044914e7924c38cc4a239e42ff8980698e6:backend/internal/service/priority_scheduling_recompute_epoch_regression_test.go\
+      \ > \"$baseline/backend/internal/service/priority_scheduling_recompute_epoch_regression_test.go\"\nmkdir -p \"$RUNNER_TEMP/pr598-c0c-red\"\
+      \nbash scripts/pr598-source-proof.sh \"$baseline\" c0c7533badd6e4696e58d709f59eb7e10bf4b5f0 \\\n  backend/internal/service/priority_scheduling_history.go\
+      \ \\\n  backend/internal/service/priority_scheduling_recompute.go \\\n  backend/internal/service/priority_scheduling_snapshot.go\
+      \ \\\n  backend/internal/service/priority_scheduling.go | tee \"$RUNNER_TEMP/pr598-c0c-red/production.txt\"\ntest \"\
+      $(git rev-parse d79c1044914e7924c38cc4a239e42ff8980698e6:backend/internal/service/priority_scheduling_recompute_epoch_regression_test.go)\"\
+      \ = \"$(git -C \"$baseline\" hash-object backend/internal/service/priority_scheduling_recompute_epoch_regression_test.go)\"\
+      \npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$baseline/backend\"\nset +e\n(cd \"$baseline/backend\"\
+      \ && go test -tags=unit ./internal/service -run '^TestPriorityRecompute(RefreshFailurePreservesCachedRiskForScheduler|WaitsForFreshReadAfterInflightReader)$'\
+      \ -count=1 -v -timeout=10s) > \"$RUNNER_TEMP/pr598-c0c-red/service.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/pr598-c0c-red/service.log\"\
+      \ntest \"$result\" -ne 0\ngrep -q -- 'FAIL: TestPriorityRecomputeRefreshFailurePreservesCachedRiskForScheduler' \"$RUNNER_TEMP/pr598-c0c-red/service.log\"\
+      \ngrep -q -- 'FAIL: TestPriorityRecomputeWaitsForFreshReadAfterInflightReader' \"$RUNNER_TEMP/pr598-c0c-red/service.log\"\
+      \ngrep -q -- 'online scheduling must retain its last successful latency evidence' \"$RUNNER_TEMP/pr598-c0c-red/service.log\"\
+      \ngrep -q -- 'recompute finished before a post-request history read' \"$RUNNER_TEMP/pr598-c0c-red/service.log\"\n! grep\
+      \ -Eq 'build failed|undefined:|no tests to run|panic:|recompute must reach its force-refresh boundary' \"$RUNNER_TEMP/pr598-c0c-red/service.log\"\
+      \n"
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-pr598-repair-regression-queued-service-red-pr598-c0c-service-red-${{ github.event.pull_request.head.sha
+        || github.sha }}
+      path: ${{ runner.temp }}/pr598-c0c-red
+      if-no-files-found: error

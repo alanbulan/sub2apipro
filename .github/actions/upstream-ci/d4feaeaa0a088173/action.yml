@@ -1,0 +1,44 @@
+name: sync-20261116-moderation-upstream-scope-ui-evidence
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Frontend integration and existing selector regressions
+    run: 'pnpm --dir frontend exec vitest run src/components/admin/moderation/__tests__/ModerationUpstreamAccountSelector.spec.ts
+      src/components/admin/operations/__tests__/QualityAccountSelector.spec.ts src/views/admin/__tests__/RiskControlView.spec.ts
+      src/components/common/__tests__/NewFeatureBadge.spec.ts
+
+      pnpm --dir frontend run build
+
+      '
+    shell: bash
+  - name: Isolated browser
+    run: 'npm install --prefix "$RUNNER_TEMP/scope-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      node "$RUNNER_TEMP/scope-browser/node_modules/playwright/cli.js" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Render actual baseline settings
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}/moderation-scope-ui
+      SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/scope-browser/node_modules/playwright/index.mjs
+    run: node scripts/moderation-scope-preview.mjs
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-moderation-upstream-scope-ui-evidence-moderation-scope-ui-${{ github.sha }}
+      path: ${{ runner.temp }}/moderation-scope-ui

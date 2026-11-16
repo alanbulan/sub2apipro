@@ -1,0 +1,45 @@
+name: sync-20261116-upstream-channel-operations-postgres
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - run: git rev-parse HEAD
+    shell: bash
+  - name: OAuth and pinned-protocol attribution assertions RED against previous head
+    working-directory: backend
+    shell: bash
+    run: "set -euo pipefail\ntarget=internal/service/upstream_operations.go\ncp \"$target\" \"$RUNNER_TEMP/upstream-current-service.go\"\
+      \ntrap 'cp \"$RUNNER_TEMP/upstream-current-service.go\" \"$target\"' EXIT\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
+      \ ecf63af98587c151fe40893f3e3c322a777b17df\ngit show ecf63af98587c151fe40893f3e3c322a777b17df:backend/internal/service/upstream_operations.go\
+      \ > \"$target\"\n# Preserve the independent filter DTO and validation while reverting\n# only endpoint attribution.\
+      \ Profit validation also calls the shared\n# window validator; restoring the old file alone would not compile.\n# Cost\
+      \ metadata moved to profit_operations.go; omit its old duplicate.\npython3 - <<'PYCOMPAT'\nfrom pathlib import Path\n\
+      import os\nimport re\np=Path('internal/service/upstream_operations.go')\ns=p.read_text()\ncurrent=Path(os.environ['RUNNER_TEMP'],\
+      \ 'upstream-current-service.go').read_text()\nbegin='func ValidateUpstreamOperationsFilter('\nend='func (s *ChannelService)\
+      \ UpstreamOperations('\ns=s[:s.index(begin)]+current[current.index(begin):current.index(end)]+s[s.index(end):]\nif '\"\
+      strconv\"' not in s:\n    s=s.replace('import (\\n', 'import (\\n \"strconv\"\\n', 1)\nif '`json:\"channel_id,omitempty\"\
+      `' not in s:\n    s=s.replace('Upstream   string    `json:\"upstream\"`', 'Upstream   string    `json:\"upstream\"`\\\
+      n ChannelID int64 `json:\"channel_id,omitempty\"`')\ns=re.sub(r'\\n// OperationsCostMultiplier distinguishes.*?\\n}\\\
+      s*$', '\\n', s, flags=re.S)\nassert '`json:\"channel_id,omitempty\"`' in s\nassert 'func OperationsCostMultiplier' not\
+      \ in s\np.write_text(s)\nPYCOMPAT\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$PWD\"\nset +e\ngo test\
+      \ -tags=unit ./internal/service -run '^TestUpstreamOperations(ExcelOAuthCannotMasqueradeAsNativeCodex|PinnedResponsesPreservesExplicitRelayBase)$'\
+      \ -count=1 -v > \"$RUNNER_TEMP/upstream-excel-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/upstream-excel-red.log\"\
+      \ntest \"$result\" -ne 0\ngrep -q 'FAIL: TestUpstreamOperationsExcelOAuthCannotMasqueradeAsNativeCodex' \"$RUNNER_TEMP/upstream-excel-red.log\"\
+      \ngrep -q 'Excel-only OAuth cannot be attributed to native Codex' \"$RUNNER_TEMP/upstream-excel-red.log\"\ngrep -q 'FAIL:\
+      \ TestUpstreamOperationsPinnedResponsesPreservesExplicitRelayBase' \"$RUNNER_TEMP/upstream-excel-red.log\"\ngrep -q\
+      \ 'pinned Responses must retain explicit relay base' \"$RUNNER_TEMP/upstream-excel-red.log\"\n"
+  - run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run ''^TestUpstreamOperations''
+      -count=1 -v'
+    working-directory: backend
+    shell: bash
+  - run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=integration ./internal/repository -run ''^TestUpstreamOperations'' -count=1 -v'
+    working-directory: backend
+    shell: bash

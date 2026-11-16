@@ -1,0 +1,30 @@
+name: sync-20261116-free-ultrafast-billing-and-persistence
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Ent reproducibility
+    run: '(cd backend && go generate ./ent)
+
+      git diff --exit-code -- backend/ent backend/go.mod backend/go.sum
+
+      '
+    shell: bash
+  - name: Billing, DTO, administration and cache regressions
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=unit ./internal/service ./internal/handler/admin ./internal/handler/dto ./migrations -run ''Test(FreeUltrafast|FreeFastCustomerCost|DuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState|GroupFreeOpenAI|GroupRequestsDecodeForceOpenAIFast|GroupMapperExposesForceOpenAIFast|APIKeyAuthSnapshotGroupForceOpenAIFast|AdminService_.*Group.*(Fast|Duplicate)|OpenAIGatewayServiceRecordUsage_FreeOpenAIFast)''
+      -count=1 -timeout=15m'
+    shell: bash
+  - name: Database persistence and authentication projection
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=integration ./internal/repository -run ''^Test(FreeUltrafastGroupPersistence|FreeUltrafastCustomerCostDurableReplay|GetByKeyForAuthCarriesGroupForceOpenAIFast)$''
+      -count=1 -timeout=10m'
+    shell: bash

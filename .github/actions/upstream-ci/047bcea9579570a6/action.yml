@@ -1,0 +1,84 @@
+name: sync-20261116-account-ops-selector-acceptance
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: pnpm/action-setup@v6
+    with:
+      version: 9
+  - uses: actions/setup-node@v6
+    with:
+      node-version: '22'
+      cache: pnpm
+      cache-dependency-path: frontend/pnpm-lock.yaml
+  - run: pnpm --dir frontend install --frozen-lockfile
+    shell: bash
+  - name: Confirm behavioral RED against pinned original dialog
+    run: "mkdir -p \"$RUNNER_TEMP/account-ops-selector\"\ngit rev-parse HEAD > \"$RUNNER_TEMP/account-ops-selector/head.txt\"\
+      \noriginal=frontend/src/components/admin/operations/AccountOpsGroupDialog.vue\ntrap 'git show \"HEAD:$original\" > \"\
+      $original\"' EXIT\ngit show \"f895ea743f34a4c4ab6c9d01c01e13c931625a6e:$original\" > \"$original\"\nset +e\npnpm --dir\
+      \ frontend exec vitest run src/components/admin/operations/__tests__/AccountOpsGroupSelector.spec.ts -t 'account ops\
+      \ shared selector' --reporter=json --outputFile=\"$RUNNER_TEMP/account-ops-selector/red.json\" > \"$RUNNER_TEMP/account-ops-selector/red.log\"\
+      \ 2>&1\nresult=$?\nset -e\ntest \"$result\" -ne 0\nnode --input-type=module <<'JS'\nimport assert from 'node:assert/strict';\n\
+      import {readFileSync} from 'node:fs';\nconst report=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/account-ops-selector/red.json','utf8'));\n\
+      const failures=report.testResults.flatMap(suite=>suite.assertionResults).filter(test=>test.status==='failed');\nassert.equal(report.numFailedTests,2);\n\
+      assert.equal(failures.length,2);\nfor(const test of failures){\n  assert.match(test.fullName,/account ops shared selector/);\n\
+      \  assert.match(test.failureMessages.join('\\n'),/expected false to be true/);\n}\nconsole.log('Confirmed two behavioral\
+      \ RED assertions; no import/setup failure.');\nJS\n"
+    shell: bash
+  - name: Confirm save-reopen RED against reviewed parent
+    run: "original=frontend/src/views/admin/AccountOpsView.vue\ntrap 'git show \"HEAD:$original\" > \"$original\"' EXIT\n\
+      git show \"ce272e17930d1a14d9f063f10b505630800ba8d3:$original\" > \"$original\"\nset +e\npnpm --dir frontend exec vitest\
+      \ run src/views/admin/__tests__/AccountOpsView.spec.ts -t 'reopens from saved memberships|fences old post-save group\
+      \ reads' --reporter=json --outputFile=\"$RUNNER_TEMP/account-ops-selector/reopen-red.json\" > \"$RUNNER_TEMP/account-ops-selector/reopen-red.log\"\
+      \ 2>&1\nresult=$?\nset -e\ntest \"$result\" -ne 0\nnode --input-type=module <<'JS'\nimport assert from 'node:assert/strict';\n\
+      import {readFileSync} from 'node:fs';\nconst report=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/account-ops-selector/reopen-red.json','utf8'));\n\
+      const failures=report.testResults.flatMap(suite=>suite.assertionResults).filter(test=>test.status==='failed');\nassert.equal(report.numFailedTests,2);\n\
+      assert.equal(failures.length,2);\nfor(const test of failures){\n  assert.match(test.fullName,/reopens from saved memberships|fences\
+      \ old post-save group reads/);\n  assert.match(test.failureMessages.join('\\n'),/expected false to be true|Latest saved/);\n\
+      }\nconsole.log('Confirmed save-reopen and stale-read behavioral RED; no setup failure.');\nJS\n"
+    shell: bash
+  - name: GREEN and existing quality regression tests
+    run: 'set -o pipefail
+
+      pnpm --dir frontend exec vitest run src/components/admin/operations/__tests__/AccountOpsGroupDialog.spec.ts src/components/admin/operations/__tests__/AccountOpsGroupSelector.spec.ts
+      src/components/admin/operations/__tests__/QualityAccountSelector.spec.ts src/views/admin/__tests__/AccountOpsView.spec.ts
+      src/views/admin/__tests__/AccountQualityView.spec.ts --reporter=verbose 2>&1 | tee "$RUNNER_TEMP/account-ops-selector/green.log"
+
+      '
+    shell: bash
+  - name: Required frontend checks
+    run: 'set -o pipefail
+
+      make test-frontend 2>&1 | tee "$RUNNER_TEMP/account-ops-selector/checks.log"
+
+      pnpm --dir frontend run build 2>&1 | tee "$RUNNER_TEMP/account-ops-selector/build.log"
+
+      '
+    shell: bash
+  - name: Install isolated screenshot browser
+    run: 'npm install --prefix "$RUNNER_TEMP/account-ops-browser" --no-save --ignore-scripts playwright@1.56.1
+
+      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      node "$RUNNER_TEMP/account-ops-browser/node_modules/playwright/cli.js" install --with-deps chromium
+
+      '
+    shell: bash
+  - name: Actual component screenshots and interactions
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}/account-ops-selector
+      SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/account-ops-browser/node_modules/playwright/index.mjs
+    run: 'set -o pipefail
+
+      node scripts/account-ops-selector-preview.mjs 2>&1 | tee "$EVIDENCE_DIR/browser.log"
+
+      '
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-account-ops-selector-acceptance-account-ops-selector-${{ github.sha }}
+      path: ${{ runner.temp }}/account-ops-selector
+      if-no-files-found: error
+      retention-days: 30

@@ -1,0 +1,299 @@
+name: sync-20261116-http2-stream-reset-regression
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: F4 multiline data-only RED on reviewed head and exact candidate GREEN
+    shell: bash
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ntest -z \"$(git status --porcelain)\"\
+      \nmkdir -p \"$RUNNER_TEMP/http2-evidence\"\ndefect=1a159c1f947f0c5acc0775fe8edb419dbf23269e\ntarget=backend/internal/service/openai_gateway_cc_pipeline.go\n\
+      red_tree=\"$RUNNER_TEMP/http2-multiline-red\"\ngit worktree add --detach \"$red_tree\" \"$EXPECTED_HEAD_SHA\"\ngit show\
+      \ \"$defect:$target\" > \"$red_tree/$target\"\ntest \"$(git hash-object \"$red_tree/$target\")\" = \"$(git rev-parse\
+      \ \"$defect:$target\")\"\ngit rev-parse HEAD HEAD^{tree} \"$defect\" \"$defect:$target\" > \"$RUNNER_TEMP/http2-evidence/f4-multiline-identity.txt\"\
+      \nfor test_source in backend/internal/service/http2_peer_reset_followup_test.go backend/internal/handler/http2_peer_reset_test.go;\
+      \ do\n  expected=$(git rev-parse \"HEAD:$test_source\")\n  actual=$(git hash-object \"$red_tree/$test_source\")\n  test\
+      \ \"$expected\" = \"$actual\"\n  echo \"candidate=$EXPECTED_HEAD_SHA test=$test_source expected=$expected actual=$actual\"\
+      \ >> \"$RUNNER_TEMP/http2-evidence/f4-multiline-identity.txt\"\ndone\nselected='^TestHTTP2CC(DataOnlyMultilineSemanticFailureBeforeReset|DataOnlyMultilineOwnershipAndSLA|DataOnlyMultilineIncompleteStillResets|OrdinaryChunksEmitBeforeDelimiter)$'\n\
+      python3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$red_tree/backend\"\nset +e\n(cd \"$red_tree/backend\" &&\
+      \ go test -tags=unit ./internal/service ./internal/handler -run \"$selected\" -count=1 -v -timeout=5m) > \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\
+      \ 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\nprintf '%s\\n' \"$result\" > \"\
+      $RUNNER_TEMP/http2-evidence/f4-multiline-red-exit.txt\"\ntest \"$result\" -eq 1\nif grep -Eiq 'build failed|setup failed|no\
+      \ tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING: DATA RACE|race detected|signal:\
+      \ (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"; then exit 1; fi\nfor mode in responses\
+      \ messages; do\n  grep -q -- \"--- FAIL: TestHTTP2CCDataOnlyMultilineSemanticFailureBeforeReset/$mode\" \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\
+      \n  grep -q -- \"--- FAIL: TestHTTP2CCDataOnlyMultilineOwnershipAndSLA/$mode\" \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\
+      \n  grep -q -- \"F4 multiline data-only semantic failure must survive reset: $mode\" \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\
+      \n  grep -q -- \"F4 multiline data-only context rejection must retain client ownership: $mode\" \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\
+      \n  grep -q -- \"--- PASS: TestHTTP2CCDataOnlyMultilineIncompleteStillResets/$mode\" \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\
+      \ndone\ngrep -q -- '--- PASS: TestHTTP2CCOrdinaryChunksEmitBeforeDelimiter' \"$RUNNER_TEMP/http2-evidence/f4-multiline-red.log\"\
+      \ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ntest -z \"$(git status --porcelain)\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ backend\nset +e\n(cd backend && go test -race -tags=unit ./internal/service ./internal/handler -run '^TestHTTP2CC(DataOnlyMultilineSemanticFailureBeforeReset|DataOnlyMultilineOwnershipAndSLA|DataOnlyMultilineIncompleteStillResets|OrdinaryChunksEmitBeforeDelimiter|MultilineEventBufferBounded)$'\
+      \ -count=1 -v -timeout=5m) > \"$RUNNER_TEMP/http2-evidence/f4-multiline-green-race.log\" 2>&1\nresult=$?\nset -e\ncat\
+      \ \"$RUNNER_TEMP/http2-evidence/f4-multiline-green-race.log\"\nprintf '%s\\n' \"$result\" > \"$RUNNER_TEMP/http2-evidence/f4-multiline-green-race-exit.txt\"\
+      \ntest \"$result\" -eq 0\nif grep -Eiq 'build failed|setup failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal\
+      \ error:|runtime error:|WARNING: DATA RACE|race detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/f4-multiline-green-race.log\"\
+      ; then exit 1; fi\nfor test_name in TestHTTP2CCDataOnlyMultilineSemanticFailureBeforeReset TestHTTP2CCDataOnlyMultilineOwnershipAndSLA\
+      \ TestHTTP2CCDataOnlyMultilineIncompleteStillResets TestHTTP2CCOrdinaryChunksEmitBeforeDelimiter TestHTTP2CCMultilineEventBufferBounded;\
+      \ do\n  grep -q -- \"--- PASS: $test_name\" \"$RUNNER_TEMP/http2-evidence/f4-multiline-green-race.log\"\ndone\ntest\
+      \ -z \"$(git status --porcelain)\"\n"
+  - name: F3 behavioral RED on pinned merged production
+    shell: bash
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ntest -z \"$(git status --porcelain)\"\
+      \nmkdir -p \"$RUNNER_TEMP/http2-evidence\"\ndefect=ea1f3a28d8d1839e92ac5e48c6e9d7aeb90b0fff\nred_tree=\"$RUNNER_TEMP/http2-successor-red\"\
+      \ngit worktree add --detach \"$red_tree\" \"$defect\"\ntest_source=backend/internal/repository/http2_ai_ops_identity_integration_test.go\n\
+      git show \"HEAD:$test_source\" > \"$red_tree/$test_source\"\ntest \"$(git hash-object \"$red_tree/$test_source\")\"\
+      \ = \"$(git rev-parse \"HEAD:$test_source\")\"\ngit rev-parse HEAD HEAD^{tree} \"$defect\" \"$defect^{tree}\" \"HEAD:$test_source\"\
+      \ > \"$RUNNER_TEMP/http2-evidence/f3-red-identity.txt\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"\
+      $red_tree/backend\"\nset +e\n(cd \"$red_tree/backend\" && go test -tags=integration ./internal/repository -run '^TestHTTP2AIOpsFailureIdentityScopedToAPIKey$'\
+      \ -count=1 -v -timeout=5m) > \"$RUNNER_TEMP/http2-evidence/f3-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/f3-red.log\"\
+      \nprintf '%s\\n' \"$result\" > \"$RUNNER_TEMP/http2-evidence/f3-red-exit.txt\"\ntest \"$result\" -eq 1\nif grep -Eiq\
+      \ 'build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING: DATA\
+      \ RACE|race detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/f3-red.log\"; then exit 1; fi\nfor\
+      \ scenario in shared_request unknown_model conflicting_completed_usage; do\n  grep -q -- \"--- FAIL: TestHTTP2AIOpsFailureIdentityScopedToAPIKey/$scenario\"\
+      \ \"$RUNNER_TEMP/http2-evidence/f3-red.log\"\ndone\nfor diagnostic in 'F3 one success plus two different-key resets\
+      \ sharing X-Request-ID must be three samples' 'F3 an older different-key unknown-model failure must remain a cohort\
+      \ blocker' 'F3 both scoped failures must survive success exclusion'; do\n  grep -q -- \"$diagnostic\" \"$RUNNER_TEMP/http2-evidence/f3-red.log\"\
+      \ndone\ntest -z \"$(git status --porcelain)\"\n"
+  - name: F4 and F5 behavioral RED on the same pinned production tree
+    shell: bash
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ntest -z \"$(git status --porcelain)\"\
+      \ndefect=ea1f3a28d8d1839e92ac5e48c6e9d7aeb90b0fff\nred_tree=\"$RUNNER_TEMP/http2-successor-red\"\ntest \"$(git -C \"\
+      $red_tree\" rev-parse HEAD)\" = \"$defect\"\nfor test_source in backend/internal/service/http2_peer_reset_followup_test.go\
+      \ backend/internal/handler/http2_peer_reset_test.go; do\n  git show \"HEAD:$test_source\" > \"$red_tree/$test_source\"\
+      \n  expected=$(git rev-parse \"HEAD:$test_source\")\n  actual=$(git hash-object \"$red_tree/$test_source\")\n  test\
+      \ \"$actual\" = \"$expected\"\n  echo \"candidate=$EXPECTED_HEAD_SHA defect=$defect test=$test_source expected=$expected\
+      \ actual=$actual\" >> \"$RUNNER_TEMP/http2-evidence/f45-red-identity.txt\"\ndone\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ \"$red_tree/backend\"\nset +e\n(cd \"$red_tree/backend\" && go test -tags=unit ./internal/service ./internal/handler\
+      \ -run '^TestHTTP2CC(SemanticFailureBeforeReset|IncompleteSemanticEventStillResets|SemanticFailureOwnershipAndSLA)$'\
+      \ -count=1 -v -timeout=5m) > \"$RUNNER_TEMP/http2-evidence/f4-red.log\" 2>&1\nf4_result=$?\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ \"$red_tree/backend\"\n(cd \"$red_tree/backend\" && go test -tags=unit ./internal/service -run '^TestHTTP2NativeRelay(RequiresCompleteTerminal|CompleteTerminalControls)$'\
+      \ -count=1 -v -timeout=5m) > \"$RUNNER_TEMP/http2-evidence/f5-red.log\" 2>&1\nf5_result=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/f4-red.log\"\
+      \ \"$RUNNER_TEMP/http2-evidence/f5-red.log\"\nprintf '%s\\n' \"$f4_result\" > \"$RUNNER_TEMP/http2-evidence/f4-red-exit.txt\"\
+      \nprintf '%s\\n' \"$f5_result\" > \"$RUNNER_TEMP/http2-evidence/f5-red-exit.txt\"\ntest \"$f4_result\" -eq 1\ntest \"\
+      $f5_result\" -eq 1\nfor finding in f4 f5; do\n  if grep -Eiq 'build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal\
+      \ error:|runtime error:|WARNING: DATA RACE|race detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/$finding-red.log\"\
+      ; then exit 1; fi\ndone\nfor mode in responses messages; do\n  grep -q -- \"--- FAIL: TestHTTP2CCSemanticFailureBeforeReset/$mode/event_error\"\
+      \ \"$RUNNER_TEMP/http2-evidence/f4-red.log\"\n  grep -q -- \"--- FAIL: TestHTTP2CCSemanticFailureOwnershipAndSLA/$mode\"\
+      \ \"$RUNNER_TEMP/http2-evidence/f4-red.log\"\n  grep -q -- \"--- PASS: TestHTTP2CCIncompleteSemanticEventStillResets/$mode\"\
+      \ \"$RUNNER_TEMP/http2-evidence/f4-red.log\"\n  grep -q \"F4 complete CC semantic error must survive a later HTTP2 reset:\
+      \ $mode/event_error\" \"$RUNNER_TEMP/http2-evidence/f4-red.log\"\n  grep -q \"F4 complete CC context rejection must\
+      \ retain client ownership after reset: $mode\" \"$RUNNER_TEMP/http2-evidence/f4-red.log\"\ndone\nfor fragment in event_only\
+      \ event_no_data truncated_data missing_boundary data_only_cut invalid_json wrong_data_type; do\n  grep -q -- \"--- FAIL:\
+      \ TestHTTP2NativeRelayRequiresCompleteTerminal/$fragment\" \"$RUNNER_TEMP/http2-evidence/f5-red.log\"\n  grep -q \"\
+      F5 incomplete native message_stop must not swallow a later HTTP2 reset: $fragment\" \"$RUNNER_TEMP/http2-evidence/f5-red.log\"\
+      \ndone\ngrep -q 'F5 incomplete native message_stop must not swallow a later HTTP2 reset' \"$RUNNER_TEMP/http2-evidence/f5-red.log\"\
+      \ngrep -q -- '--- PASS: TestHTTP2NativeRelayCompleteTerminalControls/success' \"$RUNNER_TEMP/http2-evidence/f5-red.log\"\
+      \ngrep -q -- '--- PASS: TestHTTP2NativeRelayCompleteTerminalControls/data_only_success' \"$RUNNER_TEMP/http2-evidence/f5-red.log\"\
+      \ntest -z \"$(git status --porcelain)\"\n"
+  - name: F1 behavioral RED through the real AIOps evidence query
+    shell: bash
+    run: 'set -euo pipefail
+
+      test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+
+      mkdir -p "$RUNNER_TEMP/http2-evidence"
+
+      target=backend/internal/repository/ai_ops.go
+
+      baseline=3137257829f0cc48466911aa4a249dd03f3c088f
+
+      restore_ai_ops() { git show "HEAD:$target" > "$target"; }
+
+      trap restore_ai_ops EXIT
+
+      git show "$baseline:$target" > "$target"
+
+      test "$(git hash-object "$target")" = "$(git rev-parse "$baseline:$target")"
+
+      git rev-parse HEAD "$baseline:$target" > "$RUNNER_TEMP/http2-evidence/f1-red-identity.txt"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      set +e
+
+      (cd backend && go test -tags=integration ./internal/repository -run ''^TestHTTP2AIOpsEvidenceIncludesCommittedTransportFailure$''
+      -count=1 -v -timeout=5m) > "$RUNNER_TEMP/http2-evidence/f1-red.log" 2>&1
+
+      result=$?
+
+      set -e
+
+      cat "$RUNNER_TEMP/http2-evidence/f1-red.log"
+
+      test "$result" -eq 1
+
+      if grep -Eiq ''build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING:
+      DATA RACE|race detected|signal: (killed|segmentation)'' "$RUNNER_TEMP/http2-evidence/f1-red.log"; then exit 1; fi
+
+      grep -q -- ''--- FAIL: TestHTTP2AIOpsEvidenceIncludesCommittedTransportFailure'' "$RUNNER_TEMP/http2-evidence/f1-red.log"
+
+      grep -q ''AIOps must count one success plus the committed HTTP200 transport failure'' "$RUNNER_TEMP/http2-evidence/f1-red.log"
+
+      restore_ai_ops
+
+      trap - EXIT
+
+      git diff --exit-code
+
+      '
+  - name: RED real HTTP2 boundary against production
+    shell: bash
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\nmkdir -p \"$RUNNER_TEMP/http2-evidence\"\
+      \ngit rev-parse HEAD HEAD^{tree} > \"$RUNNER_TEMP/http2-evidence/head.txt\"\nbaseline=ccf997c73868083d96c0bec56e71c1a34d26c98a\n\
+      # Keep the historical source/test dependencies on the last fully\n# validated pre-integration checkpoint. Copy the exact\
+      \ current HTTP2\n# regressions into this disposable tree; GREEN below runs full HEAD.\nreviewed=f177caec5510f502270ff3ceb36fe43295f405f1\n\
+      candidate=$(git rev-parse HEAD)\nred_tree=\"$RUNNER_TEMP/http2-historical-red\"\ngit worktree add --detach \"$red_tree\"\
+      \ \"$reviewed\"\nwhile IFS= read -r test_source; do\n  git show \"$candidate:$test_source\" > \"$red_tree/$test_source\"\
+      \n  expected=$(git rev-parse \"$candidate:$test_source\")\n  actual=$(git hash-object \"$red_tree/$test_source\")\n\
+      \  test \"$expected\" = \"$actual\"\n  echo \"candidate_test=$test_source expected=$expected actual=$actual\" >> \"\
+      $RUNNER_TEMP/http2-evidence/red-tests.txt\"\n# Postmerge F3/F4/F5 tests run unchanged on ea1f above and clean\n# candidate\
+      \ GREEN below. The older overlays remove TransportFailure;\n# keep their original regression set instead of compiling\
+      \ new tests\n# against a source contract predating that field.\ndone < <(git ls-files 'backend/internal/handler/http2*_test.go'\
+      \ 'backend/internal/service/http2*_test.go' 'backend/internal/repository/http2*_test.go' ':!backend/internal/service/http2_peer_reset_followup_test.go'\
+      \ ':!backend/internal/repository/http2_ai_ops_identity_integration_test.go')\ncd \"$red_tree\"\ngit rev-parse HEAD HEAD^{tree}\
+      \ > \"$RUNNER_TEMP/http2-evidence/red-source-checkpoint.txt\"\nmapfile -t targets < <(git diff --name-only \"$baseline\"\
+      \ \"$reviewed\" -- 'backend/**/*.go' ':!backend/**/*_test.go' ':!backend/**/*_test_support.go')\nrestore_head() {\n\
+      \  for target in \"${targets[@]}\"; do git show \"HEAD:$target\" > \"$target\"; done\n}\ntrap restore_head EXIT\nfor\
+      \ target in \"${targets[@]}\"; do\n  if git cat-file -e \"$baseline:$target\" 2>/dev/null; then\n    git show \"$baseline:$target\"\
+      \ > \"$target\"\n    test \"$(git hash-object \"$target\")\" = \"$(git rev-parse \"$baseline:$target\")\"\n  fi\ndone\n\
+      git diff --stat > \"$RUNNER_TEMP/http2-evidence/overlay.txt\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ backend\nset +e\n(cd backend && go test -tags=unit ./internal/handler -run '^TestHTTP2PeerResetBoundary$' -count=1\
+      \ -v -timeout=3m) > \"$RUNNER_TEMP/http2-evidence/red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/red.log\"\
+      \ntest \"$result\" -eq 1\nif grep -Eiq 'build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal\
+      \ error:|runtime error:|WARNING: DATA RACE|race detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/red.log\"\
+      ; then exit 1; fi\ngrep -q 'peer reset must persist as transport_error, not synthetic HTTP 502' \"$RUNNER_TEMP/http2-evidence/red.log\"\
+      \ngrep -q -- '--- FAIL: TestHTTP2PeerResetBoundary' \"$RUNNER_TEMP/http2-evidence/red.log\"\n# New review findings must\
+      \ fail behaviorally against original production too.\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\n\
+      set +e\n(cd backend && go test -tags=unit ./internal/handler ./internal/service -run '^TestHTTP2PeerReset(BeforeHeaders|BufferedBoundaries|PartialImages|NativeConversionBoundary|NativeUsage|ImagesBeforeHeaders)$'\
+      \ -count=1 -v -timeout=3m) > \"$RUNNER_TEMP/http2-evidence/review-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/review-red.log\"\
+      \ntest \"$result\" -eq 1\nif grep -Eiq 'build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal\
+      \ error:|runtime error:|WARNING: DATA RACE|race detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/review-red.log\"\
+      ; then exit 1; fi\nfor test_name in TestHTTP2PeerResetBeforeHeaders TestHTTP2PeerResetBufferedBoundaries TestHTTP2PeerResetPartialImages\
+      \ TestHTTP2PeerResetNativeConversionBoundary TestHTTP2PeerResetNativeUsage TestHTTP2PeerResetImagesBeforeHeaders; do\n\
+      \  grep -q -- \"--- FAIL: $test_name\" \"$RUNNER_TEMP/http2-evidence/review-red.log\"\ndone\nfor diagnostic in 'peer\
+      \ reset before headers must not replay a consumed POST' 'buffered reset must establish transport evidence' 'partial-image\
+      \ reset must persist a failed request' 'native reset must return failure instead of synthetic success' 'image reset\
+      \ before headers must persist transport_error'; do\n  grep -q -- \"$diagnostic\" \"$RUNNER_TEMP/http2-evidence/review-red.log\"\
+      \ndone\n# Semantic spoofing was introduced by the first patch; reproduce it\n# against the compiling pre-review candidate,\
+      \ retaining these tests.\nvulnerable=c351ebea9bf144c710780da5e4db0e264e6ebb9c\nfor target in \"${targets[@]}\"; do git\
+      \ show \"$vulnerable:$target\" > \"$target\"; done\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\n\
+      set +e\n(cd backend && go test -tags=unit ./internal/service -run '^TestHTTP2SemanticImageErrorCannotSpoofReset$' -count=1\
+      \ -v -timeout=3m) > \"$RUNNER_TEMP/http2-evidence/spoof-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/spoof-red.log\"\
+      \ntest \"$result\" -eq 1\nif grep -Eiq 'build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal\
+      \ error:|runtime error:|WARNING: DATA RACE|race detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/spoof-red.log\"\
+      ; then exit 1; fi\ngrep -q -- '--- FAIL: TestHTTP2SemanticImageErrorCannotSpoofReset' \"$RUNNER_TEMP/http2-evidence/spoof-red.log\"\
+      \ngrep -q 'semantic image text must not create trusted reset evidence' \"$RUNNER_TEMP/http2-evidence/spoof-red.log\"\
+      \nfor target in \"${targets[@]}\"; do git show \"a5bc18f34c68a4c870660b4449bbb73592c73d84:$target\" > \"$target\"; done\n\
+      python3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n(cd backend && go test -tags=unit ./internal/handler\
+      \ -run '^TestHTTP2PeerResetWebSocketTurnPersistence$' -count=1 -v -timeout=3m) > \"$RUNNER_TEMP/http2-evidence/ws-red.log\"\
+      \ 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/ws-red.log\"\ntest \"$result\" -eq 1\nif grep -Eiq 'build\
+      \ failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING: DATA RACE|race\
+      \ detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/ws-red.log\"; then exit 1; fi\ngrep -q -- '---\
+      \ FAIL: TestHTTP2PeerResetWebSocketTurnPersistence' \"$RUNNER_TEMP/http2-evidence/ws-red.log\"\ngrep -q 'final transport\
+      \ marker must preserve both WebSocket turn failures' \"$RUNNER_TEMP/http2-evidence/ws-red.log\"\nfor target in \"${targets[@]}\"\
+      ; do git show \"fe4aadbd9ecd0fdfa689282490fa2bf6736335a7:$target\" > \"$target\"; done\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ backend\nset +e\n(cd backend && go test -tags=unit ./internal/service -run '^TestHTTP2(NativeSemanticErrorBeforeReset|RawIncompleteErrorEventStillResets)$'\
+      \ -count=1 -v -timeout=3m) > \"$RUNNER_TEMP/http2-evidence/terminal-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/http2-evidence/terminal-red.log\"\
+      \ntest \"$result\" -eq 1\nif grep -Eiq 'build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal\
+      \ error:|runtime error:|WARNING: DATA RACE|race detected|signal: (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/terminal-red.log\"\
+      ; then exit 1; fi\ngrep -q -- '--- FAIL: TestHTTP2NativeSemanticErrorBeforeReset' \"$RUNNER_TEMP/http2-evidence/terminal-red.log\"\
+      \ngrep -q -- '--- FAIL: TestHTTP2RawIncompleteErrorEventStillResets' \"$RUNNER_TEMP/http2-evidence/terminal-red.log\"\
+      \ngrep -q 'native semantic failure must not become successful completion' \"$RUNNER_TEMP/http2-evidence/terminal-red.log\"\
+      \ngrep -q 'incomplete raw error event must not suppress reset classification' \"$RUNNER_TEMP/http2-evidence/terminal-red.log\"\
+      \nrestore_head\ntrap - EXIT\ngit diff --exit-code -- \"${targets[@]}\"\ncd \"$GITHUB_WORKSPACE\"\ngit worktree remove\
+      \ --force \"$red_tree\"\ngit diff --exit-code\n"
+  - name: GREEN boundary and existing stream regressions
+    shell: bash
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ntest -z \"$(git status --porcelain)\"\
+      \ncd backend\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$PWD\"\ngo test -tags=unit ./internal/handler\
+      \ ./internal/service ./internal/repository -run 'TestHTTP2|Test(CC|Responses)(Buffered|Streaming)FromNativeAnthropic|TestNativeAnthropic|TestProxyOpenAIWSHTTPBridge|TestPluginSSE|TestOpenAIStreaming|TestHandleChatStreaming|TestChatCompletionsBuffered|TestAnthropicBuffered|TestForwardAsAnthropic|TestForwardResponses|TestOpenAIImagesOAuthBodyRead|TestOps.*Stream|TestOpsBridge|TestAutoConfig|Test.*RawStream|Test.*StreamTruncat|Test.*ClientCancel|Test.*ClientDisconnect|Test.*Deadline|TestClassifyOpenAIAPIKeyHealth|TestOpsErrorWhere'\
+      \ -count=1 -v -timeout=10m 2>&1 | tee \"$RUNNER_TEMP/http2-evidence/green.log\"\nif grep -Eiq 'build failed|no tests\
+      \ to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING: DATA RACE|race detected|signal:\
+      \ (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/green.log\"; then exit 1; fi\nfor test_name in TestHTTP2PeerResetBoundary\
+      \ TestHTTP2PeerResetBeforeHeaders TestHTTP2PeerResetBufferedBoundaries TestHTTP2PeerResetPartialImages TestHTTP2PeerResetPluginEarlyMetadata\
+      \ TestHTTP2SemanticImageErrorCannotSpoofReset TestHTTP2PeerResetNativeConversionBoundary TestHTTP2PeerResetNativeUsage\
+      \ TestHTTP2PeerResetImagesBeforeHeaders TestHTTP2PeerResetWebSocketTurnPersistence TestHTTP2NativeSemanticErrorBeforeReset\
+      \ TestHTTP2RawIncompleteErrorEventStillResets TestHTTP2CCSemanticFailureBeforeReset TestHTTP2CCIncompleteSemanticEventStillResets\
+      \ TestHTTP2CCNonContextSemanticStatusUnchanged TestHTTP2CCDataOnlyMultilineSemanticFailureBeforeReset TestHTTP2CCDataOnlyMultilineOwnershipAndSLA\
+      \ TestHTTP2CCDataOnlyMultilineIncompleteStillResets TestHTTP2CCOrdinaryChunksEmitBeforeDelimiter TestHTTP2CCMultilineEventBufferBounded\
+      \ TestHTTP2CCSemanticFailureOwnershipAndSLA TestHTTP2NativeRelayRequiresCompleteTerminal TestHTTP2NativeRelayCompleteTerminalControls;\
+      \ do\n  grep -q -- \"--- PASS: $test_name\" \"$RUNNER_TEMP/http2-evidence/green.log\"\ndone\n"
+  - name: Ordinary production build
+    shell: bash
+    run: 'set -euo pipefail
+
+      test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+
+      test -z "$(git status --porcelain)"
+
+      cd backend
+
+      go build ./... 2>&1 | tee "$RUNNER_TEMP/http2-evidence/build.log"
+
+      '
+  - name: Race boundary and stream lifecycle
+    shell: bash
+    run: "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ntest -z \"$(git status --porcelain)\"\
+      \ncd backend\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$PWD\"\ngo test -race -tags=unit ./internal/handler\
+      \ ./internal/service -run 'TestHTTP2|TestOpenAIStreamingReadError|TestHandleChatStreamingResponse_ClassifiesHTTP2|TestAutoConfigRealRequestOutcomes|TestForwardAsAnthropic_ForceChatCompletionsStreamReadError'\
+      \ -count=1 -v -timeout=10m 2>&1 | tee \"$RUNNER_TEMP/http2-evidence/race.log\"\nif grep -Eiq 'build failed|no tests\
+      \ to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING: DATA RACE|race detected|signal:\
+      \ (killed|segmentation)' \"$RUNNER_TEMP/http2-evidence/race.log\"; then exit 1; fi\nfor test_name in TestHTTP2PeerResetBoundary\
+      \ TestHTTP2PeerResetBeforeHeaders TestHTTP2PeerResetBufferedBoundaries TestHTTP2PeerResetPartialImages TestHTTP2PeerResetPluginEarlyMetadata\
+      \ TestHTTP2SemanticImageErrorCannotSpoofReset TestHTTP2PeerResetNativeConversionBoundary TestHTTP2PeerResetNativeUsage\
+      \ TestHTTP2PeerResetImagesBeforeHeaders TestHTTP2PeerResetWebSocketTurnPersistence TestHTTP2NativeSemanticErrorBeforeReset\
+      \ TestHTTP2RawIncompleteErrorEventStillResets TestHTTP2CCSemanticFailureBeforeReset TestHTTP2CCIncompleteSemanticEventStillResets\
+      \ TestHTTP2CCNonContextSemanticStatusUnchanged TestHTTP2CCDataOnlyMultilineSemanticFailureBeforeReset TestHTTP2CCDataOnlyMultilineOwnershipAndSLA\
+      \ TestHTTP2CCDataOnlyMultilineIncompleteStillResets TestHTTP2CCOrdinaryChunksEmitBeforeDelimiter TestHTTP2CCMultilineEventBufferBounded\
+      \ TestHTTP2CCSemanticFailureOwnershipAndSLA TestHTTP2NativeRelayRequiresCompleteTerminal TestHTTP2NativeRelayCompleteTerminalControls;\
+      \ do\n  grep -q -- \"--- PASS: $test_name\" \"$RUNNER_TEMP/http2-evidence/race.log\"\ndone\n"
+  - name: PostgreSQL persistence and monitor regressions
+    shell: bash
+    run: 'set -euo pipefail
+
+      test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+
+      test -z "$(git status --porcelain)"
+
+      cd backend
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -tags=integration ./internal/repository -run ''TestHTTP2AIOpsFailureIdentityScopedToAPIKey|TestHTTP2AIOpsEvidenceIncludesCommittedTransportFailure|TestHTTP2PeerResetPersistence|TestGetErrorLogByID_APIKeyPrefixAndUpstreamStatus|TestChannelMonitorV2.*Error''
+      -count=1 -v -timeout=10m 2>&1 | tee "$RUNNER_TEMP/http2-evidence/persistence.log"
+
+      if grep -Eiq ''build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING:
+      DATA RACE|race detected|signal: (killed|segmentation)'' "$RUNNER_TEMP/http2-evidence/persistence.log"; then exit 1;
+      fi
+
+      grep -q -- ''--- PASS: TestHTTP2PeerResetPersistence'' "$RUNNER_TEMP/http2-evidence/persistence.log"
+
+      grep -q -- ''--- PASS: TestHTTP2AIOpsEvidenceIncludesCommittedTransportFailure'' "$RUNNER_TEMP/http2-evidence/persistence.log"
+
+      grep -q -- ''--- PASS: TestHTTP2AIOpsFailureIdentityScopedToAPIKey'' "$RUNNER_TEMP/http2-evidence/persistence.log"
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=integration ./internal/repository -run ''^TestHTTP2AIOps(FailureIdentityScopedToAPIKey|EvidenceIncludesCommittedTransportFailure)$''
+      -count=1 -v -timeout=5m 2>&1 | tee "$RUNNER_TEMP/http2-evidence/f1-race.log"
+
+      if grep -Eiq ''build failed|no tests to run|undefined:|--- SKIP:|panic:|panic_recovered|fatal error:|runtime error:|WARNING:
+      DATA RACE|race detected|signal: (killed|segmentation)'' "$RUNNER_TEMP/http2-evidence/f1-race.log"; then exit 1; fi
+
+      grep -q -- ''--- PASS: TestHTTP2AIOpsEvidenceIncludesCommittedTransportFailure'' "$RUNNER_TEMP/http2-evidence/f1-race.log"
+
+      grep -q -- ''--- PASS: TestHTTP2AIOpsFailureIdentityScopedToAPIKey'' "$RUNNER_TEMP/http2-evidence/f1-race.log"
+
+      git diff --exit-code
+
+      '
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-http2-stream-reset-regression-http2-evidence-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: ${{ runner.temp }}/http2-evidence/

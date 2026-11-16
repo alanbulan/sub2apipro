@@ -1,0 +1,45 @@
+name: sync-20261116-ai-ops-proposal-cancellation
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Cancellation authorization and ledger boundaries
+    working-directory: backend
+    run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+
+      go test -race -tags=unit ./internal/repository ./internal/handler/admin -run ''^TestAIOpsCancel'' -count=1 -v -timeout=5m'
+    shell: bash
+  - name: PostgreSQL cancellation, replay and concurrent execution
+    working-directory: backend
+    env:
+      CI: 'true'
+      GOTRACEBACK: crash
+    shell: bash
+    run: "set -euo pipefail\nmkdir -p ../evidence\nuname -a > ../evidence/kernel.txt\ngo version > ../evidence/toolchain.txt\n\
+      go env GOOS GOARCH CGO_ENABLED GOTOOLCHAIN >> ../evidence/toolchain.txt\ndocker version > ../evidence/docker-version.txt\n\
+      docker info > ../evidence/docker-info.txt\nif ! command -v gdb >/dev/null; then\n  bash \"${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh\"\
+      \n  sudo apt-get update\n  sudo apt-get install -y --no-install-recommends gdb\nfi\nulimit -c unlimited\nsudo sysctl\
+      \ -w \"kernel.core_pattern=$RUNNER_TEMP/ai-ops-cancel.core.%p\" > ../evidence/core-pattern.txt\nexport GORACE=\"log_path=$PWD/../evidence/race\
+      \ history_size=4\"\nbinary=\"$RUNNER_TEMP/ai-ops-cancel.test\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ \"$PWD\"\ngo test -c -race -tags=integration ./internal/repository -o \"$binary\"\nset +e\n\"$binary\" -test.run '^TestAIOpsPostgres(Cancel|ConcurrentCancel)'\
+      \ -test.count=1 -test.v=true -test.timeout=10m > ../evidence/integration.log 2>&1\nresult=$?\nset -e\ncat ../evidence/integration.log\n\
+      printf '%s\\n' \"$result\" > ../evidence/exit.txt\nif [ \"$result\" -ne 0 ]; then\n  for core in \"$RUNNER_TEMP\"/ai-ops-cancel.core.*;\
+      \ do\n    [ -f \"$core\" ] || continue\n    # Never upload raw core files or argument/local values.\n    gdb -batch\
+      \ -ex 'set print frame-arguments none' -ex 'thread apply all bt' \\\n      \"$binary\" \"$core\" > \"../evidence/backtrace-$(basename\
+      \ \"$core\").txt\" 2>&1 || true\n  done\n  exit \"$result\"\nfi\n! grep -Eq 'no tests to run|--- SKIP:|WARNING: DATA\
+      \ RACE|race detected during execution' ../evidence/integration.log\nfor regression in CancelledProposalCannotBeRevivedOrApplied\
+      \ CancellationCannotUndoAnAppliedAction ConcurrentCancelAndApplyHaveOneWinner; do\n  grep -q -- \"=== RUN   TestAIOpsPostgres$regression$\"\
+      \ ../evidence/integration.log\n  grep -q -- \"--- PASS: TestAIOpsPostgres$regression \" ../evidence/integration.log\n\
+      done\n"
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-ai-ops-proposal-cancellation-ai-ops-cancellation-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: evidence/
+      if-no-files-found: warn
+      retention-days: 14

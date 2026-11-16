@@ -1,0 +1,27 @@
+name: sync-20261116-moderation-upstream-scope-backend-green
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Selected upstream execution and admission regressions
+    run: "mkdir -p \"$RUNNER_TEMP/moderation-scope-green\"\ngit rev-parse HEAD > \"$RUNNER_TEMP/moderation-scope-green/head.txt\"\
+      \nset -o pipefail\ncd backend\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$PWD\"\ngo test -race -tags=unit\
+      \ ./internal/handler ./internal/handler/admin ./internal/service ./internal/securityaudit -run 'TestModerationUpstream|TestOpenAIResponsesWebSocket_ContentModeration|Test.*SecurityAudit|Test.*Queue.*Auth|Test.*Turn.*Admission|TestCoordinator|TestAPIKeyAdmissionRealForwardingHandlersRejectBeforeUpstream|TestOpenAIWSRevalidationFollowup|TestOpenAIWSRevalidationNativeImagePermissionTiming'\
+      \ -count=1 -v -timeout=10m 2>&1 | tee \"$RUNNER_TEMP/moderation-scope-green/green.log\"\nif grep -Eiq 'build failed|no\
+      \ tests to run|undefined:|--- SKIP:|panic:|fatal error:|DATA RACE|signal:|segmentation fault' \"$RUNNER_TEMP/moderation-scope-green/green.log\"\
+      ; then exit 1; fi\nfor name in TestModerationUpstreamScopeUnselectedDoesNotAudit TestModerationUpstreamHTTPSelectionAndFailover\
+      \ TestModerationUpstreamWebSocketModesAndTurns TestModerationUpstreamPersistenceAndValidation TestModerationUpstreamAdminSaveReloadAndAuthorization\
+      \ TestModerationUpstreamWebSocketTurnIdentityAfterFailover TestModerationUpstreamImagesJSONKeepaliveAndAsync TestModerationUpstreamSystemOneLocalDenial\
+      \ TestModerationUpstreamHTTPDispatchFamilies TestModerationUpstreamWebSocketCurrentAliasControlsScope TestModerationUpstreamEligibility\
+      \ TestModerationUpstreamAccountCatalogEligibility; do\n  grep -q -- \"--- PASS: $name\" \"$RUNNER_TEMP/moderation-scope-green/green.log\"\
+      \ndone\n"
+    shell: bash
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-moderation-upstream-scope-backend-green-moderation-scope-green-${{ github.sha }}
+      path: ${{ runner.temp }}/moderation-scope-green

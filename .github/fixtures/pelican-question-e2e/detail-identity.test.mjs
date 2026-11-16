@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bindDetailResponse } from '../../scripts/pelican-detail-identity.mjs'
+import { bindDetailResponse } from '../../../scripts/pelican-detail-identity.mjs'
 
 // Same plan, status and question; only the sample identities/markers differ.
 // These synthetic checks do not replace the real application E2E or its APIs.

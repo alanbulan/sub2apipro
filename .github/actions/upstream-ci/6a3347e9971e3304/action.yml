@@ -1,0 +1,59 @@
+name: sync-20261116-oauth-degradation-native-controls-unit
+description: Current upstream checks, preserving runner setup and regression assertions.
+runs:
+  using: composite
+  steps:
+  - name: Use Ubuntu HTTPS mirror for CI dependencies
+    run: 'bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      '
+    shell: bash
+  - uses: actions/setup-go@v6
+    with:
+      cache-dependency-path: backend/go.sum
+      go-version: 1.27.4
+  - name: Install Redis for scheduler readiness regressions
+    shell: bash
+    run: "set -euo pipefail\nif ! command -v redis-server >/dev/null; then\n  bash \"${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh\"\
+      \n  sudo apt-get update\n  sudo apt-get install -y --no-install-recommends redis-server\nfi\nredis-server --version\n"
+  - name: Account model policy and manual control regressions
+    shell: bash
+    run: 'set -euo pipefail
+
+      mkdir -p evidence
+
+      git rev-parse HEAD > evidence/head.txt
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      (cd backend && go test -race -tags=unit ./internal/service ./internal/handler/admin -run ''^(TestOAuthDegradation|TestOAuthRefresh|TestOAuthAutoConfig|TestOAuthInitial|TestOAuthModelMapping|TestAccountIsModelSupported|TestGPT55Retirement|TestQualitySupportedModels|TestQualityModel|TestOpenAI.*Model|TestAutoConfig|TestAdvanceConcurrency|TestOpenAITwoFAAdmission|TestApplyUpstreamModels|TestAutomaticUpstreamModels)''
+      -count=1 -v) 2>&1 | tee evidence/service-unit.log
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      (cd backend && go test -race -tags=unit ./internal/repository -run ''^(TestOAuthDegradation|TestAutoConfig|TestAccountQuality|TestOpenAITwoFAAdmission|TestSchedulerReadiness|TestSchedulerCacheSnapshotAccountIDReuseKeepsEmptySnapshotSemantics$|TestSchedulerCacheSnapshotMemoEmptyAndNilMetadataAreNotCached$)''
+      -count=1 -v) 2>&1 | tee evidence/repository-unit.log
+
+      ! grep -Eq -- ''--- SKIP:|no tests to run'' evidence/service-unit.log evidence/repository-unit.log
+
+      '
+  - name: WebSocket first-message disconnect and timeout log boundaries
+    shell: bash
+    run: 'set -euo pipefail
+
+      mkdir -p evidence
+
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+
+      (cd backend && go test -race -tags=unit ./internal/handler -run ''^TestOpenAIResponsesWebSocket_(DisconnectBeforeFirstMessageIsInfo|RequestCanceledBeforeFirstMessageIsInfo|FirstMessageTimeoutUsesConfig)$''
+      -count=20 -v) 2>&1 | tee evidence/websocket-first-message.log
+
+      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/websocket-first-message.log
+
+      '
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-oauth-degradation-native-controls-unit-oauth-native-controls-unit-${{ github.run_id }}
+      path: evidence/
+      retention-days: 14
