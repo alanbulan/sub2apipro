@@ -18,15 +18,15 @@
         "CI": "true",
         "GOMAXPROCS": "2",
         "GOFLAGS": "-p=2",
-        "EXPECTED_HEAD": "0723c10189d7e15c32e7044ddd3420514d3f390e",
-        "EXPECTED_HEAD_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
-        "APP_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e"
+        "EXPECTED_HEAD": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
+        "EXPECTED_HEAD_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
+        "APP_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386"
       },
       "steps": [
         {
           "uses": "actions/checkout@v6",
           "with": {
-            "ref": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+            "ref": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
             "persist-credentials": false
           }
         },
@@ -86,16 +86,16 @@
       "runs-on": "ubuntu-latest",
       "timeout-minutes": 40,
       "env": {
-        "EXPECTED_HEAD_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
-        "EXPECTED_HEAD": "0723c10189d7e15c32e7044ddd3420514d3f390e",
-        "APP_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "EXPECTED_HEAD_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
+        "EXPECTED_HEAD": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
+        "APP_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
         "CI": "true"
       },
       "steps": [
         {
           "uses": "actions/checkout@v6",
           "with": {
-            "ref": "0723c10189d7e15c32e7044ddd3420514d3f390e"
+            "ref": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386"
           }
         },
         {
@@ -149,17 +149,17 @@
       "runs-on": "ubuntu-latest",
       "timeout-minutes": 40,
       "env": {
-        "EXPECTED_HEAD_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "EXPECTED_HEAD_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
         "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE": "ubuntu24.04-x64",
-        "EXPECTED_HEAD": "0723c10189d7e15c32e7044ddd3420514d3f390e",
-        "APP_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "EXPECTED_HEAD": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
+        "APP_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
         "CI": "true"
       },
       "steps": [
         {
           "uses": "actions/checkout@v6",
           "with": {
-            "ref": "0723c10189d7e15c32e7044ddd3420514d3f390e"
+            "ref": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386"
           }
         },
         {
