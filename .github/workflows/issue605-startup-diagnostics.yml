@@ -9,6 +9,44 @@ permissions:
   contents: read
 
 jobs:
+  exact-composite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+      APP_SHA: 4dc0dc89ca308a362f4c8641fd294889d11dd97d
+      EXPECTED_HEAD: 4dc0dc89ca308a362f4c8641fd294889d11dd97d
+      EXPECTED_HEAD_SHA: 4dc0dc89ca308a362f4c8641fd294889d11dd97d
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.APP_SHA }}
+          persist-credentials: false
+      - name: Execute the unchanged formal composite action
+        uses: ./.github/actions/upstream-ci/9d29a0406612d1b4
+      - name: Check out the diagnostic harness after source verification
+        if: always()
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Export formal composite startup metadata
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/issue605-startup-metadata.py \
+            "$RUNNER_TEMP/issue605-p1-green/integration.jsonl" \
+            "$RUNNER_TEMP/issue605-composite-startup-metadata.json"
+      - name: Save formal composite startup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue605-exact-composite-${{ github.sha }}
+          path: ${{ runner.temp }}/issue605-composite-startup-metadata.json
+          if-no-files-found: error
   startup:
     runs-on: ubuntu-latest
     timeout-minutes: 15
