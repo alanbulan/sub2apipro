@@ -14,6 +14,7 @@ destination = Path(sys.argv[2])
 text = source.read_text(errors="replace") if source.exists() else ""
 status = []
 output = []
+json_fields = set()
 for line in text.splitlines():
     try:
         item = json.loads(line)
@@ -22,10 +23,12 @@ for line in text.splitlines():
         continue
     if not isinstance(item, dict):
         continue
+    json_fields.update(item)
     if item.get("Action") in {"start", "run", "pass", "fail", "skip"}:
         status.append({key: item[key] for key in ["Action", "Package", "Test", "Elapsed"] if key in item})
-    if isinstance(item.get("Output"), str):
-        output.append(item["Output"])
+    for field in ["Output", "BuildOutput"]:
+        if isinstance(item.get(field), str):
+            output.append(item[field])
 combined = "\n".join(output)
 lower = combined.lower()
 markers = ["failed to init timezone", "must be set together", "invalid sub2api_test_redis_url",
@@ -53,9 +56,22 @@ for line in output:
     line = re.sub(r"(?i)(password|token|secret|key)\s*[=:]\s*[^\s,;]+", r"\1=[redacted]", line)
     line = re.sub(r"[0-9a-f]{32,}", "[identifier]", line)
     safe_errors.append(line.strip()[:1500])
+pretest_diagnostics = []
+if not any(item.get("Action") == "run" for item in status):
+    for line in combined.splitlines():
+        if not line.strip():
+            continue
+        line = re.sub(r"(?:postgres(?:ql)?|redis|https?)://\S+", "[address]", line)
+        line = re.sub(r"(?i)(password|token|secret|key)\s*[=:]\s*[^\s,;]+", r"\1=[redacted]", line)
+        line = re.sub(r"[0-9a-f]{32,}", "[identifier]", line)
+        if any(token in line.lower() for token in ["authorization:", "request_body", "response_body", "cookie:"]):
+            continue
+        pretest_diagnostics.append(line[:1200])
 result = {"application_sha": os.environ.get("APP_SHA"), "source_exists": source.exists(),
           "source_bytes": len(text.encode()), "matched_error_categories": matched,
           "bootstrap_errors": safe_errors[:8], "test_status": status,
+          "json_fields": sorted(json_fields),
+          "pretest_diagnostics": pretest_diagnostics[:18],
           "raw_packets_or_bodies_exported": False}
 destination.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
 print(json.dumps(result, ensure_ascii=False))
