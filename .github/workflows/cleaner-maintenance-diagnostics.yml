@@ -17,11 +17,13 @@ jobs:
       - uses: actions/checkout@v6
       - name: Start isolated PostgreSQL
         run: |
+          set -euo pipefail
           docker run -d --name sub2api-postgres \
             -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=fixture \
             -e POSTGRES_DB=cleanup -p 15439:5432 postgres:17-alpine
-          for attempt in $(seq 1 30); do
-            if docker exec sub2api-postgres pg_isready -U fixture -d cleanup; then
+          for attempt in $(seq 1 60); do
+            if docker exec sub2api-postgres psql -h 127.0.0.1 -X -qAt \
+              -v ON_ERROR_STOP=1 -U fixture -d cleanup -c 'SELECT 1' >/dev/null 2>&1; then
               exit 0
             fi
             sleep 1
@@ -29,7 +31,9 @@ jobs:
           exit 1
       - name: Verify retention, idle rewrite and cancellation
         run: |
-          python3 scripts/cleaner-maintenance-ci.py | tee "$RUNNER_TEMP/cleaner-result.jsonl"
+          set -euo pipefail
+          python3 -u scripts/cleaner-maintenance-ci.py | tee "$RUNNER_TEMP/cleaner-result.jsonl"
+          test -s "$RUNNER_TEMP/cleaner-result.jsonl"
       - name: Save metadata evidence
         if: always()
         uses: actions/upload-artifact@v4

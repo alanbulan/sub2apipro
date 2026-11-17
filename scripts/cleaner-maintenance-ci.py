@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import threading
@@ -36,9 +37,16 @@ cleanup.log = lambda event, **metadata: events.append({"event": event, **metadat
 def psql(statement):
     process = subprocess.run(
         ["docker", "exec", "sub2api-postgres", "psql", "-X", "-qAt",
-         "-v", "ON_ERROR_STOP=1", "-U", "fixture", "-d", "cleanup", "-c", statement],
+         "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=sqlstate",
+         "-U", "fixture", "-d", "cleanup", "-c", statement],
         capture_output=True, text=True, timeout=30)
     if process.returncode:
+        codes = re.findall(r"(?:ERROR|FATAL):\s+([0-9A-Z]{5})(?:\s|$)", process.stderr)
+        diagnostic = process.stderr.lower()
+        category = ("database_not_ready" if "does not exist" in diagnostic
+                    or "starting up" in diagnostic else "postgresql_error")
+        print(json.dumps({"isolated_operation_failed": category,
+                          "sqlstates": codes}), flush=True)
         raise RuntimeError("isolated PostgreSQL operation failed")
     return process.stdout.strip()
 
