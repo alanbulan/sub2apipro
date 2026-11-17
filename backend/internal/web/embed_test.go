@@ -438,6 +438,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		// Invalidate cache to force settings fetch
 		server.InvalidateCache()
+		server.baseHTML = []byte(`<html><head><script nonce="__CSP_NONCE_VALUE__">document.documentElement.dataset.appTheme='minimalism';</script></head></html>`)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -449,6 +450,10 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		// Should still return 200 with base HTML
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Body.String(), `nonce="nonce123"`)
+		assert.NotContains(t, w.Body.String(), NonceHTMLPlaceholder)
+		assert.NotContains(t, w.Body.String(), "window.__APP_CONFIG__")
 	})
 }
 

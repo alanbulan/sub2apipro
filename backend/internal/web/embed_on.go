@@ -173,7 +173,8 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	settings, err := s.settings.GetPublicSettingsForInjection(ctx)
 	if err != nil {
 		// Fallback: serve without injection
-		c.Data(http.StatusOK, "text/html; charset=utf-8", s.baseHTML)
+		c.Header("Cache-Control", "no-cache")
+		c.Data(http.StatusOK, "text/html; charset=utf-8", replaceNoncePlaceholder(s.baseHTML, nonce))
 		c.Abort()
 		return
 	}
@@ -181,7 +182,8 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	settingsJSON, err := json.Marshal(settings)
 	if err != nil {
 		// Fallback: serve without injection
-		c.Data(http.StatusOK, "text/html; charset=utf-8", s.baseHTML)
+		c.Header("Cache-Control", "no-cache")
+		c.Data(http.StatusOK, "text/html; charset=utf-8", replaceNoncePlaceholder(s.baseHTML, nonce))
 		c.Abort()
 		return
 	}
