@@ -226,9 +226,29 @@ async function browser() {
         'Failed to load groups:', 'Auto refresh failed:',
         'Failed to refresh user on init:', 'Auto-refresh user failed:',
         'Token refresh failed:', 'Failed to load resource:',
+        '[adminSettings] Failed to fetch settings:', '[payment] Failed to fetch config:',
+        'Table load error:', 'Failed to load management capabilities:',
       ]
-      const kind = prefixes.find(prefix => text.startsWith(prefix)) || 'unclassified'
-      state.consoleErrors.push({ type: 'error', kind })
+      const kind = prefixes.find(prefix => text.startsWith(prefix)) || (
+        text.includes("The Content Security Policy directive 'frame-ancestors' is ignored") ? 'srcdoc_frame_ancestors_ignored' :
+        text.includes('Content Security Policy') || text.includes('content security policy') ? 'csp_violation' :
+        text.includes('ResizeObserver loop') ? 'resize_observer_loop' :
+        text.includes('Blocked script execution') ? 'sandbox_script_blocked' :
+        text.includes('Cross-Origin') || text.includes('cross-origin') ? 'cross_origin_access' :
+        text.includes('Failed to fetch') ? 'fetch_failed' :
+        text.includes('[Vue warn]') ? 'vue_error' :
+        text.includes('AxiosError') ? 'axios_error' :
+        text.includes('429') ? 'http_429_diagnostic' : 'unclassified')
+      const location = message.location()
+      let source = 'unknown'
+      try {
+        const url = new URL(location.url)
+        source = url.protocol === 'about:' ? 'preview_document' : url.origin === origin ? 'app_document' : 'other_document'
+      } catch { /* Keep only the bounded source category. */ }
+      state.consoleErrors.push({ type: 'error', kind, source, stage,
+        knownAsset: /\/assets\/[A-Za-z0-9_.-]+\.js$/.test(location.url)
+          ? location.url.slice(location.url.lastIndexOf('/') + 1) : undefined,
+        line: location.lineNumber, column: location.columnNumber })
     })
     page.on('response', response => {
       if (response.status() < 400) return
