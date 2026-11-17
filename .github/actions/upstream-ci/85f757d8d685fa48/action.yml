@@ -23,6 +23,7 @@ runs:
       cp backend/internal/service/openai_auth_connection_egress_export_test.go backend/internal/service/openai_auth_connection_siwc_boundary_integration_test.go
       "$baseline/backend/internal/service/"
 
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-openai-connection-red.py" "$baseline" "$GITHUB_WORKSPACE"
 
       python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$baseline/backend"
 

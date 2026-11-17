@@ -22,35 +22,26 @@ runs:
 
         '
   - name: Pin merged production migrations and runner identity
-    run: 'set -euo pipefail
-
+    run: |
+      set -euo pipefail
       base=e90811e27bc442763a496027f935a7bb1fb4396b
-
       git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$base"
-
       git merge-base --is-ancestor "$base" HEAD
-
       test "$(git rev-parse HEAD:backend/internal/repository/migrations_runner.go)" = "$(git rev-parse "$base:backend/internal/repository/migrations_runner.go")"
-
       mkdir -p "$RUNNER_TEMP/repair-upgrade/source" "$RUNNER_TEMP/repair-upgrade/evidence"
-
       git archive "$base" backend/migrations | tar -x -C "$RUNNER_TEMP/repair-upgrade/source"
-
       # Compare normalized migration bytes, matching the production checksum
       # contract. A trailing newline changed upstream after this baseline.
-      python3 - "$RUNNER_TEMP/repair-upgrade/source/backend/migrations" <<''PY''
+      python3 - "$RUNNER_TEMP/repair-upgrade/source/backend/migrations" <<'PY'
       import pathlib, subprocess, sys
       baseline = pathlib.Path(sys.argv[1])
-      for source in baseline.glob(''*.sql''):
-          current = subprocess.check_output([''git'', ''show'', ''HEAD:backend/migrations/'' + source.name])
+      for source in baseline.glob('*.sql'):
+          current = subprocess.check_output(['git', 'show', 'HEAD:backend/migrations/' + source.name])
           if source.read_bytes() != current:
               assert source.read_bytes().strip() == current.strip(), source.name
               source.write_bytes(current)
       PY
-
       git rev-parse HEAD "$base" > "$RUNNER_TEMP/repair-upgrade/evidence/identity.txt"
-
-      '
     shell: bash
   - name: Fresh upgrade mixed-version and application rollback compatibility
     run: 'set -euo pipefail

@@ -4722,7 +4722,45 @@ jobs:
   sync-20261116-issue603-observability-ui: {runs-on: ubuntu-24.04, timeout-minutes: 30, env: {BASELINE: ec007920de042797299fc7cf2c034ad24c136462, SOURCE_HEAD: '${{ github.event.pull_request.head.sha || github.sha }}', EXPECTED_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}', PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64}, steps: [{uses: actions/checkout@v6, with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}', fetch-depth: 0, persist-credentials: false}}, {name: Run current upstream checks, uses: ./.github/actions/upstream-ci/1251d05bfb5f1587}], permissions: {contents: read}}
   sync-20261116-issue605-p1-repair-intended-red: {runs-on: ubuntu-latest, timeout-minutes: 30, env: {CI: 'true', GOMAXPROCS: '2', GOFLAGS: -p=2, DEFECTIVE_HEAD: 19a441a79e5980c81506f2775d09f3317364305a, EXPECTED_HEAD: '${{ github.event.pull_request.head.sha || github.sha }}', EXPECTED_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}', PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64}, steps: [{uses: actions/checkout@v6, with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}', persist-credentials: false}}, {name: Run current upstream checks, uses: ./.github/actions/upstream-ci/dc9d3f338828b842}], permissions: {contents: read}}
   sync-20261116-issue605-p1-repair-repaired-green: {needs: [sync-20261116-issue605-p1-repair-intended-red], runs-on: ubuntu-latest, timeout-minutes: 30, env: {CI: 'true', GOMAXPROCS: '2', GOFLAGS: -p=2, EXPECTED_HEAD: '${{ github.event.pull_request.head.sha || github.sha }}', EXPECTED_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}', PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64}, steps: [{uses: actions/checkout@v6, with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}', persist-credentials: false}}, {name: Run current upstream checks, uses: ./.github/actions/upstream-ci/9d29a0406612d1b4}], permissions: {contents: read}}
-  sync-20261116-issue605-smart-protocol-acceptance: {runs-on: ubuntu-latest, timeout-minutes: 45, env: {CI: 'true', GOMAXPROCS: '2', GOFLAGS: -p=2, EXPECTED_HEAD: '${{ github.event.pull_request.head.sha || github.sha }}', EXPECTED_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}', PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64}, steps: [{uses: actions/checkout@v6, with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}', persist-credentials: false}}, {name: Run current upstream checks, uses: ./.github/actions/upstream-ci/6c9e2391c50de42a}], permissions: {contents: read}}
+  sync-20261116-issue605-smart-protocol-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+      SUB2API_TEST_POSTGRES_DSN: host=127.0.0.1 port=5432 dbname=sub2api_test user=postgres
+        password=postgres sslmode=disable TimeZone=UTC
+      SUB2API_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/6c9e2391c50de42a"
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18.1-alpine3.23
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sub2api_test
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d sub2api_test" --health-interval
+          5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:8.4-alpine
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout
+          5s --health-retries 12
   sync-20261116-issue811-acl-followup-acl-concurrency: {runs-on: ubuntu-latest, timeout-minutes: 45, services: {postgres: {image: 'postgres:18.1', env: {POSTGRES_USER: keyrisk, POSTGRES_PASSWORD: keyrisk-ci-only, POSTGRES_DB: keyrisk_task}, ports: ['5432:5432'], options: --health-cmd "pg_isready -U keyrisk -d keyrisk_task" --health-interval 5s --health-timeout 5s --health-retries 12}}, env: {EXPECTED_HEAD: '${{ github.event.pull_request.head.sha || github.sha }}', CI: 'true', KEYRISK_TEST_REQUIRED: 'true', KEYRISK_TEST_POSTGRES_DSN: 'postgres://keyrisk:keyrisk-ci-only@127.0.0.1:5432/keyrisk_task?sslmode=disable', GOFLAGS: -p=1, EXPECTED_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}', PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64}, steps: [{uses: actions/checkout@v6, with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}'}}, {name: Run current upstream checks, uses: ./.github/actions/upstream-ci/9a7775fdecc54972}], permissions: {contents: read}}
   sync-20261116-issue825-video-pricing-regression: {runs-on: ubuntu-latest, timeout-minutes: 20, steps: [{uses: actions/checkout@v6, with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}', fetch-depth: 0, persist-credentials: false}}, {name: Run current upstream checks, uses: ./.github/actions/upstream-ci/b06780eafb75285c}], env: {EXPECTED_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}', SOURCE_BASE: c424f8217da12cd4fb8d10aeaf1c4f2592c3f286, PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64}, permissions: {contents: read}}
   sync-20261116-issue825-video-pricing-rendered: {runs-on: ubuntu-24.04, timeout-minutes: 20, steps: [{uses: actions/checkout@v6, with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}', fetch-depth: 0, persist-credentials: false}}, {name: Run current upstream checks, uses: ./.github/actions/upstream-ci/8e6c62d6672e67d2}], env: {EXPECTED_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}', SOURCE_BASE: c424f8217da12cd4fb8d10aeaf1c4f2592c3f286, PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64}, permissions: {contents: read}}

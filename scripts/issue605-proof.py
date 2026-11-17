@@ -42,6 +42,12 @@ causes = {
     'Expected value not to be nil': 'expected_non_nil', 'Not equal:': 'not_equal',
     'Received unexpected error:': 'unexpected_error', 'no tests to run': 'no_tests',
     'docker is not available': 'docker_unavailable', 'failed to apply db migrations': 'migration_failed',
+    'failed to start postgres container': 'postgres_container_start_failed',
+    'failed to start redis container': 'redis_container_start_failed',
+    'signal: segmentation fault': 'child_process_segfault',
+    'SIGSEGV': 'process_segfault', 'fatal error:': 'go_runtime_failure',
+    'failed to open sql db': 'database_connection_failed',
+    'failed to ping redis': 'redis_connection_failed',
 }
 summary, problems = {}, []
 with (root / 'whitelist.jsonl').open('w') as out:

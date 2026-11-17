@@ -22,6 +22,8 @@ runs:
 
       cp backend/internal/service/openai_auth_connections_review_regression_test.go "$red_tree/backend/internal/service/"
 
+      python3 "$GITHUB_WORKSPACE/scripts/prepare-openai-connection-red.py" "$red_tree" "$GITHUB_WORKSPACE"
+
       python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$red_tree/backend"
 
       set +e
