@@ -15,7 +15,7 @@ runs:
       python-version: '3.12'
   - uses: actions/download-artifact@v8
     with:
-      name: reauth-runtime-test-amd64-${{ github.event.pull_request.head.sha || github.sha }}
+      name: sync-20261116-reauth-runtime-package-reauth-runtime-test-amd64-${{ github.event.pull_request.head.sha || github.sha }}
       path: reauth-input
   - name: Build local API
     working-directory: backend

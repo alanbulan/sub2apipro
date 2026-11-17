@@ -37,7 +37,7 @@ apiClient.defaults.adapter=async request=>{
 `
 const shell = `import { h } from 'vue'; export default {setup(_,ctx){return()=>h('main',{class:'mx-auto max-w-7xl p-4'},ctx.slots.default?.())}}`
 const html = `<!doctype html><html><meta charset="utf-8"><div id="app"></div><script type="module">
-import 'virtual:issue603-fixture';import {createApp,h} from 'vue';import {createPinia} from 'pinia';import {createRouter,createWebHistory,RouterView} from 'vue-router';import {createI18n} from 'vue-i18n';import {useAuthStore} from '/src/stores/auth.ts';import UsageView from '/src/views/admin/UsageView.vue';${before ? '' : "import Network from '/src/views/admin/ops/components/OpsNetworkChart.vue';"}import en from '/src/i18n/locales/en/index.ts';import zh from '/src/i18n/locales/zh/index.ts';import '/src/style.css';
+import 'virtual:issue603-fixture';import {createApp,h} from 'vue';import {createPinia} from 'pinia';import {createRouter,createWebHistory,RouterView} from 'vue-router';import {createI18n} from 'vue-i18n';import {useAuthStore} from '/src/stores/auth.ts';import UsageView from '/src/views/admin/UsageView.vue';${before ? '' : "import Network from '/src/views/admin/ops/components/OpsNetworkChart.vue';"}import en from '/src/i18n/locales/en/index.ts';import zh from '/src/i18n/locales/zh/index.ts';import '/src/style.css';${before ? '' : "import {initAppTheme} from '/src/composables/useAppTheme.ts';initAppTheme();"}
 const pinia=createPinia(),router=createRouter({history:createWebHistory(),routes:[{path:'/admin/usage',component:UsageView}${before ? '' : ",{path:'/network',component:{render:()=>h('main',{class:'p-8'},[h(Network)])}}"}]});const app=createApp(RouterView);app.use(pinia);useAuthStore().user={id:1,email:'synthetic@test.invalid',role:'admin',status:'active',balance:0,concurrency:1};app.use(router).use(createI18n({legacy:false,locale:new URL(location.href).searchParams.get('lang')||'en',messages:{en,zh}})).mount('#app')</script></html>`
 process.chdir(frontend)
 const server = await createServer({ root: frontend, configFile: false, plugins: [(vueModule.default || vueModule)(), {
@@ -52,14 +52,29 @@ const server = await createServer({ root: frontend, configFile: false, plugins: 
 await server.listen()
 const browser = await chromium.launch({headless:true})
 const page = await browser.newPage({viewport:{width:1440,height:1100}})
-const errors=[],blocked=[]
+const errors=[],blocked=[],consoleErrors=[],httpErrors=[]
 page.on('pageerror',err=>errors.push(err.message))
+page.on('console',msg=>{if(msg.type()==='error')consoleErrors.push(msg.text().slice(0,500))})
+page.on('response',response=>{if(response.status()>=400){const url=new URL(response.url());httpErrors.push({path:url.pathname,status:response.status()})}})
 await page.route('**/*',route=>{const url=new URL(route.request().url());if(url.hostname!=='127.0.0.1'){blocked.push(url.hostname);return route.abort()}return route.continue()})
 try {
   for (const lang of ['en','zh']) {
     await page.goto(`http://127.0.0.1:4193/admin/usage?lang=${lang}`,{waitUntil:'networkidle'})
     await page.getByText('synthetic-model',{exact:true}).first().waitFor()
-    if (!before) { await page.getByTestId('latency-observability').waitFor();await page.getByTestId('latency-group').waitFor();if(!(await page.getByTestId('latency-e2e').innerText()).includes(lang==='en'?'Source: none':'来源：无'))throw new Error('missing explicit E2E source') }
+    if (!before) {
+      // The current usage page mounts observations only when their tab opens.
+      await page.getByTestId('usage-detail-tab').filter({ hasText: lang === 'en' ? 'HTTP attempt latency groups' : 'HTTP attempt 延迟分组' }).click()
+      await page.getByTestId('latency-observability').waitFor()
+      await page.getByTestId('latency-group').waitFor()
+      // Current UI omits uncollected client timing and exposes the measured
+      // application scope in the definitions, matching the retained unit suite.
+      if (await page.getByTestId('latency-e2e').count()) throw new Error('uncollected client E2E must remain absent')
+      const definitions = page.getByTestId('latency-observability').locator('details')
+      await definitions.locator('summary').click()
+      const scope = await definitions.innerText()
+      if (!scope.includes(lang === 'en' ? 'Application observations.' : '应用侧观测')) throw new Error('missing application observation scope')
+      if (!(await page.getByTestId('latency-group').innerText()).includes('6050.0 ms (n=12)')) throw new Error('measured final visible timing lost')
+    }
     await page.screenshot({path:path.join(output,`${before?'before':'after'}-usage-${lang}-desktop.png`),fullPage:true})
     await page.setViewportSize({width:390,height:844})
     await page.screenshot({path:path.join(output,`${before?'before':'after'}-usage-${lang}-mobile.png`),fullPage:true})
@@ -71,10 +86,10 @@ try {
     await page.screenshot({path:path.join(output,'after-network-desktop.png'),fullPage:true})
     await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(output,'after-network-mobile.png'),fullPage:true})
   }
-  if(errors.length||blocked.length)throw new Error(JSON.stringify({errors,blocked}))
-  await fs.writeFile(path.join(output,`${before?'before':'after'}-verification.json`),JSON.stringify({head:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),synthetic:true,browserErrors:errors,externalRequests:blocked,calls:await page.evaluate(()=>globalThis.__issue603Calls)},null,2))
+  if(errors.length||blocked.length||consoleErrors.length||httpErrors.length)throw new Error(JSON.stringify({errors,blocked,consoleErrors,httpErrors}))
+  await fs.writeFile(path.join(output,`${before?'before':'after'}-verification.json`),JSON.stringify({head:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),synthetic:true,browserErrors:errors,externalRequests:blocked,consoleErrors,httpErrors,calls:await page.evaluate(()=>globalThis.__issue603Calls)},null,2))
 } catch(err) {
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-failure.png`),fullPage:true})
-  await fs.writeFile(path.join(output,`${before?'before':'after'}-failure.txt`),String(err)+'\n'+JSON.stringify({errors,blocked})+'\n'+await page.locator('body').innerText())
+  await fs.writeFile(path.join(output,`${before?'before':'after'}-failure.txt`),String(err)+'\n'+JSON.stringify({errors,blocked,consoleErrors,httpErrors})+'\n'+await page.locator('body').innerText())
   throw err
 } finally {await browser.close();await server.close()}

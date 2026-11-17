@@ -41,6 +41,7 @@ try {
 import {createApp,h} from 'vue';import {createPinia} from 'pinia';
 import UsageTable from '/src/components/admin/usage/UsageTable.vue';
 import {i18n,loadLocaleMessages} from '/src/i18n/index.ts';
+${revision === 'after' ? "import {initAppTheme} from '/src/composables/useAppTheme.ts';initAppTheme();" : ''}
 import {freeFastCachePriceFixture,freeFastMixedCachePriceFixture} from 'fixture:cost';
 import '/src/style.css';
 const params=new URLSearchParams(location.search),lang=params.get('lang'),admin=params.get('role')==='admin';

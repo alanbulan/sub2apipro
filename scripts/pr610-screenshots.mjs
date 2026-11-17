@@ -17,7 +17,7 @@ const base={id:610,user_id:1,api_key_id:1,account_id:1,request_id:'synthetic-610
 export const rows=[base,{...base,id:611,request_id:'synthetic-passthrough',model:'synthetic-pass',requested_model:'synthetic-pass',first_token_ms:32000,duration_ms:50000,queue_timing:{...base.queue_timing,source:'ws_frame_passthrough',scope:'accepted_frame_including_admission'}}]
 `
 const html = `<!doctype html><html><meta charset="utf-8"><div id="app"></div><script type="module">
-import {rows} from 'virtual:pr610-fixture';import {createApp,h} from 'vue';import {createPinia} from 'pinia';import {createI18n} from 'vue-i18n';import Table from '/src/components/admin/usage/UsageTable.vue';import en from '/src/i18n/locales/en/index.ts';import zh from '/src/i18n/locales/zh/index.ts';import '/src/style.css';
+import {rows} from 'virtual:pr610-fixture';import {createApp,h} from 'vue';import {createPinia} from 'pinia';import {createI18n} from 'vue-i18n';import Table from '/src/components/admin/usage/UsageTable.vue';import en from '/src/i18n/locales/en/index.ts';import zh from '/src/i18n/locales/zh/index.ts';import '/src/style.css';${before ? '' : "import {initAppTheme} from '/src/composables/useAppTheme.ts';initAppTheme();"}
 createApp({render:()=>h('main',{class:'mx-auto max-w-6xl p-8'},[h('h1',{class:'mb-4 text-xl'},'PR610 · synthetic usage'),h(Table,{data:rows,loading:false,columns:[{key:'model',label:'Model'},{key:'latency',label:'Timing'}],enableTimingDetails:true})])}).use(createPinia()).use(createI18n({legacy:false,locale:new URL(location.href).searchParams.get('lang')||'en',messages:{en,zh}})).mount('#app')
 </script></html>`
 process.chdir(frontend)
@@ -39,8 +39,10 @@ try {
   if(!text.includes(before?'1m 2s':'32.00s'))throw new Error('passthrough overlap assertion: '+text)
   if(!before){
    if(text.includes('1m 2s'))throw new Error('queue added twice')
-   if(await page.getByTestId('typed-content-timing').count()!==2)throw new Error('typed content columns lost')
-   if(!(await page.getByTestId('latency-e2e-uncollected').first().getAttribute('title'))?.includes(lang==='en'?'none':'无'))throw new Error('client E2E source must remain none')
+   // Current UI places typed content in the detail drawer. The compact table
+   // retains measured server totals without claiming client receipt.
+   if(!text.includes('50.00s'))throw new Error('measured server total lost')
+   if(await page.getByTestId('latency-e2e-uncollected').count()!==0)throw new Error('unmeasured client timing must not be shown as a value')
   }
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-table-${lang}-desktop.png`),fullPage:true,animations:'disabled'})
   await pass.getByRole('button',{name:lang==='en'?'Request timing details':'请求耗时详情'}).click()
@@ -51,7 +53,13 @@ try {
   const bounds=await dialog.boundingBox()
   if(!bounds||bounds.x<0||bounds.x+bounds.width>1441)throw new Error('dialog did not settle inside desktop viewport')
   const body=await dialog.innerText()
-  if(!before && ((body.includes('62.00s')||body.includes('1m 2s'))||!body.includes(lang==='en'?'Server TTFT (including pre-forward wait)':'服务端首字（含转发前等待）')))throw new Error('dialog server timing label/value lost')
+  if(!before){
+   if(body.includes('62.00s')||body.includes('1m 2s')||!body.includes(lang==='en'?'Server TTFT':'服务端首字')||!body.includes('32.00s')||!body.includes('50.00s'))throw new Error('dialog server timing label/value lost')
+   if(!(await dialog.getByTestId('final-content-reasoning').innerText()).includes('250ms'))throw new Error('final reasoning timing lost')
+   if(!(await dialog.getByTestId('final-content-text').innerText()).includes('2.00s'))throw new Error('final visible timing lost')
+   if(!(await dialog.getByTestId('final-content-event').innerText()).includes('—'))throw new Error('uncollected event must remain missing')
+   if(!body.includes(lang==='en'?'not client receipt':'不代表客户端收到'))throw new Error('application observation scope lost')
+  }
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-dialog-${lang}-desktop.png`),fullPage:true,animations:'disabled'})
   await page.setViewportSize({width:390,height:844})
   await page.screenshot({path:path.join(output,`${before?'before':'after'}-dialog-${lang}-mobile.png`),fullPage:true,animations:'disabled'})

@@ -1,0 +1,1809 @@
+---
+name: Upgrade repair diagnostics
+'on':
+  push:
+    branches:
+    - diagnose/upgrade-20261117
+permissions:
+  contents: read
+concurrency:
+  group: upgrade-repair-diagnostics
+  cancel-in-progress: false
+jobs:
+  fork-production-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: fixture
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: postgres
+        ports:
+        - 15432:5432
+        options: --health-cmd "pg_isready -U fixture -d postgres" --health-interval
+          5s --health-timeout 5s --health-retries 12
+    env:
+      FORK_PRODUCTION_SHA: b827111805f1b5030b141dbcea4d4a9f6dd413e6
+      FORK_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/postgres?sslmode=disable
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-go@v6
+      with:
+        go-version: 1.27.4
+        cache-dependency-path: backend/go.sum
+    - name: Archive the exact deployed 67 migration baseline
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+        mkdir -p "$RUNNER_TEMP/fork-production"
+        git archive "$FORK_PRODUCTION_SHA" backend/migrations | tar -xf - -C "$RUNNER_TEMP/fork-production"
+    - name: Rehearse real migrations with synthetic custom records
+      shell: bash
+      working-directory: backend
+      env:
+        FORK_PRODUCTION_MIGRATIONS: "${{ runner.temp }}/fork-production/backend/migrations"
+      run: |
+        set -euo pipefail
+        go test -tags=unit ./internal/repository -run '^TestForkProductionUpgradePreservesCustomData$' -count=1 -v -timeout=10m 2>&1 | tee "$RUNNER_TEMP/fork-production-upgrade.log"
+        grep -q -- '--- PASS: TestForkProductionUpgradePreservesCustomData' "$RUNNER_TEMP/fork-production-upgrade.log"
+        ! grep -q -- '--- SKIP:' "$RUNNER_TEMP/fork-production-upgrade.log"
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: fork-production-upgrade-${{ github.event.pull_request.head.sha || github.sha
+          }}
+        path: "${{ runner.temp }}/fork-production-upgrade.log"
+        if-no-files-found: error
+        retention-days: 14
+  pool-capacity-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: backend/go.mod
+        cache-dependency-path: backend/go.sum
+    - name: Prove blocking regressions fail on previously reviewed head
+      shell: bash
+      run: |
+        set -euo pipefail
+        targets=(
+          backend/internal/service/ratelimit_service.go
+          backend/internal/service/gateway_model_availability.go
+          backend/internal/service/openai_gateway_model_availability.go
+        )
+        trap 'git restore --source=HEAD -- "${targets[@]}"' EXIT
+        for target in "${targets[@]}"; do
+          git show a11c678d0ba8b899177682b8e54acccf14eeca2f:"$target" > "$target"
+        done
+        python3 scripts/prepare-historical-ci.py rate-limit
+        python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+        set +e
+        (cd backend && go test -tags=unit ./internal/service ./internal/handler -run '^TestPoolModelNegativeCache' -count=1) > "$RUNNER_TEMP/pool-capacity-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/pool-capacity-red.log"
+        test "$result" -ne 0
+        ! grep -q '\[build failed\]' "$RUNNER_TEMP/pool-capacity-red.log"
+        grep -q -- '--- FAIL: TestPoolModelNegativeCacheWriterRespectsPoolDefaultAndOverrides' "$RUNNER_TEMP/pool-capacity-red.log"
+        grep -q -- '--- FAIL: TestPoolModelNegativeCacheTwoLayersHistoricalObservationsDoNotRenew' "$RUNNER_TEMP/pool-capacity-red.log"
+    - name: Verify exact head and existing boundary regressions
+      working-directory: backend
+      run: |
+        git diff --exit-code
+        python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+        go test -tags=unit ./internal/service ./internal/handler -run 'Test(PoolModelNegativeCache|PoolCapacity|ModelCapabilityCooldownDiagnosis|AnthropicModelCapabilityCooldownDiagnosis|DiagnoseModelAvailability|OpenAIDiagnoseModelAvailability|RateLimitService_.*Model|NonStreaming.*SSEToJSON|OpenAI.*Capacity|OpenAI.*TempRule|OpenAI.*ReplayBoundary|OpenAI.*ModelNotFound|OpenAIAdmissionPreservesCapabilityCooldownCause|ClassifyNoAccountError)' -count=1
+  issue-582-regression-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - redis: '6.0'
+          image: redis:6.0.20-alpine
+        - redis: '7.4'
+          image: redis:7.4.12-alpine
+    services:
+      postgres:
+        image: postgres:18.1-alpine3.23
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sub2api_test
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d sub2api_test" --health-interval
+          5s --health-timeout 5s --health-retries 12
+      redis:
+        image: "${{ matrix.image }}"
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout
+          5s --health-retries 12
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      SUB2API_TEST_REDIS_IMAGE: "${{ matrix.image }}"
+      SUB2API_TEST_POSTGRES_DSN: host=127.0.0.1 port=5432 dbname=sub2api_test user=postgres
+        password=postgres sslmode=disable TimeZone=UTC
+      SUB2API_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      ISSUE_582_REDIS_VERSION: "${{ matrix.redis }}"
+      CI: 'true'
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Install Redis binary for existing readiness adapter test
+      run: |
+        bash scripts/ci-ubuntu-mirrors.sh
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends redis-server
+    - name: Assert exact head and static formatting
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        git rev-parse HEAD
+        git diff --check
+        # Match upstream's deletion-aware formatting inventory, retaining the original assertion.
+        git() {
+          if [ "${1:-}" = diff ] && [ "${2:-}" = --name-only ]; then
+            shift
+            command git diff --diff-filter=ACMRT "$@"
+          else
+            command git "$@"
+          fi
+        }
+        test -z "$(git diff --name-only 08d69a522 HEAD -- '*.go' | xargs -r gofmt -l)"
+    - name: Real Redis 6.0 baseline RED
+      if: matrix.redis == '6.0'
+      run: bash scripts/issue-582-red.sh
+    - name: Exact head real Redis snapshot, outbox, queue and session behavior
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        git diff --exit-code
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+        go test -race -tags=integration ./internal/repository -run '^(TestIssue582|TestUserMsgQueueCacheSuite|TestConcurrencyCacheSuite|TestSchedulerCache|TestSchedulerSnapshotOutboxReplay)' -count=1 -v | tee "$RUNNER_TEMP/issue-582-real-redis.log"
+        ! grep -E -- '--- SKIP: TestIssue582' "$RUNNER_TEMP/issue-582-real-redis.log"
+    - name: Preserve scheduler memo, fencing and failure protections
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        go test -race -tags=unit ./internal/repository -run '^Test(Scheduler|APIKeyCacheIncrementCreateCount)' -count=1 -v | tee "$RUNNER_TEMP/issue-582-scheduler-unit.log"
+    - name: Session, IP risk and serverless regressions
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        go test -race -tags=unit ./internal/pkg/redissession ./internal/pkg/rediscompat ./internal/iprisk ./internal/serverless -count=1 -v | tee "$RUNNER_TEMP/issue-582-audit-unit.log"
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue-582-${{ matrix.redis }}-${{ github.event_name }}-${{ github.event.pull_request.head.sha
+          || github.sha }}
+        path: "${{ runner.temp }}/issue-582-*.log"
+  issue-600-regression-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      redis:
+        image: redis:8.4-alpine
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout
+          3s --health-retries 10
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    env:
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PHASE: "${{ matrix.phase }}"
+      ISSUE600_REDIS_ADDR: 127.0.0.1:6379
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: Prove source and run real handler network regression
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+        git diff --exit-code HEAD
+        files=(backend/internal/handler/openai_gateway_handler.go backend/internal/service/openai_ws_forwarder.go backend/internal/service/openai_ws_forwarder_ingress.go backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/service/openai_codex_account_identity.go backend/internal/service/session_id.go)
+        delivery_root="$PWD"
+        if [ "$PHASE" = RED ]; then
+          red_tree="$RUNNER_TEMP/issue600-upstream-red"
+          git worktree add --detach "$red_tree" ec007920de042797299fc7cf2c034ad24c136462
+          trap 'git -C "$delivery_root" worktree remove --force "$red_tree"' EXIT
+          for test_file in backend/internal/handler/openai_ws_client_identity_test.go backend/internal/handler/openai_ws_nested_identity_test.go backend/internal/service/openai_nested_identity_test.go; do
+            cp "$test_file" "$red_tree/$test_file"
+          done
+          printf 'RED supporting tree: %s; unchanged candidate tests: %s\n' ec007920de042797299fc7cf2c034ad24c136462 "$EXPECTED_HEAD"
+          cd "$red_tree"
+        fi
+        if [ "$PHASE" = RED ]; then
+          for file in "${files[@]}"; do
+            git show "77455cf755fa0f119367b911704f11df88e7917e:$file" > "$file"
+          done
+        fi
+        {
+          echo "candidate=$EXPECTED_HEAD phase=$PHASE baseline=77455cf755fa0f119367b911704f11df88e7917e"
+          for file in "${files[@]}"; do
+            if [ "$PHASE" = RED ]; then
+              test "$(git hash-object "$file")" = "$(git rev-parse "77455cf755fa0f119367b911704f11df88e7917e:$file")"
+            else
+              test "$(git hash-object "$file")" = "$(git rev-parse "$EXPECTED_HEAD:$file")"
+            fi
+            echo "$file blob=$(git hash-object "$file") candidate=$(git rev-parse "$EXPECTED_HEAD:$file") baseline=$(git rev-parse "77455cf755fa0f119367b911704f11df88e7917e:$file")"
+          done
+        } | tee "$RUNNER_TEMP/issue600-source-$PHASE.log"
+        git hash-object backend/internal/handler/openai_ws_client_identity_test.go backend/internal/handler/openai_ws_nested_identity_test.go backend/internal/service/openai_nested_identity_test.go | tee "$RUNNER_TEMP/issue600-tests-$PHASE.log"
+        python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+        set +e
+        (cd backend && go test -tags=unit ./internal/handler -run '^TestIssue600' -count=1 -v -timeout=8m) > "$RUNNER_TEMP/issue600-$PHASE.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/issue600-$PHASE.log"
+        if grep -E 'build failed|no tests to run|--- SKIP:|panic:|unexpected fixture destination|failed to get access token' "$RUNNER_TEMP/issue600-$PHASE.log"; then
+          echo 'Invalid test evidence: compile, fixture, panic, skip or missing tests'
+          exit 1
+        fi
+        if [ "$PHASE" = RED ]; then
+          test "$result" -ne 0
+          grep -q -- '--- FAIL: TestIssue600ClientIdentityNetwork/' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'stable original client identity must admit turn 2' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'cyber_session_identity_conflict' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'nested outbound identity must be account isolated' "$RUNNER_TEMP/issue600-$PHASE.log"
+          grep -q 'rejected turn must have no response generation' "$RUNNER_TEMP/issue600-$PHASE.log"
+          for mode in ctx_pool http_bridge passthrough legacy; do
+            for strict in false true; do
+              for scenario in stable_header_body body_only; do
+                grep -q -- "--- FAIL: TestIssue600ClientIdentityNetwork/$mode/strict=$strict/oauth/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+              done
+              for scenario in nested_header_body nested_body_only root_nested_consistent; do
+                grep -q -- "--- FAIL: TestIssue600NestedIdentityNetwork/$mode/strict=$strict/oauth/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+              done
+              grep -q -- "--- FAIL: TestIssue600NestedIdentityNetwork/$mode/strict=$strict/none/conflicting_root_nested_thread " "$RUNNER_TEMP/issue600-$PHASE.log"
+            done
+          done
+        else
+          test "$result" -eq 0
+          grep -q -- '--- PASS: TestIssue600ClientIdentityNetwork ' "$RUNNER_TEMP/issue600-$PHASE.log"
+          for mode in ctx_pool http_bridge passthrough legacy; do
+            for strict in false true; do
+              for namespace in none oauth; do
+                for scenario in stable_header_body body_only omitted_identity static_session_inheritance genuine_header_body_conflict true_body_identity_switch invalid_followup; do
+                  grep -q -- "--- PASS: TestIssue600ClientIdentityNetwork/$mode/strict=$strict/$namespace/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+                done
+              done
+            done
+          done
+          for mode in ctx_pool http_bridge passthrough legacy; do
+            for strict in false true; do
+              for namespace in none oauth; do
+                for scenario in nested_header_body nested_body_only root_nested_consistent omitted_nested_identity root_hidden_by_empty_envelope conflicting_root_nested_thread conflicting_root_nested_session invalid_nested_identity invalid_root_identity invalid_nested_metadata invalid_root_metadata nested_header_conflict true_nested_switch session_only_consistent session_only_switch; do
+                  grep -q -- "--- PASS: TestIssue600NestedIdentityNetwork/$mode/strict=$strict/$namespace/$scenario " "$RUNNER_TEMP/issue600-$PHASE.log"
+                done
+              done
+              grep -q -- "--- PASS: TestIssue600NestedAccountSwitch/$mode/strict=$strict " "$RUNNER_TEMP/issue600-$PHASE.log"
+            done
+          done
+          git diff --exit-code HEAD
+        fi
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue600-${{ matrix.phase }}-${{ github.event_name }}-${{ github.event.pull_request.head.sha
+          || github.sha }}
+        path: "${{ runner.temp }}/issue600-*.log"
+  issue603-observability-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASELINE: ec007920de042797299fc7cf2c034ad24c136462
+      SOURCE_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm install --frozen-lockfile
+      working-directory: frontend
+    - name: RED - original real usage page and labels
+      shell: bash
+      run: |
+        set -euo pipefail
+        old="$RUNNER_TEMP/issue603-ui-red"
+        git worktree add --detach "$old" "$SOURCE_HEAD"
+        trap 'git worktree remove --force "$old"' EXIT
+        # Later UI commits replaced these issue-specific test names.
+        # Freeze the original assertions against their original defective UI.
+        for file in frontend/src/views/admin/__tests__/UsageView.spec.ts frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts; do
+          git show "611d317bf2:$file" > "$old/$file"
+        done
+        for file in frontend/src/views/admin/UsageView.vue frontend/src/components/admin/usage/UsageTable.vue frontend/src/i18n/locales/en/dashboard.ts frontend/src/i18n/locales/zh/dashboard.ts; do
+          git -C "$old" restore --source="$BASELINE" -- "$file"
+          test "$(git -C "$old" hash-object "$file")" = "$(git rev-parse "$BASELINE:$file")"
+        done
+        ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$old/frontend/node_modules"
+        set +e
+        (cd "$old/frontend" && pnpm test:run src/views/admin/__tests__/UsageView.spec.ts src/components/admin/usage/__tests__/UsageTable.spec.ts -t 'Issue60[35]') > "$RUNNER_TEMP/issue603-ui-red.log" 2>&1
+        result=$?
+        set -e
+        cat "$RUNNER_TEMP/issue603-ui-red.log"
+        test "$result" -ne 0
+        ! grep -Eq 'Failed to resolve|Cannot find|No test files found|SyntaxError|TypeError|ReferenceError' "$RUNNER_TEMP/issue603-ui-red.log"
+        grep -F 'Issue603 embeds latency observations in the real admin usage page' "$RUNNER_TEMP/issue603-ui-red.log"
+        grep -F 'Issue603 labels real usage table server timing explicitly' "$RUNNER_TEMP/issue603-ui-red.log"
+    - name: GREEN - actual page and component regressions
+      shell: bash
+      run: |
+        set -euo pipefail
+        git diff --exit-code
+        (cd frontend && pnpm test:run src/views/admin/__tests__/UsageView.spec.ts src/components/admin/usage/__tests__/UsageTable.spec.ts src/components/admin/usage/__tests__/UsageTimingDialog.spec.ts src/components/admin/usage/__tests__/LatencyObservabilityPanel.spec.ts src/views/admin/ops/components/__tests__/OpsNetworkChart.spec.ts) 2>&1 | tee "$RUNNER_TEMP/issue603-ui-green.log"
+    - name: GREEN - frontend production typecheck and build
+      shell: bash
+      run: |
+        set -euo pipefail
+        (cd frontend && pnpm build) 2>&1 | tee "$RUNNER_TEMP/issue603-ui-build.log"
+    - name: Install isolated browser for actual usage page screenshots
+      run: |
+        npm install --prefix "$RUNNER_TEMP/issue603-browser" --no-save --ignore-scripts playwright@1.56.1
+        bash scripts/ci-ubuntu-mirrors.sh
+        "$RUNNER_TEMP/issue603-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Render exact baseline and head with offline synthetic data
+      env:
+        PLAYWRIGHT_ROOT: "${{ runner.temp }}/issue603-browser/node_modules/playwright"
+        SCREENSHOT_DIR: "${{ runner.temp }}/issue603-screenshots"
+      shell: bash
+      run: |
+        set -euo pipefail
+        old="$RUNNER_TEMP/issue603-before-browser"
+        git worktree add --detach "$old" "$BASELINE"
+        trap 'git worktree remove --force "$old"' EXIT
+        ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$old/frontend/node_modules"
+        VIEW_ROOT="$old" SCREENSHOT_MODE=before node scripts/issue603-screenshots.mjs
+        test "$(git -C "$old" hash-object frontend/src/views/admin/UsageView.vue)" = "$(git rev-parse "$BASELINE:frontend/src/views/admin/UsageView.vue")"
+        git diff --exit-code
+        test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+        SCREENSHOT_MODE=after node scripts/issue603-screenshots.mjs
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: issue603-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/issue603-*.log
+          ${{ runner.temp }}/issue603-screenshots
+        if-no-files-found: error
+        retention-days: 14
+  pr596-cooldown-ownership-cooldown-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: 'true'
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Record exact source head
+      env:
+        EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      run: |
+        mkdir -p evidence
+        git rev-parse HEAD | tee evidence/head.txt
+        test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.3
+    - name: RED - unchanged new tests against original production files
+      shell: bash
+      run: |
+        set -euo pipefail
+        original=23b0dbae040e0d0b8c40f25ddb012ce2444feba3
+        sources=(backend/internal/repository/account_quality_isolation.go backend/internal/repository/account_quality_models.go backend/internal/repository/scheduled_test_repo.go)
+        mkdir -p "$RUNNER_TEMP/pr596-original"
+        for source in "${sources[@]}"; do cp "$source" "$RUNNER_TEMP/pr596-original/$(basename "$source")"; done
+        trap 'for source in "${sources[@]}"; do cp "$RUNNER_TEMP/pr596-original/$(basename "$source")" "$source"; done' EXIT
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git "$original"
+        for source in "${sources[@]}"; do git show "$original:$source" > "$source"; done
+        python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+        set +e
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQualityCooldown(ActionGuardRetainsAllOwnershipLayouts|OwnedScopeRejectsEdits|MappingChangeCannotStrandOwnedTarget|DeletePreservesOwnedState|DeleteChecksLiveMarkersWithoutSnapshot|DeleteAfterRecoveryPreservesExternalRestrictions)$' -count=1 -timeout=15m -json) > evidence/red.jsonl 2>&1
+        result=$?
+        set -e
+        cat evidence/red.jsonl
+        test "$result" -ne 0
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        raw = Path('evidence/red.jsonl').read_text()
+        events = []
+        for line in raw.splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+        output = raw + ''.join(e.get('Output', '') for e in events)
+        for forbidden in ('[build failed]', '[setup failed]', 'undefined:', 'syntax error:', 'no tests to run', 'panic:', '--- SKIP:'):
+            assert forbidden not in output, forbidden
+        for name in ('TestQualityCooldownActionGuardRetainsAllOwnershipLayouts', 'TestQualityCooldownOwnedScopeRejectsEdits', 'TestQualityCooldownMappingChangeCannotStrandOwnedTarget', 'TestQualityCooldownDeletePreservesOwnedState', 'TestQualityCooldownDeleteChecksLiveMarkersWithoutSnapshot', 'TestQualityCooldownDeleteAfterRecoveryPreservesExternalRestrictions'):
+            assert any(e.get('Action') == 'fail' and e.get('Test') == name for e in events), name
+        assert 'owned cooldown edit must be rejected' in output
+        assert 'owned cooldown delete must be rejected' in output
+        assert 'cooldown ownership must block action changes' in output
+        assert 'Error Trace:' in output and 'An error is expected but got nil.' in output
+        PY
+    - name: GREEN - real repository transitions and retained ownership protection
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The repository integration TestMain starts PostgreSQL and Redis via
+        # testcontainers; CI=true makes missing Docker a failure, never a skip.
+        python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
+        (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality(Cooldown|Model|PersistentIsolation|Isolation|Ownership|Observation)' -count=1 -timeout=20m -json) > evidence/green.jsonl 2>&1
+        cat evidence/green.jsonl
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        events = [json.loads(line) for line in Path('evidence/green.jsonl').read_text().splitlines() if line.startswith('{')]
+        assert not any(e.get('Action') in ('fail', 'skip') for e in events)
+        top_level_passes = {e['Test'] for e in events if e.get('Action') == 'pass' and 'Test' in e and '/' not in e['Test']}
+        assert len(top_level_passes) == 39, sorted(top_level_passes)
+        for name in ('TestQualityCooldownOwnedScopeRejectsEdits', 'TestQualityCooldownOrdinaryEditRetainsOwnershipUntilPassingRecovery', 'TestQualityCooldownExternalOwnerSurvivesEditsAndRecovery', 'TestQualityCooldownMappingChangeCannotStrandOwnedTarget', 'TestQualityCooldownChangedActionOutcomeRetainsOwnership', 'TestQualityCooldownActionGuardRetainsAllOwnershipLayouts', 'TestQualityCooldownDeadlinePersistedRecovery', 'TestQualityCooldownDeletePreservesOwnedState', 'TestQualityCooldownDeleteChecksLiveMarkersWithoutSnapshot', 'TestQualityCooldownDeleteAfterRecoveryPreservesExternalRestrictions', 'TestQualityIsolationScopeAndDeleteGuard', 'TestQualityIsolationGroupsFollowIndependentModelRecovery'):
+            assert any(e.get('Action') == 'pass' and e.get('Test') == name for e in events), name
+        PY
+    - name: Verify Node and locked i18n toolchain contract
+      run: |
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        package = json.loads(Path('frontend/package.json').read_text())
+        assert package['engines']['node'] == '>=22'
+        assert package['dependencies']['vue-i18n'] == '^11.4.16'
+        lock = Path('frontend/pnpm-lock.yaml').read_text()
+        assert 'vue-i18n@11.4.16:' in lock
+        assert "engines: {node: '>= 22'}" in lock
+        PY
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: pr596-cooldown-ownership-${{ github.event.pull_request.head.sha || github.sha
+          }}
+        path: evidence/
+  pr610-queue-timing-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SOURCE_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: 705550f610f1f12666b8efd351a13e612b3956bf
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 9
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - run: pnpm install --frozen-lockfile
+      working-directory: frontend
+    - name: Actual timing components and production typecheck/build
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+        (cd frontend && pnpm test:run src/components/admin/usage/__tests__/UsageTable.spec.ts src/components/admin/usage/__tests__/UsageTimingDialog.spec.ts && pnpm build) 2>&1 | tee "$RUNNER_TEMP/pr610-ui.log"
+    - name: Isolated synthetic browser
+      run: |
+        npm install --prefix "$RUNNER_TEMP/pr610-browser" --no-save --ignore-scripts playwright@1.56.1
+        bash scripts/ci-ubuntu-mirrors.sh
+        "$RUNNER_TEMP/pr610-browser/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Bilingual before/after table and dialog, desktop/mobile interactions
+      env:
+        PLAYWRIGHT_ROOT: "${{ runner.temp }}/pr610-browser/node_modules/playwright"
+        SCREENSHOT_DIR: "${{ runner.temp }}/pr610-screenshots"
+      run: |
+        set -euo pipefail
+        old="$RUNNER_TEMP/pr610-before-browser"
+        git worktree add --detach "$old" "$BASELINE"
+        trap 'git worktree remove --force "$old"' EXIT
+        ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$old/frontend/node_modules"
+        VIEW_ROOT="$old" SCREENSHOT_MODE=before node scripts/pr610-screenshots.mjs
+        test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+        git diff --exit-code
+        SCREENSHOT_MODE=after node scripts/pr610-screenshots.mjs
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: pr610-ui-${{ github.event.pull_request.head.sha || github.sha }}
+        path: |
+          ${{ runner.temp }}/pr610-ui.log
+          ${{ runner.temp }}/pr610-screenshots
+  sync-20261116-account-connection-timing-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: 77455cf755fa0f119367b911704f11df88e7917e
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/7fd3e0a05a842ea3"
+    permissions:
+      contents: read
+  sync-20261116-http2-stream-reset-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/30fc9f24bbfdbb4e"
+    permissions:
+      contents: read
+  sync-20261116-http2-stream-reset-timezone-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      TZ: UTC
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        path: candidate
+    - name: Run current upstream checks
+      uses: "./candidate/.github/actions/upstream-ci/4a9c81a334f610c1"
+    permissions:
+      contents: read
+  sync-20261116-issue-582-regression-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - redis: '6.0'
+          image: redis:6.0.20-alpine
+        - redis: '7.4'
+          image: redis:7.4.12-alpine
+    services:
+      postgres:
+        image: postgres:18.1-alpine3.23
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sub2api_test
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d sub2api_test" --health-interval
+          5s --health-timeout 5s --health-retries 12
+      redis:
+        image: "${{ matrix.image }}"
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout
+          5s --health-retries 12
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      SUB2API_TEST_REDIS_IMAGE: "${{ matrix.image }}"
+      ISSUE_582_REDIS_VERSION: "${{ matrix.redis }}"
+      SUB2API_TEST_POSTGRES_DSN: host=127.0.0.1 port=5432 dbname=sub2api_test user=postgres
+        password=postgres sslmode=disable TimeZone=UTC
+      SUB2API_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      CI: 'true'
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/93ed89306ec0e118"
+      with:
+        sync_matrix_redis: "${{ matrix.redis }}"
+    permissions:
+      contents: read
+  sync-20261116-issue603-observability-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      BASELINE: ec007920de042797299fc7cf2c034ad24c136462
+      SOURCE_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      SUB2API_TEST_POSTGRES_IMAGE: postgres:15-alpine
+      SUB2API_TEST_REDIS_IMAGE: redis:7-alpine
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/09a9a421abd7e35f"
+    permissions:
+      contents: read
+  sync-20261116-issue603-observability-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASELINE: ec007920de042797299fc7cf2c034ad24c136462
+      SOURCE_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/1251d05bfb5f1587"
+    permissions:
+      contents: read
+  sync-20261116-issue605-p1-repair-intended-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      DEFECTIVE_HEAD: 19a441a79e5980c81506f2775d09f3317364305a
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/dc9d3f338828b842"
+    permissions:
+      contents: read
+  sync-20261116-issue605-smart-protocol-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/6c9e2391c50de42a"
+    permissions:
+      contents: read
+  sync-20261116-mature-review-repairs-manual-review-ui:
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/708b83b9b5b675b9"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+    permissions:
+      contents: read
+  sync-20261116-mature-review-repairs-upgrade:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: repair
+          POSTGRES_PASSWORD: synthetic-fixture-only
+          POSTGRES_DB: repair
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U repair" --health-interval 5s --health-timeout
+          5s --health-retries 10
+    env:
+      MATURE_UPGRADE_DSN: postgres://repair:synthetic-fixture-only@127.0.0.1:5432/repair?sslmode=disable
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/7ec064f49fb8c6a0"
+    permissions:
+      contents: read
+  sync-20261116-moderation-upstream-scope-behavioral-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/18fe490aa7199ab5"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-pool-capacity-regression-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/263595486abc52e7"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-pr596-cooldown-ownership-cooldown-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: 'true'
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/9c4d84379fd2a7f4"
+    permissions:
+      contents: read
+  sync-20261116-pr610-queue-timing-behavior:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      SOURCE_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: 705550f610f1f12666b8efd351a13e612b3956bf
+      SUB2API_TEST_POSTGRES_IMAGE: postgres:15-alpine
+      SUB2API_TEST_REDIS_IMAGE: redis:7-alpine
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/f350209e65f393e5"
+    permissions:
+      contents: read
+  sync-20261116-pr610-queue-timing-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SOURCE_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: 705550f610f1f12666b8efd351a13e612b3956bf
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/21e38ad3862278a0"
+    permissions:
+      contents: read
+  sync-20261116-pr838-compat-count-counter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/cb02ca26305e742d"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-upstream-v0220-regression-codex-nonstream-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        path: red
+    - name: Run current upstream checks
+      uses: "./red/.github/actions/upstream-ci/3b5d5fbbdc79880e"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-upstream-v0221-regression-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/e54f220e3ac0e23c"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-anthropic-413-red:
+    name: RED - pinned production source
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ff23a988f4c5825ec06a7efb4e0f16f2b1e65ced
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.4
+    - name: Run real handler regression against pre-fix source
+      shell: bash
+      run: |
+        set -euo pipefail
+        evidence="$RUNNER_TEMP/anthropic-413-red"
+        mkdir -p "$evidence"
+        test "$(git rev-parse HEAD)" = "$RED_BASE_SHA"
+        git diff --exit-code
+        test -z "$(git status --porcelain)"
+        git fetch --no-tags --depth=1 origin "$EXPECTED_HEAD_SHA"
+        test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD_SHA"
+        regression=backend/internal/handler/anthropic_413_test.go
+        test ! -e "$regression"
+        restore() {
+          rm -f -- "$regression"
+          git restore --source=HEAD -- backend/internal/service/openai_gateway_cc_pipeline.go backend/internal/service/openai_ws_http_bridge.go
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+        }
+        trap restore EXIT
+        git show "$EXPECTED_HEAD_SHA:$regression" > "$regression"
+        {
+          printf 'candidate=%s\nbase=%s\n' "$EXPECTED_HEAD_SHA" "$RED_BASE_SHA"
+          git rev-parse HEAD^{tree}
+          sha256sum "$regression"
+          go version
+          printf '%s\n' 'go test -json -tags=unit ./internal/handler -run ^TestAnthropic413MessagesHTTP$/^apikey$/^stream$ -count=1 -timeout=5m'
+        } > "$evidence/metadata.txt"
+        helper="$RUNNER_TEMP/anthropic-prepare-sync-ci.py"
+        git show "$EXPECTED_HEAD_SHA:scripts/prepare-sync-ci.py" > "$helper"
+        SYNC_CI_SOURCE_ROOT="$GITHUB_WORKSPACE" python3 "$helper" backend
+        set +e
+        (cd backend && go test -json -tags=unit ./internal/handler -run '^TestAnthropic413MessagesHTTP$/^apikey$/^stream$' -count=1 -timeout=5m) > "$evidence/red.jsonl" 2> "$evidence/red.stderr"
+        result=$?
+        set -e
+        printf '%s\n' "$result" > "$evidence/exit-code.txt"
+        cat "$evidence/red.jsonl" "$evidence/red.stderr"
+        test "$result" -eq 1
+        python3 - "$evidence/red.jsonl" <<'PY'
+        import json, pathlib, sys
+        events = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+        test = "TestAnthropic413MessagesHTTP/apikey/stream"
+        assert any(e.get("Test") == test and e.get("Action") == "run" for e in events), "regression did not run"
+        assert any(e.get("Test") == test and e.get("Action") == "fail" for e in events), "intended regression did not fail"
+        assert not any(e.get("Action") == "skip" for e in events), "skips are not RED evidence"
+        output = "".join(e.get("Output", "") for e in events)
+        assert "anthropic_413_wire_status" in output, "missing intended status assertion"
+        assert "expected: 413" in output and "actual  : 502" in output, "wrong failure reason"
+        assert not any(s in output for s in ("[build failed]", "panic:", "no tests to run")), "invalid RED evidence"
+        PY
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: sync-20261116-anthropic-413-red-anthropic-413-red-${{ github.event.pull_request.head.sha
+          || github.sha }}
+        path: "${{ runner.temp }}/anthropic-413-red/"
+        if-no-files-found: error
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      RED_BASE_SHA: ff23a988f4c5825ec06a7efb4e0f16f2b1e65ced
+      REVIEW_RED_BASE_SHA: 4bb46c4c83de1f0cd08b7f3f4ba25ec01e3a3371
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-anthropic-413-review-red:
+    name: RED - L1 and L2 on reviewed implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: 4bb46c4c83de1f0cd08b7f3f4ba25ec01e3a3371
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.4
+    - name: Require both independent-review failures in JSON and SSE
+      shell: bash
+      run: |
+        set -euo pipefail
+        evidence="$RUNNER_TEMP/anthropic-413-review-red"
+        mkdir -p "$evidence"
+        test "$(git rev-parse HEAD)" = "$REVIEW_RED_BASE_SHA"
+        git diff --exit-code
+        test -z "$(git status --porcelain)"
+        git fetch --no-tags --depth=1 origin "$EXPECTED_HEAD_SHA"
+        test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD_SHA"
+        regression=backend/internal/handler/anthropic_413_review_test.go
+        test ! -e "$regression"
+        restore() {
+          rm -f -- "$regression"
+          git restore --source=HEAD -- backend/internal/service/openai_gateway_cc_pipeline.go backend/internal/service/openai_ws_http_bridge.go
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+        }
+        trap restore EXIT
+        git show "$EXPECTED_HEAD_SHA:$regression" > "$regression"
+        {
+          printf 'candidate=%s\nreview_base=%s\n' "$EXPECTED_HEAD_SHA" "$REVIEW_RED_BASE_SHA"
+          git rev-parse HEAD^{tree}
+          sha256sum "$regression"
+          go version
+          printf '%s\n' 'go test -json -tags=unit ./internal/handler -run ^TestAnthropic413Review(AutoConfigNoCooldown|BudgetRepairMonitoring)$ -count=1 -timeout=5m'
+        } > "$evidence/metadata.txt"
+        helper="$RUNNER_TEMP/anthropic-prepare-sync-ci.py"
+        git show "$EXPECTED_HEAD_SHA:scripts/prepare-sync-ci.py" > "$helper"
+        SYNC_CI_SOURCE_ROOT="$GITHUB_WORKSPACE" python3 "$helper" backend
+        set +e
+        (cd backend && go test -json -tags=unit ./internal/handler -run '^TestAnthropic413Review(AutoConfigNoCooldown|BudgetRepairMonitoring)$' -count=1 -timeout=5m) > "$evidence/red.jsonl" 2> "$evidence/red.stderr"
+        result=$?
+        set -e
+        printf '%s\n' "$result" > "$evidence/exit-code.txt"
+        cat "$evidence/red.jsonl" "$evidence/red.stderr"
+        test "$result" -eq 1
+        python3 - "$evidence/red.jsonl" <<'PY'
+        import json, pathlib, sys
+        events = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+        markers = {
+            "TestAnthropic413ReviewAutoConfigNoCooldown": "anthropic_413_L1_final_observation",
+            "TestAnthropic413ReviewBudgetRepairMonitoring": "anthropic_413_L2_final_visible",
+        }
+        for parent, marker in markers.items():
+            for boundary in ("json", "sse"):
+                test = parent + "/" + boundary
+                assert any(e.get("Test") == test and e.get("Action") == "run" for e in events), f"missing test: {test}"
+                assert any(e.get("Test") == test and e.get("Action") == "fail" for e in events), f"missing intended failure: {test}"
+                output = "".join(e.get("Output", "") for e in events if e.get("Test") == test)
+                assert marker in output, f"wrong failure reason: {test}"
+        assert not any(e.get("Action") == "skip" for e in events), "skips are not RED evidence"
+        output = "".join(e.get("Output", "") for e in events)
+        assert not any(s in output for s in ("[build failed]", "panic:", "no tests to run")), "invalid RED evidence"
+        PY
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: sync-20261116-anthropic-413-review-red-anthropic-413-review-red-${{
+          github.event.pull_request.head.sha || github.sha }}
+        path: "${{ runner.temp }}/anthropic-413-review-red/"
+        if-no-files-found: error
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      RED_BASE_SHA: ff23a988f4c5825ec06a7efb4e0f16f2b1e65ced
+      REVIEW_RED_BASE_SHA: 4bb46c4c83de1f0cd08b7f3f4ba25ec01e3a3371
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-free-fast-customer-cost-details-frontend:
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/168567bed7f3c941"
+    permissions:
+      contents: read
+  sync-20261116-future-shadow-validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/37346310e8b50a72"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-future-shadow-http:
+    name: Future shadow HTTP ${{ matrix.phase }}
+    needs:
+    - sync-20261116-future-shadow-validator
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    env:
+      CANDIDATE_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE_SHA: 84e47f1b57acba77f1cfae08a63e8dd9d32a7991
+      PHASE: "${{ matrix.phase }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/c7bf0e039312d53d"
+      with:
+        sync_matrix_phase: "${{ matrix.phase }}"
+    permissions:
+      contents: read
+  sync-20261116-http-recovery-native-controls-behavior:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/a5541fef6ad30206"
+      with:
+        sync_matrix_phase: "${{ matrix.phase }}"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-http-task-rebuild-validator:
+    name: Task rebuild evidence self-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/94831b4b99614987"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-http-task-rebuild-transport:
+    name: Native HTTP ${{ matrix.phase }}
+    needs:
+    - sync-20261116-http-task-rebuild-validator
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    env:
+      CANDIDATE_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE_SHA: 96ba36a85edab665ad5a035788fc07a40fd18762
+      PHASE: "${{ matrix.phase }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/1a9181feda744073"
+      with:
+        sync_matrix_phase: "${{ matrix.phase }}"
+    permissions:
+      contents: read
+  sync-20261116-http-task-rebuild-review-counterexamples:
+    name: HTTP review counterexamples on 84e47
+    needs:
+    - sync-20261116-http-task-rebuild-validator
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CANDIDATE_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      REVIEW_BASELINE: 84e47f1b57acba77f1cfae08a63e8dd9d32a7991
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/09ce5bd0e81613f4"
+    permissions:
+      contents: read
+  sync-20261116-issue614-lifecycle-physical-write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: d14ed1807bdfe43aabed1739c0e062c1f4512ddf
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/435c73f2492c9424"
+    permissions:
+      contents: read
+  sync-20261116-issue715-agent-recovery-red-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/a68b2bd5d15c38ae"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-issue715-agent-recovery-red-first-delivery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/6d13f781a4e04045"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-issue715-agent-recovery-red-ws:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/8be8677c27d4ab00"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-issue733-priority-filters-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      CI: 'true'
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/86686f362a82a25b"
+    permissions:
+      contents: read
+  sync-20261116-issue733-priority-ui-scope-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/62e9ce2b9c58d828"
+    permissions:
+      contents: read
+  sync-20261116-issue765-image-scheduler-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        path: candidate
+    - name: Run current upstream checks
+      uses: "./candidate/.github/actions/upstream-ci/ca4c2fe9561d17ae"
+    permissions:
+      contents: read
+  sync-20261116-issue805-owner-policy-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/413bd53cc1989785"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-multigroup-model-list-catalogue:
+    name: catalogue-${{ matrix.mode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+        - RED
+        - GREEN
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        path: ci-actions
+        persist-credentials: false
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        path: candidate
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./ci-actions/.github/actions/upstream-ci/02f5500d7aaf7781"
+      with:
+        sync_matrix_mode: "${{ matrix.mode }}"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-oauth-degradation-actions-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        path: candidate
+    - name: Run current upstream checks
+      uses: "./candidate/.github/actions/upstream-ci/addb025c18668393"
+    permissions:
+      contents: read
+  sync-20261116-oauth-degradation-actions-timezone-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      TZ: UTC
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.sha }}"
+        path: candidate
+    - name: Run current upstream checks
+      uses: "./candidate/.github/actions/upstream-ci/f61b706dd18f76f9"
+    permissions:
+      contents: read
+  sync-20261116-oauth-degradation-actions-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/6c3d98b26704a657"
+    permissions:
+      contents: read
+  sync-20261116-oauth-initial-model-selection-admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        path: candidate
+    - name: Run current upstream checks
+      uses: "./candidate/.github/actions/upstream-ci/bd5ee4d2be4ded56"
+    permissions:
+      contents: read
+  sync-20261116-openai-connection-account-type-regression-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+        - red
+        - green
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: cf3d30c69ea997d15a5d714805d5b6ad2901463f
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/34bfb0780f7a3f3f"
+      with:
+        sync_matrix_mode: "${{ matrix.mode }}"
+    permissions:
+      contents: read
+  sync-20261116-openai-multi-auth-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/d30e86876670d0ee"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-openai-multi-auth-review-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/1929b24a2678b527"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-openai-multi-auth-lease-proof-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/85f757d8d685fa48"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-pelican-random-questions-isolated-e2e:
+    name: Isolated application E2E (manual, account and group schedules; full acceptance
+      pending)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APP_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      HARNESS_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PARENT_BASE_SHA: dfc0219a9e66a19642eb73875e4914e540b49575
+      COMPOSE_PROJECT_NAME: pelican-${{ github.run_id }}-${{ github.run_attempt }}
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ env.HARNESS_SHA }}"
+        path: harness
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./harness/.github/actions/upstream-ci/441e5118366ca55a"
+    permissions:
+      contents: read
+  sync-20261116-pr598-repair-regression-queued-service-red:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/9d9912ea100fb5b9"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-priority-observation-seams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: "-p=2"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/6e2d088ab1cc22d1"
+    permissions:
+      contents: read
+  sync-20261116-reauth-runtime-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: ubuntu-24.04
+        - arch: arm64
+          runner: ubuntu-24.04-arm
+    runs-on: "${{ matrix.runner }}"
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/c14d5639445863d5"
+      with:
+        sync_matrix_arch: "${{ matrix.arch }}"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-reauth-runtime-deployment:
+    needs:
+    - sync-20261116-reauth-runtime-package
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sub2api
+          POSTGRES_PASSWORD: local-staging-only
+          POSTGRES_DB: sub2api
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U sub2api" --health-interval 5s --health-timeout
+          5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout
+          5s --health-retries 20
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/3f7c77c4ded36941"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-shadow-review-repair-repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fixture
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: shadow_audit
+        ports:
+        - 5432:5432
+        options: --health-cmd "pg_isready -U fixture -d shadow_audit" --health-interval
+          5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+        - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout
+          5s --health-retries 10
+    env:
+      CANDIDATE_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE_SHA: e59321cbf7e919f980ca90690ec70159180761f2
+      PHASE: "${{ matrix.phase }}"
+      PROMPT_AUDIT_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:5432/shadow_audit?sslmode=disable
+      PROMPT_AUDIT_TEST_REDIS_ADDR: 127.0.0.1:6379
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/efc710d15385c766"
+      with:
+        sync_matrix_phase: "${{ matrix.phase }}"
+    permissions:
+      contents: read
+  sync-20261116-upstream-channel-entities-regression-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/57b5797ea5d91299"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-ws-inherited-model-inherited-model:
+    name: Inherited model ${{ matrix.phase }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    env:
+      CANDIDATE: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PHASE: "${{ matrix.phase }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - name: Initialize evidence directory
+      shell: bash
+      run: |
+        set -euo pipefail
+        export EVIDENCE="$RUNNER_TEMP/ws-inherited-model-evidence"
+        echo "EVIDENCE=$EVIDENCE" >> "$GITHUB_ENV"
+        mkdir -p "$EVIDENCE"
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ env.CANDIDATE }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-go@v6
+      with:
+        cache-dependency-path: backend/go.sum
+        go-version: 1.27.4
+    - name: Isolated Redis fixture dependency
+      run: |
+        if ! command -v redis-server >/dev/null; then
+          bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends redis-server
+        fi
+    - name: Exact source and identical candidate fixture
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$CANDIDATE"
+        git diff --exit-code
+        mkdir -p "$EVIDENCE"
+        git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git da526bfbab47efd40549cab98f1069f9b2b45b9f
+        python3 scripts/prepare-ws-inherited-model-red.py "$RUNNER_TEMP/ws-inherited-model-baseline" "$EVIDENCE"
+        if [ "$PHASE" = RED ]; then
+          echo "TEST_ROOT=$RUNNER_TEMP/ws-inherited-model-baseline" >> "$GITHUB_ENV"
+        else
+          echo "TEST_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+        fi
+        python3 -m unittest discover -s scripts -p 'test_ws_inherited_model_evidence.py' -v > "$EVIDENCE/parser-tests.log" 2>&1
+    - name: Authenticated same-socket tool loop and refusal controls
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$TEST_ROOT/backend"
+        set +e
+        (cd "$TEST_ROOT/backend" && go test -race -p=2 -json -tags=unit,inheritedmodel ./internal/handler -run '^TestOpenAIWSInheritedModel(ToolProof|ProofFences)$' -count=1 -timeout=5m) > "$EVIDENCE/handler.jsonl" 2>&1
+        status=$?
+        set -e
+        printf '%s\n' "$status" > "$EVIDENCE/handler.exit"
+        cat "$EVIDENCE/handler.jsonl"
+        python3 scripts/ws-inherited-model-evidence.py handler "$PHASE" "$status" "$EVIDENCE/handler.jsonl" | tee "$EVIDENCE/handler-verdict.json"
+    - name: Delivery, model scope and final wire integrity controls
+      if: "${{ (success() || failure()) && env.TEST_ROOT != '' }}"
+      shell: bash
+      run: |
+        set -euo pipefail
+        suite=guards
+        pattern='^Test(OpenAIToolProvenanceDeliveryAndScope|OpenAIWSMixedOwnerFinalSendFences)$'
+        if [ "$PHASE" = GREEN ]; then
+          suite=guards_with_client_model
+          pattern='^Test(OpenAIToolProvenanceDeliveryAndScope|OpenAIWSMixedOwnerFinalSendFences|OpenAIWSRecoveryEffectiveClientModel)$'
+        fi
+        python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$TEST_ROOT/backend"
+        set +e
+        (cd "$TEST_ROOT/backend" && go test -race -p=2 -json -tags=unit,ownerconflict,inheritedmodel ./internal/service -run "$pattern" -count=1 -timeout=5m) > "$EVIDENCE/guards.jsonl" 2>&1
+        status=$?
+        set -e
+        printf '%s\n' "$status" > "$EVIDENCE/guards.exit"
+        cat "$EVIDENCE/guards.jsonl"
+        python3 scripts/ws-inherited-model-evidence.py "$suite" "$PHASE" "$status" "$EVIDENCE/guards.jsonl" | tee "$EVIDENCE/guards-verdict.json"
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: sync-20261116-ws-inherited-model-inherited-model-ws-inherited-model-${{
+          matrix.phase }}-${{ env.CANDIDATE }}
+        path: "${{ env.EVIDENCE }}"
+        if-no-files-found: error
+    permissions:
+      contents: read
+  sync-20261116-ws-owner-conflict-behavior:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    env:
+      CANDIDATE: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: 0e8e97aa23afd8e88a61ea64a84a8fb84f1bfdc6
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/3be3d7775382a7d5"
+    permissions:
+      contents: read
+  sync-20261116-ws-tool-provenance-behavior:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CANDIDATE: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE: 18aef10f71a6a68372a124f2684ecb18024318bb
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/0756543be8da8f5b"
+    permissions:
+      contents: read

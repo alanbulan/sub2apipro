@@ -10,6 +10,16 @@ runs:
     with:
       cache-dependency-path: backend/go.sum
       go-version: 1.27.4
+  - name: Install Redis for retained recovery and ownership regressions
+    run: |
+      set -euo pipefail
+      if ! command -v redis-server >/dev/null; then
+        bash "$GITHUB_WORKSPACE/scripts/ci-ubuntu-mirrors.sh"
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends redis-server
+      fi
+      redis-server --version
+    shell: bash
   - name: Compile production server and all adapters
     working-directory: backend
     run: go build ./cmd/server

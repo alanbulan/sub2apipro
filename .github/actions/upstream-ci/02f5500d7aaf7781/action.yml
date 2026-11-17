@@ -74,7 +74,7 @@ runs:
     shell: bash
     run: 'set -euo pipefail
 
-      python3 "$GITHUB_WORKSPACE/candidate/scripts/prepare-sync-ci.py" "$PWD"
+      python3 "$GITHUB_WORKSPACE/ci-actions/scripts/prepare-sync-ci.py" "$PWD"
 
       set +e
 
@@ -103,7 +103,7 @@ runs:
   - name: GREEN focused regressions and race checks
     if: inputs.sync_matrix_mode == 'GREEN'
     working-directory: candidate/backend
-    run: 'python3 "$GITHUB_WORKSPACE/candidate/scripts/prepare-sync-ci.py" "$PWD"
+    run: 'python3 "$GITHUB_WORKSPACE/ci-actions/scripts/prepare-sync-ci.py" "$PWD"
 
       go test -race -tags=unit ./internal/server/routes ./internal/handler ./internal/service ./internal/server/middleware
       -run ''^(TestMultiGroupModelsUnion|TestGatewayRoutesPinnedModels|TestGatewayCompositeRouteModels|TestOrdinaryPinnedModels|TestAPIKeyMultiGroupSelection|TestVipCredit.*Subscription|TestGatewayModels_|TestPinnedModels)''

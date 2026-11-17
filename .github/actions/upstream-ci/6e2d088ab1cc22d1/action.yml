@@ -45,6 +45,7 @@ runs:
       \ntest \"$result\" -ne 0\npython3 scripts/priority-penalty-review-red.py \"$RUNNER_TEMP/priority-logs/review-red.log\"\
       \n"
   - name: Install Redis for retained HTTP replay regressions
+    if: ${{ !cancelled() }}
     run: "bash \"${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh\"\nif ! command -v redis-server >/dev/null; then\n  bash\
       \ \"${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh\"\n  sudo apt-get update\n  sudo apt-get install -y --no-install-recommends\
       \ redis-server\nfi\nredis-server --version\n"

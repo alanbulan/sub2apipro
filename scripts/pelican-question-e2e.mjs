@@ -212,7 +212,33 @@ async function browser() {
     // Console text and exception messages can contain application data. Retain
     // only their types; scenario assertion failures carry safe fixture context.
     page.on('pageerror', error => state.pageErrors.push({ name: error.name }))
-    page.on('console', message => { if (message.type() === 'error') state.consoleErrors.push({ type: 'error' }) })
+    page.on('console', message => {
+      if (message.type() !== 'error') return
+      // Classify known application diagnostics without persisting exception
+      // objects, console arguments, response bodies or arbitrary console text.
+      const text = message.text()
+      const prefixes = [
+        'Failed to load account usage batch:', 'Failed to load account today stats:',
+        'Failed to load account today stats after showing column:',
+        'Failed to refresh account today stats after table load:',
+        'Failed to load upstream billing probe settings:',
+        'Failed to refresh upstream billing rates:', 'Failed to load proxies:',
+        'Failed to load groups:', 'Auto refresh failed:',
+        'Failed to refresh user on init:', 'Auto-refresh user failed:',
+        'Token refresh failed:', 'Failed to load resource:',
+      ]
+      const kind = prefixes.find(prefix => text.startsWith(prefix)) || 'unclassified'
+      state.consoleErrors.push({ type: 'error', kind })
+    })
+    page.on('response', response => {
+      if (response.status() < 400) return
+      const url = new URL(response.url())
+      // Only relative route metadata from the synthetic application is safe.
+      if (url.origin === origin) {
+        state.httpErrors ??= []
+        state.httpErrors.push({ method: response.request().method(), path: url.pathname, status: response.status() })
+      }
+    })
     const manualRequests = []
     const forbiddenRuns = []
     let prepareCount = 0

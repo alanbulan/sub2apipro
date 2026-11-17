@@ -4,6 +4,9 @@ on:
   push:
     branches-ignore:
       - main
+      # Dedicated repair rehearsals run their focused workflow; every candidate
+      # and main promotion still executes the complete reusable CI gate.
+      - diagnose/upgrade-20261117
   pull_request:
 
 permissions:

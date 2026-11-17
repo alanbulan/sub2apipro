@@ -17,7 +17,7 @@ runs:
   - name: RED - original real usage page and labels
     shell: bash
     run: "set -euo pipefail\nold=\"$RUNNER_TEMP/issue603-ui-red\"\ngit worktree add --detach \"$old\" \"$SOURCE_HEAD\"\ntrap\
-      \ 'git worktree remove --force \"$old\"' EXIT\nfor file in frontend/src/views/admin/UsageView.vue frontend/src/components/admin/usage/UsageTable.vue\
+      \ 'git worktree remove --force \"$old\"' EXIT\nfor file in frontend/src/views/admin/__tests__/UsageView.spec.ts frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts; do\n  git show \"611d317bf2:$file\" > \"$old/$file\"\ndone\nfor file in frontend/src/views/admin/UsageView.vue frontend/src/components/admin/usage/UsageTable.vue\
       \ frontend/src/i18n/locales/en/dashboard.ts frontend/src/i18n/locales/zh/dashboard.ts; do\n  git -C \"$old\" restore\
       \ --source=\"$BASELINE\" -- \"$file\"\n  test \"$(git -C \"$old\" hash-object \"$file\")\" = \"$(git rev-parse \"$BASELINE:$file\"\
       )\"\ndone\nln -s \"$GITHUB_WORKSPACE/frontend/node_modules\" \"$old/frontend/node_modules\"\nset +e\n(cd \"$old/frontend\"\

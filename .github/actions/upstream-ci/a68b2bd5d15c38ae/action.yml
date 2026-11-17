@@ -39,7 +39,7 @@ runs:
       \ --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git \"$analysis_compat\"\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
       \ \"$billing_compat\"\ntrap 'git restore --source=HEAD -- \"${targets[@]}\" \"${added[@]}\" \"$analysis_leaf\" \"$billing_leaf\"\
       \ \"${weekly_leaves[@]}\" \"$handler_leaf\" \"$error_leaf\" \"$metadata_leaf\" \"$projection_types\" backend/internal/service/openai_request_timezone_egress.go\
-      \ backend/internal/service/openai_ws_client.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
+      \ backend/internal/service/openai_ws_client.go backend/internal/handler/wire.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
       ${targets[@]}\"\ngit restore --source=\"$metadata_compat\" -- \"$metadata_leaf\"\ntest \"$(git hash-object \"$metadata_leaf\"\
       )\" = \"$(git rev-parse \"$metadata_compat:$metadata_leaf\")\"\necho \"compatibility_leaf_baseline=$metadata_compat\
       \ path=$metadata_leaf blob=$(git hash-object \"$metadata_leaf\")\"\ngit restore --source=\"$analysis_compat\" -- \"\

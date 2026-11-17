@@ -16,7 +16,11 @@ runs:
 
       npm install --prefix "$RUNNER_TEMP/repair-browser" --no-save --ignore-scripts playwright@1.56.1
 
-      bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+      if [ "$RUNNER_OS" = Linux ]; then
+
+        bash "${GITHUB_WORKSPACE}/scripts/ci-ubuntu-mirrors.sh"
+
+      fi
 
       node "$RUNNER_TEMP/repair-browser/node_modules/playwright/cli.js" install --with-deps chromium
 

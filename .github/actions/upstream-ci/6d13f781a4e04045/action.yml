@@ -33,7 +33,7 @@ runs:
       \ https://github.com/ranxi2001/sub2api.git \"$metadata_compat\"\ntrap 'git restore --source=HEAD -- \"${targets[@]}\"\
       \ \"$added\" \"${ws_targets[@]}\" \"${ws_added[@]}\" \"$scheduler_leaf\" \"$wait_added\" \"${omission_added[@]}\" \"\
       $handler_leaf\" \"$error_leaf\" \"$metadata_leaf\" \"$projection_types\" backend/internal/service/openai_request_timezone_egress.go\
-      \ backend/internal/service/openai_ws_client.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
+      \ backend/internal/service/openai_ws_client.go backend/internal/handler/wire.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
       ${targets[@]}\"\ngit restore --source=\"$ws_original\" -- \"${ws_targets[@]}\"\ngit restore --source=\"$metadata_compat\"\
       \ -- \"$metadata_leaf\"\ntest \"$(git hash-object \"$metadata_leaf\")\" = \"$(git rev-parse \"$metadata_compat:$metadata_leaf\"\
       )\"\necho \"compatibility_leaf_baseline=$metadata_compat path=$metadata_leaf blob=$(git hash-object \"$metadata_leaf\"\

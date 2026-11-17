@@ -14,11 +14,15 @@ runs:
 
       cp backend/internal/handler/moderation_upstream_scope_test.go "$RUNNER_TEMP/scope_test.go"
 
-      git checkout --detach 4189ed821
+      old_tree="$RUNNER_TEMP/moderation-scope-original"
 
-      cp "$RUNNER_TEMP/scope_test.go" backend/internal/handler/moderation_upstream_scope_test.go
+      git worktree add --detach "$old_tree" 4189ed821
 
-      cd backend
+      trap ''git -C "$GITHUB_WORKSPACE" worktree remove --force "$old_tree"'' EXIT
+
+      cp "$RUNNER_TEMP/scope_test.go" "$old_tree/backend/internal/handler/moderation_upstream_scope_test.go"
+
+      cd "$old_tree/backend"
 
       python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
 
