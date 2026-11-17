@@ -224,6 +224,9 @@ func newIssue600NetworkHarness(t *testing.T, mode, namespace string, strict bool
 		gatewayCache = testutil.NewIsolatedRedisGatewayCache(t, addr)
 	}
 	h := newOpenAIWSPassthroughHandlerHarnessWithKey(t, upstream.URL, headers, settings, gatewayCache, func(key *service.APIKey) { key.ModelMapping = opts.modelMapping }, func(a *service.Account, cfg *config.Config, up *service.HTTPUpstream, repo *service.AccountRepository) {
+		// Identity checks exercise consecutive turns, not the idle timeout. Leave
+		// room for race-instrumented runners to schedule the downstream client.
+		cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = 15
 		a.Extra["codex_fingerprint_mode"] = "off"
 		a.Extra["openai_apikey_responses_websockets_v2_mode"] = mode
 		if namespace != "none" {

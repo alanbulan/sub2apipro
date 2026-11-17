@@ -3203,6 +3203,9 @@ jobs:
       run: |
         set -euo pipefail
         go test -race -tags=unit ./internal/service -run '^TestSmartProtocol(HTTPFirstSession|NetworkModes|ConcurrentSticky|NoReplayAndCleanup|ForeignContinuation|TurnGuardBeforeSend|MissingUsageIsUnknown|Legacy15MiB|StatelessRequestRetainsWS|PassthroughNetwork|ToolContinuation|LegacyNoReplay|ActualContentNetwork|PassthroughNoReplay|PassthroughPartialUsage)$' -count=3 -timeout=10m -json > "$RUNNER_TEMP/issue605-proof/repeated.jsonl" 2>&1
+    - name: Provision databases before the smart protocol race process
+      if: ${{ !cancelled() }}
+      uses: ./.github/actions/provision-repository-regression-services
     - name: Actual isolated PostgreSQL Redis repository integration
       if: ${{ !cancelled() }}
       working-directory: backend
@@ -3234,6 +3237,15 @@ jobs:
     - name: Whitelist evidence and reject skip or empty acceptance
       if: always()
       run: timeout 120s python3 scripts/issue605-proof.py "$RUNNER_TEMP/issue605-proof"
+    - name: Export smart protocol integration startup metadata
+      if: always()
+      run: |
+        python3 scripts/issue605-startup-metadata.py \
+          "$RUNNER_TEMP/issue605-proof/integration.jsonl" \
+          "$RUNNER_TEMP/issue605-proof/startup-metadata.json"
+    - name: Remove only the disposable smart protocol regression databases
+      if: always()
+      run: docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true
     - uses: actions/upload-artifact@v6
       if: always()
       with:
@@ -3243,6 +3255,7 @@ jobs:
           ${{ runner.temp }}/issue605-proof/baseline-head.txt
           ${{ runner.temp }}/issue605-proof/summary.json
           ${{ runner.temp }}/issue605-proof/whitelist.jsonl
+          ${{ runner.temp }}/issue605-proof/startup-metadata.json
         if-no-files-found: error
   issue614-lifecycle-physical-write:
     runs-on: ubuntu-latest
