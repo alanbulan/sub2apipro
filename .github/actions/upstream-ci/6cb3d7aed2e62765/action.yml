@@ -7,6 +7,8 @@ runs:
     with:
       cache-dependency-path: backend/go.sum
       go-version: 1.27.4
+  - name: Provision databases before the current race process
+    uses: ./.github/actions/provision-repository-regression-services
   - name: Compile production adapters and run exact-head connection regressions
     working-directory: backend
     run: 'set -euo pipefail
@@ -48,6 +50,10 @@ runs:
 
       '
     shell: bash
+  - name: Remove only the disposable regression databases
+    if: always()
+    shell: bash
+    run: docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true
   - uses: actions/upload-artifact@v6
     if: always()
     with:

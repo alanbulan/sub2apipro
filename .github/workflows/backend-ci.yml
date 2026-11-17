@@ -3136,6 +3136,8 @@ jobs:
         for path in backend/internal/service/openai_ws_v2/passthrough_relay.go backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/handler/openai_gateway_handler.go; do
           git hash-object "$path" >> "$RUNNER_TEMP/issue605-p1-green/production-blobs.txt"
         done
+    - name: Provision databases before the original race process
+      uses: ./.github/actions/provision-repository-regression-services
     - name: GREEN actual service current-turn result
       working-directory: backend
       run: go test -race -tags=unit ./internal/service -run '^TestSmartProtocolPassthroughPartialUsage$' -count=1 -timeout=10m
@@ -3148,6 +3150,15 @@ jobs:
     - name: Require complete per-case GREEN
       if: always()
       run: timeout 120s python3 scripts/issue605-p1-proof.py green "$RUNNER_TEMP/issue605-p1-green"
+    - name: Export original integration startup metadata
+      if: always()
+      run: |
+        python3 scripts/issue605-startup-metadata.py \
+          "$RUNNER_TEMP/issue605-p1-green/integration.jsonl" \
+          "$RUNNER_TEMP/issue605-p1-green/startup-metadata.json"
+    - name: Remove only the disposable regression databases
+      if: always()
+      run: docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true
     - uses: actions/upload-artifact@v6
       if: always()
       with:
@@ -3156,6 +3167,7 @@ jobs:
           ${{ runner.temp }}/issue605-p1-green/*.txt
           ${{ runner.temp }}/issue605-p1-green/summary.json
           ${{ runner.temp }}/issue605-p1-green/whitelist.jsonl
+          ${{ runner.temp }}/issue605-p1-green/startup-metadata.json
         if-no-files-found: error
   issue605-smart-protocol-acceptance:
     runs-on: ubuntu-latest
@@ -3599,6 +3611,8 @@ jobs:
       with:
         cache-dependency-path: backend/go.sum
         go-version: 1.27.3
+    - name: Provision databases before the original race process
+      uses: ./.github/actions/provision-repository-regression-services
     - name: Compile production adapters and run exact-head connection regressions
       working-directory: backend
       run: |
@@ -3621,6 +3635,9 @@ jobs:
         set -euo pipefail
         go test -race -tags=integration ./internal/service -run '^TestIssue594SIWCFinalEgress' -count=1 -v | tee "$RUNNER_TEMP/issue594-siwc-final-egress.log"
         ! grep -E -- '--- SKIP: TestIssue594|no tests to run' "$RUNNER_TEMP/issue594-siwc-final-egress.log"
+    - name: Remove only the disposable regression databases
+      if: always()
+      run: docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true
     - uses: actions/upload-artifact@v6
       if: always()
       with:

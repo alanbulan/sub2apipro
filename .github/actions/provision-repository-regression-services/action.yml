@@ -1,0 +1,30 @@
+name: Provision repository regression services
+description: Start disposable PostgreSQL and Redis before the original race tests.
+runs:
+  using: composite
+  steps:
+    - name: Start and verify isolated regression databases
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker run -d --name sub2api-regression-postgres \
+          -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=fixture \
+          -e POSTGRES_DB=sub2api_test \
+          -p 127.0.0.1:15432:5432 postgres:18.1-alpine3.23
+        docker run -d --name sub2api-regression-redis \
+          -p 127.0.0.1:16379:6379 redis:8.4-alpine
+        ready=false
+        for attempt in $(seq 1 60); do
+          if docker exec -e PGPASSWORD=fixture sub2api-regression-postgres \
+            psql -h 127.0.0.1 -X -qAt -v ON_ERROR_STOP=1 \
+            -U fixture -d sub2api_test -c 'SELECT 1' >/dev/null 2>&1 \
+            && docker exec sub2api-regression-redis redis-cli ping | grep -qx PONG; then
+            ready=true
+            break
+          fi
+          sleep 1
+        done
+        test "$ready" = true
+        printf '%s\n' \
+          'SUB2API_TEST_POSTGRES_DSN=host=127.0.0.1 port=15432 dbname=sub2api_test user=fixture password=fixture sslmode=disable TimeZone=UTC' \
+          'SUB2API_TEST_REDIS_URL=redis://127.0.0.1:16379/0' >> "$GITHUB_ENV"
