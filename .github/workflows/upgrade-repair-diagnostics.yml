@@ -10,69 +10,38 @@ concurrency:
   group: upgrade-repair-diagnostics
   cancel-in-progress: false
 jobs:
-  sync-20261116-pelican-random-questions-isolated-e2e:
-    name: Isolated application E2E (manual, account and group schedules; full acceptance
-      pending)
+  feishu-production-build:
+    name: Frontend and embedded server build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      APP_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
-      HARNESS_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
-      PARENT_BASE_SHA: dfc0219a9e66a19642eb73875e4914e540b49575
-      COMPOSE_PROJECT_NAME: pelican-${{ github.run_id }}-${{ github.run_attempt }}
-      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
-      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
     steps:
     - uses: actions/checkout@v6
+    - uses: pnpm/action-setup@v6
       with:
-        ref: "${{ env.HARNESS_SHA }}"
-        path: harness
-        persist-credentials: false
-    - name: Run current upstream checks
-      uses: "./harness/.github/actions/upstream-ci/441e5118366ca55a"
-    permissions:
-      contents: read
-  sync-20261116-ws-readable-continuation-validator:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-    - uses: actions/checkout@v6
+        version: 9
+    - uses: actions/setup-node@v6
       with:
-        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
-        persist-credentials: false
-    - name: Run current upstream checks
-      uses: "./.github/actions/upstream-ci/218aa159a525e145"
-    env:
-      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
-      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
-    permissions:
-      contents: read
-  sync-20261116-ws-readable-continuation-transport:
-    needs:
-    - sync-20261116-ws-readable-continuation-validator
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        phase:
-        - RED
-        - GREEN
-    env:
-      CANDIDATE_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
-      BASELINE_SHA: 5e83d0b73611a447b425ad5692f883de120da9ed
-      PHASE: "${{ matrix.phase }}"
-      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
-      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
-    steps:
-    - uses: actions/checkout@v6
+        node-version: '20'
+        cache: pnpm
+        cache-dependency-path: frontend/pnpm-lock.yaml
+    - name: Use upstream Node 22 runtime for patched frontend dependencies
+      uses: actions/setup-node@v6
       with:
-        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Run current upstream checks
-      uses: "./.github/actions/upstream-ci/5c3757851ba62aca"
+        node-version: '22'
+    - uses: actions/setup-go@v6
       with:
-        sync_matrix_phase: "${{ matrix.phase }}"
-    permissions:
-      contents: read
+        go-version-file: backend/go.mod
+        cache-dependency-path: backend/go.sum
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: pnpm install --frozen-lockfile
+    - name: Build frontend
+      working-directory: frontend
+      run: pnpm build
+    - name: Verify embedded HTML nonce and cache behavior
+      working-directory: backend
+      run: go test -tags=embed,unit ./internal/web -count=1 -v
+    - name: Build embedded server
+      working-directory: backend
+      env:
+        CGO_ENABLED: '0'
+      run: go build -tags embed -trimpath -o /tmp/sub2api-server ./cmd/server

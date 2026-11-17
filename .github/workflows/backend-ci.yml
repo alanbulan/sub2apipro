@@ -410,6 +410,9 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: pnpm build
+      - name: Verify embedded HTML nonce and cache behavior
+        working-directory: backend
+        run: go test -tags=embed,unit ./internal/web -count=1 -v
       - name: Build embedded server
         working-directory: backend
         env:
