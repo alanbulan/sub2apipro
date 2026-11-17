@@ -142,3 +142,50 @@ if ! git -C "$tree" grep -q 'InitialAPIKeyDisposition' "$baseline" -- "$contract
     exclude_absent_fixture "$target" "$contract"
   fi
 fi
+
+# These list/recharge and fork pool fixtures are unrelated to the selected
+# historical 409/ticket oracle. A full old-production overlay removed their
+# independent implementations; retain the exact matching historical tests,
+# with both the current test blob and restored owning contract proven first.
+restore_independent_fixture() {
+  local target="$1" contract="$2"
+  if ! git -C "$tree" cat-file -e "$candidate:$target" 2>/dev/null; then
+    return
+  fi
+  local expected actual candidate_blob expected_contract
+  candidate_blob=$(git -C "$tree" rev-parse "$candidate:$target")
+  actual=$(git -C "$tree" hash-object "$target")
+  test "$actual" = "$candidate_blob"
+  expected_contract=$(git -C "$tree" rev-parse "$baseline:$contract")
+  test "$(git -C "$tree" hash-object "$contract")" = "$expected_contract"
+  if git -C "$tree" cat-file -e "$baseline:$target" 2>/dev/null; then
+    expected=$(git -C "$tree" rev-parse "$baseline:$target")
+    git -C "$tree" show "$baseline:$target" > "$tree/$target"
+    test "$(git -C "$tree" hash-object "$target")" = "$expected"
+    printf 'independent historical fixture baseline=%s candidate=%s path=%s candidate_blob=%s expected=%s contract=%s contract_blob=%s\n' "$baseline" "$candidate" "$target" "$candidate_blob" "$expected" "$contract" "$expected_contract"
+  else
+    exclude_absent_fixture "$target" "$contract"
+  fi
+}
+
+contract=backend/internal/service/user.go
+if ! git -C "$tree" grep -q 'CurrentRPM' "$baseline" -- "$contract"; then
+  restore_independent_fixture backend/internal/service/admin_service_list_users_test.go "$contract"
+fi
+contract=backend/internal/service/admin_user_recharge.go
+if ! test -f "$tree/$contract" && ! git -C "$tree" cat-file -e "$baseline:$contract" 2>/dev/null; then
+  restore_independent_fixture backend/internal/service/admin_user_recharge_test.go backend/internal/service/admin_service.go
+fi
+for feature in pool_dashboard pool_diagnostics pool_quota_usage; do
+  contract="backend/internal/service/$feature.go"
+  if ! test -f "$tree/$contract" && ! git -C "$tree" cat-file -e "$baseline:$contract" 2>/dev/null; then
+    # APIKeyService/AccountTestService/AccountUsageService are still byte-exact
+    # historical contracts. The selected WS/ticket tests are not touched.
+    case "$feature" in
+      pool_dashboard) owner=backend/internal/service/api_key_service.go ;;
+      pool_diagnostics) owner=backend/internal/service/account_test_service.go ;;
+      pool_quota_usage) owner=backend/internal/service/account_usage_service.go ;;
+    esac
+    restore_independent_fixture "backend/internal/service/${feature}_test.go" "$owner"
+  fi
+done

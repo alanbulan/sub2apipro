@@ -32,3 +32,47 @@ jobs:
       uses: "./harness/.github/actions/upstream-ci/441e5118366ca55a"
     permissions:
       contents: read
+  sync-20261116-ws-readable-continuation-validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/218aa159a525e145"
+    env:
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    permissions:
+      contents: read
+  sync-20261116-ws-readable-continuation-transport:
+    needs:
+    - sync-20261116-ws-readable-continuation-validator
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        phase:
+        - RED
+        - GREEN
+    env:
+      CANDIDATE_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      BASELINE_SHA: 5e83d0b73611a447b425ad5692f883de120da9ed
+      PHASE: "${{ matrix.phase }}"
+      EXPECTED_HEAD_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Run current upstream checks
+      uses: "./.github/actions/upstream-ci/5c3757851ba62aca"
+      with:
+        sync_matrix_phase: "${{ matrix.phase }}"
+    permissions:
+      contents: read
