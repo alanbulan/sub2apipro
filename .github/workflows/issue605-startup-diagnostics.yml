@@ -1,0 +1,58 @@
+name: Issue605 integration startup diagnostics
+
+on:
+  push:
+    branches:
+      - diagnose/cleaner-20261117
+
+permissions:
+  contents: read
+
+jobs:
+  startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+      APP_SHA: 4dc0dc89ca308a362f4c8641fd294889d11dd97d
+    steps:
+      - name: Check out the exact application source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.APP_SHA }}
+          persist-credentials: false
+      - name: Check out the diagnostic harness
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          cache-dependency-path: backend/go.sum
+          go-version: 1.27.4
+      - name: Run the unchanged integration regression
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$APP_SHA"
+          python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
+          go test -race -tags=integration ./internal/repository \
+            -run '^TestSmartProtocolPassthroughPartialBilling$' -count=1 \
+            -timeout=10m -json > "$RUNNER_TEMP/issue605-startup.jsonl" 2>&1
+      - name: Export only startup categories and test statuses
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/issue605-startup-metadata.py \
+            "$RUNNER_TEMP/issue605-startup.jsonl" \
+            "$RUNNER_TEMP/issue605-startup-metadata.json"
+      - name: Save safe diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue605-startup-${{ github.sha }}
+          path: ${{ runner.temp }}/issue605-startup-metadata.json
+          if-no-files-found: error
