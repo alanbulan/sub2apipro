@@ -17,7 +17,7 @@ runs:
       \ redis-server\nfi\n"
     shell: bash
   - name: Restore exact pre-fix production implementation for RED
-    if: matrix.phase == 'RED'
+    if: inputs.sync_matrix_phase == 'RED'
     shell: bash
     run: "set -euo pipefail\nbaseline=c115bef917eae22fc2f5a4d0ba6ac6cbe600e8e4\ngit diff --name-only \"$baseline\" HEAD --\
       \ backend | while IFS= read -r target; do\n  case \"$target\" in\n    *_test.go) continue ;;\n    *.go)\n      if git\
@@ -45,7 +45,7 @@ runs:
 
       '
   - name: Trusted source and late mutation guards
-    if: matrix.phase == 'GREEN'
+    if: inputs.sync_matrix_phase == 'GREEN'
     working-directory: backend
     run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
 

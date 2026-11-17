@@ -17,7 +17,7 @@ runs:
       \ redis-server\nfi\n"
     shell: bash
   - name: Pin reviewed PR implementation for repair RED
-    if: matrix.phase != 'GREEN'
+    if: inputs.sync_matrix_phase != 'GREEN'
     env:
       PHASE: ${{ inputs.sync_matrix_phase }}
     run: "# Keep candidate type declarations and tests compatible. Only these\n# two implementations execute the three reviewed\

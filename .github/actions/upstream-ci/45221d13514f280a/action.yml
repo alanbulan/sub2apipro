@@ -19,7 +19,7 @@ runs:
       \  git rev-parse HEAD:backend/internal/repository/gateway_cache_legacy_admission_test.go\n} | tee \"$LOG_DIR/candidate.txt\"\
       \n"
   - name: RED must fail only at final admitted binding assertions
-    if: matrix.mode == 'RED'
+    if: inputs.sync_matrix_mode == 'RED'
     shell: bash
     run: "set -euo pipefail\nbaseline=b10b3856bee445820a7748764b9641f8229d3dbe\nred=\"$RUNNER_TEMP/pr756-legacy-admission-red\"\
       \ngit worktree add --detach \"$red\" \"$EXPECTED\"\ntrap 'git worktree remove --force \"$red\"' EXIT\n# Keep the exact\
@@ -50,7 +50,7 @@ runs:
       test \"$(git -C \"$red\" diff --name-only)\" = \"$expected_paths\"\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED\"\n\
       test -z \"$(git status --porcelain)\"\n"
   - name: GREEN compile production packages from clean candidate
-    if: matrix.mode == 'GREEN'
+    if: inputs.sync_matrix_mode == 'GREEN'
     shell: bash
     run: 'set -euo pipefail
 
@@ -62,7 +62,7 @@ runs:
 
       '
   - name: GREEN race regressions and ownership boundaries
-    if: matrix.mode == 'GREEN'
+    if: inputs.sync_matrix_mode == 'GREEN'
     shell: bash
     run: "set -euo pipefail\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\n(cd backend && go test -race\
       \ -tags=unit ./internal/service ./internal/repository \\\n  -run '^(TestOpenAILegacyAdmissionRebind|TestStickySessionLegacyAdmissionRedis(LateWaiter)?|TestOpenAIStickyEscapeLateWaitPlanCannotRestoreOriginalBinding|TestStickySessionRebind.*|TestOpenAILegacyStickySpilloverRebindKeepsReplacement|TestOpenAIStickyEscapeDoesNotMoveProviderContinuationOwner|TestOpenAIStickyEscapePreservesExplicitOwnerBinding|TestOpenAIProfitControlStickyBindingOccursOnlyAfterTerminalAdmission|TestOpenAIProfitControlAfterAdmissionBindEagerWithoutGate|TestLegacySchedulerDecision_.*|TestOpenAIGatewayService_GuardianParent.*|TestIssue715Recovery(RetainsNativeOwnerAgainstBPSPreference|CannotBypassRPM))$'\

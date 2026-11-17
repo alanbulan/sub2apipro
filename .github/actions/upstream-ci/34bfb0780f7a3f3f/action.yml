@@ -31,7 +31,7 @@ runs:
       \ rev-parse \"$BASELINE:backend/internal/service/openai_auth_connections.go\")\"\nfi\n"
     shell: bash
   - name: Baseline must fail the intended service and HTTP assertions
-    if: matrix.mode == 'red'
+    if: inputs.sync_matrix_mode == 'red'
     run: 'set -euo pipefail
 
       python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend
@@ -65,7 +65,7 @@ runs:
       '
     shell: bash
   - name: Current head service handler and production repository adapter must compile and pass
-    if: matrix.mode == 'green'
+    if: inputs.sync_matrix_mode == 'green'
     run: 'set -euo pipefail
 
       python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend

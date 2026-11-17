@@ -17,7 +17,7 @@ runs:
       \ redis-server\nfi\n"
     shell: bash
   - name: Pin baseline production implementation
-    if: matrix.phase == 'RED'
+    if: inputs.sync_matrix_phase == 'RED'
     run: "for target in backend/internal/service/openai_ws_agent_recovery.go backend/internal/service/openai_ws_forwarder_ingress.go\
       \ backend/internal/service/openai_ws_http_bridge.go backend/internal/handler/openai_agent_message_recovery.go; do\n\
       \  git show \"b9feadf7dd6228a4117e360821d9994b7cc54897:$target\" > \"$target\"\n  test \"$(git hash-object \"$target\"\
@@ -45,7 +45,7 @@ runs:
       \ and not failures,(status,failures)\n    assert len(passes)==23,passes\n    assert any(r.get('Action')=='pass' for\
       \ r in capture),capture\nPY\n"
   - name: GREEN stateless projection cannot bypass ownership or content checks
-    if: matrix.phase == 'GREEN'
+    if: inputs.sync_matrix_phase == 'GREEN'
     shell: bash
     run: 'set -euo pipefail
 

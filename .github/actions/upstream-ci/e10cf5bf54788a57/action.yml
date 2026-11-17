@@ -16,7 +16,7 @@ runs:
       \ apt-get update\n  sudo apt-get install -y --no-install-recommends redis-server\nfi\n"
     shell: bash
   - name: Exact baseline implementation for RED
-    if: matrix.phase == 'RED'
+    if: inputs.sync_matrix_phase == 'RED'
     run: "for target in backend/internal/service/openai_ws_agent_recovery.go backend/internal/service/openai_ws_forwarder_ingress.go\
       \ backend/internal/service/openai_ws_readable_continuation.go backend/internal/service/openai_ws_http_bridge.go; do\n\
       \  git show \"2927209f5492d8cb690b83a1964b2f093c19ad7a:$target\" > \"$target\"\n  test \"$(git hash-object \"$target\"\
@@ -42,7 +42,7 @@ runs:
       \    assert status==0 and all(outcomes.get(n)=='pass' for n in expected),outcomes\n    assert not any(a in ('fail','skip')\
       \ for a in outcomes.values()),outcomes\nPY\n"
   - name: GREEN delivery scope and memory release
-    if: matrix.phase == 'GREEN'
+    if: inputs.sync_matrix_phase == 'GREEN'
     shell: bash
     run: 'set -euo pipefail
 

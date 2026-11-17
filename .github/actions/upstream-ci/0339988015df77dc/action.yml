@@ -19,7 +19,7 @@ runs:
       \ > evidence/tests.sha256\ngo version | tee evidence/toolchain.txt\n"
     shell: bash
   - name: Restore exact defective production blob in isolated RED job
-    if: matrix.mode != 'green'
+    if: inputs.sync_matrix_mode != 'green'
     env:
       MODE: ${{ inputs.sync_matrix_mode }}
     shell: bash
@@ -30,7 +30,7 @@ runs:
       \ \"$baseline\"\ngit show \"$baseline:$target\" > \"$target\"\ntest \"$(git hash-object \"$target\")\" = \"$expected\"\
       \nprintf '%s %s %s\\n' \"$baseline\" \"$target\" \"$expected\" | tee evidence/baseline.txt\ngit diff --stat\n"
   - name: Exact head unit safety and race checks
-    if: matrix.mode == 'green'
+    if: inputs.sync_matrix_mode == 'green'
     working-directory: backend
     shell: bash
     run: "set -euo pipefail\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$PWD\"\ngo test -race -tags=unit ./internal/service\
@@ -39,7 +39,7 @@ runs:
       for name in ReconcilesOnce RechecksNextCall DoesNotCacheFailure CapturesConcurrentReopen; do\n  grep -F -- \"--- PASS:\
       \ TestSchedulerRetiredGroupBatch$name\" ../evidence/unit-green.log\ndone\n"
   - name: Retired-group behavioral RED against exact baseline
-    if: matrix.mode == 'red-retirement'
+    if: inputs.sync_matrix_mode == 'red-retirement'
     working-directory: backend
     shell: bash
     run: "set -euo pipefail\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$PWD\"\nset +e\ngo test -race -tags=unit\
@@ -51,7 +51,7 @@ runs:
       \ TestSchedulerRetiredGroupBatchReconcilesOnce' ../evidence/retirement-red.log\ngrep -F -- 'retired group authority\
       \ must be read once per bucket preparation' ../evidence/retirement-red.log\n"
   - name: Real PostgreSQL and Redis behavioral RED or GREEN
-    if: matrix.mode != 'red-retirement'
+    if: inputs.sync_matrix_mode != 'red-retirement'
     env:
       MODE: ${{ inputs.sync_matrix_mode }}
     working-directory: backend

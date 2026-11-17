@@ -1,5 +1,9 @@
 name: sync-20261116-multigroup-model-list-catalogue
 description: Current upstream checks, preserving runner setup and regression assertions.
+inputs:
+  sync_matrix_mode:
+    description: Upstream matrix parameter mode.
+    required: true
 runs:
   using: composite
   steps:
@@ -22,7 +26,7 @@ runs:
       '
     shell: bash
   - name: Restore full production baseline and exact candidate test for RED
-    if: matrix.mode == 'RED'
+    if: inputs.sync_matrix_mode == 'RED'
     working-directory: candidate
     run: 'set -euo pipefail
 
@@ -65,7 +69,7 @@ runs:
       '
     shell: bash
   - name: RED must fail at the precise union behavior assertion
-    if: matrix.mode == 'RED'
+    if: inputs.sync_matrix_mode == 'RED'
     working-directory: candidate/backend
     shell: bash
     run: 'set -euo pipefail
@@ -97,7 +101,7 @@ runs:
 
       '
   - name: GREEN focused regressions and race checks
-    if: matrix.mode == 'GREEN'
+    if: inputs.sync_matrix_mode == 'GREEN'
     working-directory: candidate/backend
     run: 'python3 "$GITHUB_WORKSPACE/candidate/scripts/prepare-sync-ci.py" "$PWD"
 
@@ -106,7 +110,7 @@ runs:
       -count=1 -v -timeout=5m'
     shell: bash
   - name: Preserve regression evidence
-    if: always() && matrix.mode == 'RED'
+    if: always() && inputs.sync_matrix_mode == 'RED'
     uses: actions/upload-artifact@v6
     with:
       name: sync-20261116-multigroup-model-list-catalogue-catalogue-red-${{ github.event_name }}

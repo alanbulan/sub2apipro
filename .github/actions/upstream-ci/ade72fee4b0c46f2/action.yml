@@ -72,7 +72,7 @@ runs:
 
       '
   - name: Retained exact lease, 401, ownership, manual and trigger contracts
-    if: matrix.behavior == 'green'
+    if: inputs.sync_matrix_behavior == 'green'
     working-directory: green/backend
     env:
       CI: 'true'

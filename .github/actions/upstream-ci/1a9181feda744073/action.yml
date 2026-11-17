@@ -67,7 +67,7 @@ runs:
 
       '
   - name: GREEN intent and delivery boundaries
-    if: matrix.phase == 'GREEN'
+    if: inputs.sync_matrix_phase == 'GREEN'
     shell: bash
     run: 'set -euo pipefail
 
@@ -90,7 +90,7 @@ runs:
 
       '
   - name: GREEN mixed producer fences and tool-definition wire mutations
-    if: matrix.phase == 'GREEN'
+    if: inputs.sync_matrix_phase == 'GREEN'
     shell: bash
     run: "set -euo pipefail\nfor suite in mixed-fences tool-oracle normalization pointer-waiver; do\n  test_name=TestOpenAI409HTTPMixedDeliveryFences\n\
       \  if [ \"$suite\" = tool-oracle ]; then test_name=TestOpenAI409HTTPToolDefinitionOracle; fi\n  if [ \"$suite\" = normalization\

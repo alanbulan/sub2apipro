@@ -34,7 +34,7 @@ runs:
       '
     shell: bash
   - name: Real Redis 6.0 baseline RED
-    if: matrix.redis == '6.0'
+    if: inputs.sync_matrix_redis == '6.0'
     run: bash scripts/issue-582-red.sh
     shell: bash
   - name: Exact head real Redis snapshot, outbox, queue and session behavior

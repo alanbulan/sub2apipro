@@ -112,7 +112,7 @@ runs:
       '
     shell: bash
   - name: Inspect strict pointer baseline without inventing a RED
-    if: matrix.phase == 'RED'
+    if: inputs.sync_matrix_phase == 'RED'
     run: 'set -euo pipefail
 
       python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$RUNNER_TEMP/shadow-review-red/backend"

@@ -25,7 +25,7 @@ runs:
       \ >> \"$RUNNER_TEMP/readable-$PHASE-provenance.txt\"\ndone\n"
     shell: bash
   - name: Restore fixed production blob in RED checkout only
-    if: matrix.phase == 'RED'
+    if: inputs.sync_matrix_phase == 'RED'
     run: "set -euo pipefail\nbaseline=dbed7697aa56e76c6eb48c4914fa441496b67bdd\n# Restore the matching production callers\
       \ too: later HTTP rebuild\n# APIs must not turn the original reasoning RED into a compile error.\nfor target in backend/internal/service/openai_409_omit_history.go\
       \ backend/internal/service/openai_agent_message_recovery.go backend/internal/service/openai_agent_message_delivery.go\
@@ -76,7 +76,7 @@ runs:
 
       '
   - name: GREEN omission and delivery safeguards
-    if: matrix.phase == 'GREEN'
+    if: inputs.sync_matrix_phase == 'GREEN'
     working-directory: backend
     shell: bash
     run: 'set -euo pipefail

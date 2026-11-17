@@ -60,7 +60,7 @@ runs:
       '
     shell: bash
   - name: GREEN delivery and eligibility boundaries
-    if: matrix.phase == 'GREEN'
+    if: inputs.sync_matrix_phase == 'GREEN'
     run: 'set -euo pipefail
 
       python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" backend

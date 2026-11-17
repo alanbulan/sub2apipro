@@ -21,7 +21,7 @@ runs:
       '
     shell: bash
   - name: Restore release implementation for RED
-    if: matrix.phase == 'RED'
+    if: inputs.sync_matrix_phase == 'RED'
     run: "set -euo pipefail\nbaseline=aa8e596e6d6f3e4648d6beba73b39b240dd5357a\nfor target in backend/internal/handler/openai_gateway_handler.go\
       \ backend/internal/service/openai_409_omit_history.go backend/internal/service/openai_account_scheduler.go backend/internal/service/openai_agent_message_recovery.go\
       \ backend/internal/service/openai_gateway_forward.go backend/internal/service/openai_request_timezone_egress.go backend/internal/service/openai_ws_client.go\
