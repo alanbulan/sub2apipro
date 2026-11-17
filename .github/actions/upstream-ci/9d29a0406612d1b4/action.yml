@@ -13,6 +13,28 @@ runs:
       \ backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/handler/openai_gateway_handler.go; do\n\
       \  git hash-object \"$path\" >> \"$RUNNER_TEMP/issue605-p1-green/production-blobs.txt\"\ndone\n"
     shell: bash
+  - name: Provision isolated PostgreSQL and Redis before the race process
+    shell: bash
+    run: |
+      set -euo pipefail
+      docker run -d --name issue605-p1-postgres \
+        -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=fixture \
+        -e POSTGRES_DB=issue605 -p 127.0.0.1:15432:5432 postgres:18.1-alpine3.23
+      docker run -d --name issue605-p1-redis -p 127.0.0.1:16379:6379 redis:8.4-alpine
+      ready=false
+      for attempt in $(seq 1 60); do
+        if docker exec -e PGPASSWORD=fixture issue605-p1-postgres psql -h 127.0.0.1 -X -qAt \
+          -v ON_ERROR_STOP=1 -U fixture -d issue605 -c 'SELECT 1' >/dev/null 2>&1 \
+          && docker exec issue605-p1-redis redis-cli ping | grep -qx PONG; then
+          ready=true
+          break
+        fi
+        sleep 1
+      done
+      test "$ready" = true
+      printf '%s\n' \
+        'SUB2API_TEST_POSTGRES_DSN=host=127.0.0.1 port=15432 dbname=issue605 user=fixture password=fixture sslmode=disable TimeZone=UTC' \
+        'SUB2API_TEST_REDIS_URL=redis://127.0.0.1:16379/0' >> "$GITHUB_ENV"
   - name: GREEN actual service current-turn result
     working-directory: backend
     run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
@@ -32,6 +54,18 @@ runs:
     if: always()
     run: timeout 120s python3 scripts/issue605-p1-proof.py green "$RUNNER_TEMP/issue605-p1-green"
     shell: bash
+  - name: Export safe integration startup metadata
+    if: always()
+    shell: bash
+    run: |
+      python3 scripts/issue605-startup-metadata.py \
+        "$RUNNER_TEMP/issue605-p1-green/integration.jsonl" \
+        "$RUNNER_TEMP/issue605-p1-green/startup-metadata.json"
+  - name: Remove only the disposable regression services
+    if: always()
+    shell: bash
+    run: |
+      docker rm -f -v issue605-p1-postgres issue605-p1-redis >/dev/null 2>&1 || true
   - uses: actions/upload-artifact@v6
     if: always()
     with:
@@ -42,6 +76,8 @@ runs:
         ${{ runner.temp }}/issue605-p1-green/summary.json
 
         ${{ runner.temp }}/issue605-p1-green/whitelist.jsonl
+
+        ${{ runner.temp }}/issue605-p1-green/startup-metadata.json
 
         '
       if-no-files-found: error
