@@ -1,49 +1,175 @@
-name: Issue605 integration startup diagnostics
-
-on:
-  push:
-    branches:
-      - diagnose/cleaner-20261117
-
-permissions:
-  contents: read
-
-jobs:
-  exact-composite:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      CI: 'true'
-      GOMAXPROCS: '2'
-      GOFLAGS: -p=2
-      APP_SHA: b4ed59f7e8a3f41d6abd1f9ce6056bc9a75ba7fc
-      EXPECTED_HEAD: b4ed59f7e8a3f41d6abd1f9ce6056bc9a75ba7fc
-      EXPECTED_HEAD_SHA: b4ed59f7e8a3f41d6abd1f9ce6056bc9a75ba7fc
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.APP_SHA }}
-          persist-credentials: false
-      - name: Execute the repaired formal composite with the original assertions
-        uses: ./.github/actions/upstream-ci/9d29a0406612d1b4
-      - name: Check out the diagnostic harness after source verification
-        if: always()
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          path: harness
-          persist-credentials: false
-      - name: Export formal composite startup metadata
-        if: always()
-        run: |
-          set -euo pipefail
-          python3 harness/scripts/issue605-startup-metadata.py \
-            "$RUNNER_TEMP/issue605-p1-green/integration.jsonl" \
-            "$RUNNER_TEMP/issue605-composite-startup-metadata.json"
-      - name: Save formal composite startup evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: issue605-exact-composite-${{ github.sha }}
-          path: ${{ runner.temp }}/issue605-composite-startup-metadata.json
-          if-no-files-found: error
+{
+  "name": "Exact original startup repair diagnostics",
+  "on": {
+    "push": {
+      "branches": [
+        "diagnose/cleaner-20261117"
+      ]
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "jobs": {
+    "issue605-p1-repair-repaired-green": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 30,
+      "env": {
+        "CI": "true",
+        "GOMAXPROCS": "2",
+        "GOFLAGS": "-p=2",
+        "EXPECTED_HEAD": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "EXPECTED_HEAD_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "APP_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@v6",
+          "with": {
+            "ref": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-go@v6",
+          "with": {
+            "cache-dependency-path": "backend/go.sum",
+            "go-version": "1.27.3"
+          }
+        },
+        {
+          "name": "Exact repaired source",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD\"\ngit diff --exit-code HEAD\nmkdir -p \"$RUNNER_TEMP/issue605-p1-green\"\ngit rev-parse HEAD > \"$RUNNER_TEMP/issue605-p1-green/source-head.txt\"\nfor path in backend/internal/service/openai_ws_v2/passthrough_relay.go backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/handler/openai_gateway_handler.go; do\n  git hash-object \"$path\" >> \"$RUNNER_TEMP/issue605-p1-green/production-blobs.txt\"\ndone\n"
+        },
+        {
+          "name": "Provision databases before the original race process",
+          "uses": "./.github/actions/provision-repository-regression-services"
+        },
+        {
+          "name": "GREEN actual service current-turn result",
+          "working-directory": "backend",
+          "run": "go test -race -tags=unit ./internal/service -run '^TestSmartProtocolPassthroughPartialUsage$' -count=1 -timeout=10m -json > \"$RUNNER_TEMP/issue605-p1-green/service.jsonl\" 2>&1"
+        },
+        {
+          "name": "GREEN authenticated handler PG Redis exact billing",
+          "if": "${{ !cancelled() }}",
+          "working-directory": "backend",
+          "run": "go test -race -tags=integration ./internal/repository -run '^TestSmartProtocolPassthroughPartialBilling$' -count=1 -timeout=10m -json > \"$RUNNER_TEMP/issue605-p1-green/integration.jsonl\" 2>&1"
+        },
+        {
+          "name": "Require complete per-case GREEN",
+          "if": "always()",
+          "run": "timeout 120s python3 scripts/issue605-p1-proof.py green \"$RUNNER_TEMP/issue605-p1-green\""
+        },
+        {
+          "name": "Export original integration startup metadata",
+          "if": "always()",
+          "run": "python3 scripts/issue605-startup-metadata.py \\\n  \"$RUNNER_TEMP/issue605-p1-green/integration.jsonl\" \\\n  \"$RUNNER_TEMP/issue605-p1-green/startup-metadata.json\"\n"
+        },
+        {
+          "name": "Remove only the disposable regression databases",
+          "if": "always()",
+          "run": "docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true"
+        },
+        {
+          "uses": "actions/upload-artifact@v6",
+          "if": "always()",
+          "with": {
+            "name": "issue605-p1-green-${{ github.event.pull_request.head.sha || github.sha }}",
+            "path": "${{ runner.temp }}/issue605-p1-green/*.txt\n${{ runner.temp }}/issue605-p1-green/summary.json\n${{ runner.temp }}/issue605-p1-green/whitelist.jsonl\n${{ runner.temp }}/issue605-p1-green/startup-metadata.json\n",
+            "if-no-files-found": "error"
+          }
+        }
+      ]
+    },
+    "openai-multi-auth-green": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 40,
+      "env": {
+        "EXPECTED_HEAD_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "EXPECTED_HEAD": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "APP_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "CI": "true"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@v6",
+          "with": {
+            "ref": "0723c10189d7e15c32e7044ddd3420514d3f390e"
+          }
+        },
+        {
+          "uses": "actions/setup-go@v6",
+          "with": {
+            "cache-dependency-path": "backend/go.sum",
+            "go-version": "1.27.3"
+          }
+        },
+        {
+          "name": "Provision databases before the original race process",
+          "uses": "./.github/actions/provision-repository-regression-services"
+        },
+        {
+          "name": "Compile production adapters and run exact-head connection regressions",
+          "working-directory": "backend",
+          "run": "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ngo test -race -tags=unit ./internal/service ./internal/repository ./internal/handler/admin ./internal/pkg/openai -run '^TestIssue594|^TestSIWC' -count=1 -v | tee \"$RUNNER_TEMP/issue594-green.log\"\n"
+        },
+        {
+          "name": "Actual HTTP service repository PostgreSQL connection lifecycle",
+          "working-directory": "backend",
+          "env": {
+            "CI": "true"
+          },
+          "run": "set -euo pipefail\ngo test -race -tags=integration ./internal/repository -run '^TestIssue594' -count=1 -v | tee \"$RUNNER_TEMP/issue594-integration.log\"\n! grep -E -- '--- SKIP: TestIssue594|no tests to run' \"$RUNNER_TEMP/issue594-integration.log\"\n"
+        },
+        {
+          "name": "Actual SIWC final send boundary with isolated PostgreSQL",
+          "working-directory": "backend",
+          "env": {
+            "CI": "true"
+          },
+          "run": "set -euo pipefail\ngo test -race -tags=integration ./internal/service -run '^TestIssue594SIWCFinalEgress' -count=1 -v | tee \"$RUNNER_TEMP/issue594-siwc-final-egress.log\"\n! grep -E -- '--- SKIP: TestIssue594|no tests to run' \"$RUNNER_TEMP/issue594-siwc-final-egress.log\"\n"
+        },
+        {
+          "name": "Remove only the disposable regression databases",
+          "if": "always()",
+          "run": "docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true"
+        },
+        {
+          "uses": "actions/upload-artifact@v6",
+          "if": "always()",
+          "with": {
+            "name": "issue594-green-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}",
+            "path": "${{ runner.temp }}/issue594-*.log"
+          }
+        }
+      ]
+    },
+    "sync-20261116-openai-multi-auth-green": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 40,
+      "env": {
+        "EXPECTED_HEAD_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE": "ubuntu24.04-x64",
+        "EXPECTED_HEAD": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "APP_SHA": "0723c10189d7e15c32e7044ddd3420514d3f390e",
+        "CI": "true"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@v6",
+          "with": {
+            "ref": "0723c10189d7e15c32e7044ddd3420514d3f390e"
+          }
+        },
+        {
+          "name": "Run current upstream checks",
+          "uses": "./.github/actions/upstream-ci/6cb3d7aed2e62765"
+        }
+      ],
+      "permissions": {
+        "contents": "read"
+      }
+    }
+  }
+}
