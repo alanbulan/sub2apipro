@@ -1,0 +1,39 @@
+name: Conversation cleaner diagnostics
+
+on:
+  push:
+    branches:
+      - diagnose/cleaner-20261117
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: PostgreSQL cleanup and request protection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Start isolated PostgreSQL
+        run: |
+          docker run -d --name sub2api-postgres \
+            -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=fixture \
+            -e POSTGRES_DB=cleanup -p 15439:5432 postgres:17-alpine
+          for attempt in $(seq 1 30); do
+            if docker exec sub2api-postgres pg_isready -U fixture -d cleanup; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Verify retention, idle rewrite and cancellation
+        run: |
+          python3 scripts/cleaner-maintenance-ci.py | tee "$RUNNER_TEMP/cleaner-result.jsonl"
+      - name: Save metadata evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleaner-maintenance-${{ github.sha }}
+          path: ${{ runner.temp }}/cleaner-result.jsonl
+          if-no-files-found: error
