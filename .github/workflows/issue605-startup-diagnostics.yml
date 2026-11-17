@@ -1,5 +1,5 @@
 {
-  "name": "Exact original startup repair diagnostics",
+  "name": "Remaining upgrade gate diagnostics",
   "on": {
     "push": {
       "branches": [
@@ -11,22 +11,22 @@
     "contents": "read"
   },
   "jobs": {
-    "issue605-p1-repair-repaired-green": {
+    "issue605-smart-protocol-acceptance": {
       "runs-on": "ubuntu-latest",
-      "timeout-minutes": 30,
+      "timeout-minutes": 45,
       "env": {
         "CI": "true",
         "GOMAXPROCS": "2",
         "GOFLAGS": "-p=2",
-        "EXPECTED_HEAD": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "EXPECTED_HEAD_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "APP_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386"
+        "EXPECTED_HEAD": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+        "EXPECTED_HEAD_SHA": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+        "APP_SHA": "bf5e684d81926ea2cfeef4e24f161b3f47883644"
       },
       "steps": [
         {
           "uses": "actions/checkout@v6",
           "with": {
-            "ref": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
+            "ref": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
             "persist-credentials": false
           }
         },
@@ -38,36 +38,54 @@
           }
         },
         {
-          "name": "Exact repaired source",
-          "run": "test \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD\"\ngit diff --exit-code HEAD\nmkdir -p \"$RUNNER_TEMP/issue605-p1-green\"\ngit rev-parse HEAD > \"$RUNNER_TEMP/issue605-p1-green/source-head.txt\"\nfor path in backend/internal/service/openai_ws_v2/passthrough_relay.go backend/internal/service/openai_ws_v2_passthrough_adapter.go backend/internal/handler/openai_gateway_handler.go; do\n  git hash-object \"$path\" >> \"$RUNNER_TEMP/issue605-p1-green/production-blobs.txt\"\ndone\n"
+          "name": "Exact source identity",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD\"\ngit diff --exit-code HEAD\nmkdir -p \"$RUNNER_TEMP/issue605-proof\"\ngit rev-parse HEAD > \"$RUNNER_TEMP/issue605-proof/head.txt\"\n"
         },
         {
-          "name": "Provision databases before the original race process",
+          "name": "Actual service handler repository packages and race regressions",
+          "working-directory": "backend",
+          "run": "set -euo pipefail\ngo test -race -tags=unit ./internal/service ./internal/handler ./internal/repository ./internal/pkg/requesttiming ./internal/pkg/openai ./internal/service/openai_ws_v2 -run 'TestSmartProtocol|TestAccountConnectionTiming|TestOpenAIWSHTTPBridge|TestOpenAIResponsesWebSocket|TestOpenAIWSTurn|TestOpenAIWSFirstTurn|TestTimingWrite|TestTimingBinding|TestOpenAITurnAdmission|TestOpenAIWSKeyAdmission|TestIssue594SIWCFinalEgress|TestRelay|TestObserveUpstream|TestParseUsage' -count=1 -timeout=20m -json > \"$RUNNER_TEMP/issue605-proof/packages.jsonl\" 2>&1\n"
+        },
+        {
+          "name": "Repeat real network lifecycle and sticky sessions three times",
+          "if": "${{ !cancelled() }}",
+          "working-directory": "backend",
+          "run": "set -euo pipefail\ngo test -race -tags=unit ./internal/service -run '^TestSmartProtocol(HTTPFirstSession|NetworkModes|ConcurrentSticky|NoReplayAndCleanup|ForeignContinuation|TurnGuardBeforeSend|MissingUsageIsUnknown|Legacy15MiB|StatelessRequestRetainsWS|PassthroughNetwork|ToolContinuation|LegacyNoReplay|ActualContentNetwork|PassthroughNoReplay|PassthroughPartialUsage)$' -count=3 -timeout=10m -json > \"$RUNNER_TEMP/issue605-proof/repeated.jsonl\" 2>&1\n"
+        },
+        {
+          "name": "Provision databases before the smart protocol race process",
+          "if": "${{ !cancelled() }}",
           "uses": "./.github/actions/provision-repository-regression-services"
         },
         {
-          "name": "GREEN actual service current-turn result",
-          "working-directory": "backend",
-          "run": "go test -race -tags=unit ./internal/service -run '^TestSmartProtocolPassthroughPartialUsage$' -count=1 -timeout=10m -json > \"$RUNNER_TEMP/issue605-p1-green/service.jsonl\" 2>&1"
-        },
-        {
-          "name": "GREEN authenticated handler PG Redis exact billing",
+          "name": "Actual isolated PostgreSQL Redis repository integration",
           "if": "${{ !cancelled() }}",
           "working-directory": "backend",
-          "run": "go test -race -tags=integration ./internal/repository -run '^TestSmartProtocolPassthroughPartialBilling$' -count=1 -timeout=10m -json > \"$RUNNER_TEMP/issue605-p1-green/integration.jsonl\" 2>&1"
+          "run": "set -euo pipefail\ngo test -race -tags=integration ./internal/repository -run 'TestSmartProtocol|TestUsageBillingRepositoryApply|TestOpenAIConnectionDatabaseRegistrationBoundary|TestIssue594ProductionGatewayConnectionRouteAndAccountSafety|TestSharedAccountAndUserConcurrencyAcrossIndependentClients|TestGatewayCacheSuite' -count=1 -timeout=15m -json > \"$RUNNER_TEMP/issue605-proof/integration.jsonl\" 2>&1\n"
         },
         {
-          "name": "Require complete per-case GREEN",
+          "name": "Candidate real legacy 17 MiB send lifecycle",
+          "if": "${{ !cancelled() }}",
+          "working-directory": "backend",
+          "run": "set -euo pipefail\ngo test -race -tags=unit ./internal/service -run '^TestOpenAIWSHTTPBridgeAcceptsFirstFrameAboveLegacy16MiB$' -count=1 -timeout=5m -json > \"$RUNNER_TEMP/issue605-proof/legacy-head.jsonl\" 2>&1\n"
+        },
+        {
+          "name": "Identical legacy test against full production baseline package",
+          "if": "${{ !cancelled() }}",
+          "run": "set -euo pipefail\nbaseline=c81e2a9e735c5fc53c7175448d29441cb777a143\nbaseline_tree=\"$RUNNER_TEMP/issue605-baseline\"\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git \"$baseline\"\ngit worktree add --detach \"$baseline_tree\" \"$baseline\"\ntrap 'git worktree remove --force \"$baseline_tree\"' EXIT\ncp backend/internal/service/openai_ws_http_bridge_test.go \"$baseline_tree/backend/internal/service/\"\ncp backend/internal/service/issue605_legacy_probe_test.go \"$baseline_tree/backend/internal/service/\"\ntest \"$(git -C \"$baseline_tree\" rev-parse HEAD)\" = \"$baseline\"\ngit -C \"$baseline_tree\" diff --exit-code -- '*.go' ':!**/*_test.go'\ngit -C \"$baseline_tree\" rev-parse HEAD > \"$RUNNER_TEMP/issue605-proof/baseline-head.txt\"\ncd \"$baseline_tree/backend\"\ngo test -race -tags=unit ./internal/service -run '^TestOpenAIWSHTTPBridgeAcceptsFirstFrameAboveLegacy16MiB$' -count=1 -timeout=5m -json > \"$RUNNER_TEMP/issue605-proof/legacy-baseline.jsonl\" 2>&1\n"
+        },
+        {
+          "name": "Whitelist evidence and reject skip or empty acceptance",
           "if": "always()",
-          "run": "timeout 120s python3 scripts/issue605-p1-proof.py green \"$RUNNER_TEMP/issue605-p1-green\""
+          "run": "timeout 120s python3 scripts/issue605-proof.py \"$RUNNER_TEMP/issue605-proof\""
         },
         {
-          "name": "Export original integration startup metadata",
+          "name": "Export smart protocol integration startup metadata",
           "if": "always()",
-          "run": "python3 scripts/issue605-startup-metadata.py \\\n  \"$RUNNER_TEMP/issue605-p1-green/integration.jsonl\" \\\n  \"$RUNNER_TEMP/issue605-p1-green/startup-metadata.json\"\n"
+          "run": "python3 scripts/issue605-startup-metadata.py \\\n  \"$RUNNER_TEMP/issue605-proof/integration.jsonl\" \\\n  \"$RUNNER_TEMP/issue605-proof/startup-metadata.json\"\n"
         },
         {
-          "name": "Remove only the disposable regression databases",
+          "name": "Remove only the disposable smart protocol regression databases",
           "if": "always()",
           "run": "docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true"
         },
@@ -75,98 +93,62 @@
           "uses": "actions/upload-artifact@v6",
           "if": "always()",
           "with": {
-            "name": "issue605-p1-green-${{ github.event.pull_request.head.sha || github.sha }}",
-            "path": "${{ runner.temp }}/issue605-p1-green/*.txt\n${{ runner.temp }}/issue605-p1-green/summary.json\n${{ runner.temp }}/issue605-p1-green/whitelist.jsonl\n${{ runner.temp }}/issue605-p1-green/startup-metadata.json\n",
+            "name": "issue605-${{ github.event.pull_request.head.sha || github.sha }}",
+            "path": "${{ runner.temp }}/issue605-proof/head.txt\n${{ runner.temp }}/issue605-proof/baseline-head.txt\n${{ runner.temp }}/issue605-proof/summary.json\n${{ runner.temp }}/issue605-proof/whitelist.jsonl\n${{ runner.temp }}/issue605-proof/startup-metadata.json\n",
             "if-no-files-found": "error"
           }
         }
       ]
     },
-    "openai-multi-auth-green": {
-      "runs-on": "ubuntu-latest",
-      "timeout-minutes": 40,
+    "sync-20261116-ws-owner-conflict-behavior": {
+      "runs-on": "macos-15-intel",
+      "timeout-minutes": 45,
       "env": {
-        "EXPECTED_HEAD_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "EXPECTED_HEAD": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "APP_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "CI": "true"
+        "CANDIDATE": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+        "BASELINE": "0e8e97aa23afd8e88a61ea64a84a8fb84f1bfdc6",
+        "EXPECTED_HEAD_SHA": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+        "EXPECTED_HEAD": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+        "APP_SHA": "bf5e684d81926ea2cfeef4e24f161b3f47883644"
       },
       "steps": [
         {
           "uses": "actions/checkout@v6",
           "with": {
-            "ref": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386"
-          }
-        },
-        {
-          "uses": "actions/setup-go@v6",
-          "with": {
-            "cache-dependency-path": "backend/go.sum",
-            "go-version": "1.27.3"
-          }
-        },
-        {
-          "name": "Provision databases before the original race process",
-          "uses": "./.github/actions/provision-repository-regression-services"
-        },
-        {
-          "name": "Compile production adapters and run exact-head connection regressions",
-          "working-directory": "backend",
-          "run": "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_HEAD_SHA\"\ngo test -race -tags=unit ./internal/service ./internal/repository ./internal/handler/admin ./internal/pkg/openai -run '^TestIssue594|^TestSIWC' -count=1 -v | tee \"$RUNNER_TEMP/issue594-green.log\"\n"
-        },
-        {
-          "name": "Actual HTTP service repository PostgreSQL connection lifecycle",
-          "working-directory": "backend",
-          "env": {
-            "CI": "true"
-          },
-          "run": "set -euo pipefail\ngo test -race -tags=integration ./internal/repository -run '^TestIssue594' -count=1 -v | tee \"$RUNNER_TEMP/issue594-integration.log\"\n! grep -E -- '--- SKIP: TestIssue594|no tests to run' \"$RUNNER_TEMP/issue594-integration.log\"\n"
-        },
-        {
-          "name": "Actual SIWC final send boundary with isolated PostgreSQL",
-          "working-directory": "backend",
-          "env": {
-            "CI": "true"
-          },
-          "run": "set -euo pipefail\ngo test -race -tags=integration ./internal/service -run '^TestIssue594SIWCFinalEgress' -count=1 -v | tee \"$RUNNER_TEMP/issue594-siwc-final-egress.log\"\n! grep -E -- '--- SKIP: TestIssue594|no tests to run' \"$RUNNER_TEMP/issue594-siwc-final-egress.log\"\n"
-        },
-        {
-          "name": "Remove only the disposable regression databases",
-          "if": "always()",
-          "run": "docker rm -f -v sub2api-regression-postgres sub2api-regression-redis >/dev/null 2>&1 || true"
-        },
-        {
-          "uses": "actions/upload-artifact@v6",
-          "if": "always()",
-          "with": {
-            "name": "issue594-green-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}",
-            "path": "${{ runner.temp }}/issue594-*.log"
-          }
-        }
-      ]
-    },
-    "sync-20261116-openai-multi-auth-green": {
-      "runs-on": "ubuntu-latest",
-      "timeout-minutes": 40,
-      "env": {
-        "EXPECTED_HEAD_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE": "ubuntu24.04-x64",
-        "EXPECTED_HEAD": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "APP_SHA": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386",
-        "CI": "true"
-      },
-      "steps": [
-        {
-          "uses": "actions/checkout@v6",
-          "with": {
-            "ref": "1a8e5f27d9950ed84cc4fedce85eb77bbbac5386"
+            "ref": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+            "fetch-depth": 0
           }
         },
         {
           "name": "Run current upstream checks",
-          "uses": "./.github/actions/upstream-ci/6cb3d7aed2e62765"
+          "uses": "./.github/actions/upstream-ci/3be3d7775382a7d5"
         }
       ],
+      "permissions": {
+        "contents": "read"
+      }
+    },
+    "sync-20261116-issue-578-regression-regression": {
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 35,
+      "steps": [
+        {
+          "uses": "actions/checkout@v6",
+          "with": {
+            "ref": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+            "fetch-depth": 0
+          }
+        },
+        {
+          "name": "Run current upstream checks",
+          "uses": "./.github/actions/upstream-ci/1bb177d67b4a1409"
+        }
+      ],
+      "env": {
+        "EXPECTED_HEAD_SHA": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+        "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE": "ubuntu24.04-x64",
+        "EXPECTED_HEAD": "bf5e684d81926ea2cfeef4e24f161b3f47883644",
+        "APP_SHA": "bf5e684d81926ea2cfeef4e24f161b3f47883644"
+      },
       "permissions": {
         "contents": "read"
       }
