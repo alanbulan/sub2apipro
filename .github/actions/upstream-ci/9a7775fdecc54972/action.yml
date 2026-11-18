@@ -19,6 +19,32 @@ runs:
     with:
       cache-dependency-path: backend/go.sum
       go-version: 1.27.4
+  - name: Provision repository PostgreSQL and Redis before the race process
+    shell: bash
+    run: |
+      set -euo pipefail
+      test "${GITHUB_ACTIONS:-}" = true
+      docker run -d --name issue811-repository-postgres \
+        -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=fixture \
+        -e POSTGRES_DB=issue811_repository \
+        -p 127.0.0.1:15432:5432 postgres:18.1-alpine3.23
+      docker run -d --name issue811-repository-redis \
+        -p 127.0.0.1:16379:6379 redis:8.4-alpine
+      ready=false
+      for attempt in $(seq 1 60); do
+        if docker exec -e PGPASSWORD=fixture issue811-repository-postgres \
+          psql -h 127.0.0.1 -X -qAt -v ON_ERROR_STOP=1 \
+          -U fixture -d issue811_repository -c 'SELECT 1' >/dev/null 2>&1 \
+          && docker exec issue811-repository-redis redis-cli ping | grep -qx PONG; then
+          ready=true
+          break
+        fi
+        sleep 1
+      done
+      test "$ready" = true
+      printf '%s\n' \
+        'SUB2API_TEST_POSTGRES_DSN=postgres://fixture:fixture@127.0.0.1:15432/issue811_repository?sslmode=disable&TimeZone=UTC' \
+        'SUB2API_TEST_REDIS_URL=redis://127.0.0.1:16379/0' >> "$GITHUB_ENV"
   - name: GREEN real PostgreSQL risk generation and ownership with race detection
     working-directory: backend
     shell: bash
@@ -123,6 +149,23 @@ runs:
       grep -q ''concurrent blacklist must survive stale opposite ACL edit'' "$RUNNER_TEMP/issue811/red-columns.jsonl"
 
       '
+  - name: Export repository startup metadata without raw request content
+    if: always()
+    shell: bash
+    run: |
+      python3 scripts/issue605-startup-metadata.py \
+        "$RUNNER_TEMP/issue811/green-repository.jsonl" \
+        "$RUNNER_TEMP/issue811/green-repository-startup.json"
+      if [ -f "$RUNNER_TEMP/issue811/red-columns.jsonl" ]; then
+        python3 scripts/issue605-startup-metadata.py \
+          "$RUNNER_TEMP/issue811/red-columns.jsonl" \
+          "$RUNNER_TEMP/issue811/red-columns-startup.json"
+      fi
+  - name: Remove only disposable issue811 repository services
+    if: always()
+    shell: bash
+    run: |
+      docker rm -f -v issue811-repository-postgres issue811-repository-redis >/dev/null 2>&1 || true
   - uses: actions/upload-artifact@v7
     if: always()
     with:
@@ -139,4 +182,10 @@ runs:
         ${{ runner.temp }}/issue811/*.py
 
         '
+      if-no-files-found: error
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: issue811-repository-startup-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+      path: ${{ runner.temp }}/issue811/*-startup.json
       if-no-files-found: error
