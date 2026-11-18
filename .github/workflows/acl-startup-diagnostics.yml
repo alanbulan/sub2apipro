@@ -1,0 +1,41 @@
+name: ACL repository startup diagnostics
+
+on:
+  push:
+    branches:
+      - diagnose/acl-20261118
+
+permissions:
+  contents: read
+
+jobs:
+  acl-original-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18.1
+        env:
+          POSTGRES_USER: keyrisk
+          POSTGRES_PASSWORD: keyrisk-ci-only
+          POSTGRES_DB: keyrisk_task
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U keyrisk -d keyrisk_task"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      APP_SHA: cf0466c6c95ee71c93468f44d8bc7de8e42cce9f
+      EXPECTED_HEAD: cf0466c6c95ee71c93468f44d8bc7de8e42cce9f
+      EXPECTED_HEAD_SHA: cf0466c6c95ee71c93468f44d8bc7de8e42cce9f
+      CI: 'true'
+      KEYRISK_TEST_REQUIRED: 'true'
+      KEYRISK_TEST_POSTGRES_DSN: postgres://keyrisk:keyrisk-ci-only@127.0.0.1:5432/keyrisk_task?sslmode=disable
+      GOFLAGS: -p=1
+      PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ubuntu24.04-x64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: cf0466c6c95ee71c93468f44d8bc7de8e42cce9f
+      - name: Execute unchanged original ACL composite on exact application SHA
+        uses: ./.github/actions/upstream-ci/9a7775fdecc54972
