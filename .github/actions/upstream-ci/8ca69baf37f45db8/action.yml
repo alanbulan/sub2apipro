@@ -49,7 +49,7 @@ runs:
 
       grep -F ''missing degradation action business controls'' evidence/ui-red.log
 
-      ! grep -Eq ''Failed to resolve|Transform failed|No test files found'' evidence/ui-red.log
+      bash scripts/assert-test-log-clean.sh red evidence/ui-red.log
 
       '
   - name: Actual Vue settings and notices

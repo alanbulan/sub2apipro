@@ -24,7 +24,9 @@ runs:
       \ faulty behaviors.\nbaseline=04ec5e737ecb925faa2e8f3b00efff816715c55c\nif [ \"$PHASE\" = PLAINTEXT_RED ]; then\n  baseline=72c21bedea567d8032f736adba16edcf5645ca19\n\
       fi\nfor target in backend/internal/service/openai_ws_agent_recovery.go backend/internal/service/openai_ws_http_bridge.go;\
       \ do\n  git show \"$baseline:$target\" > \"$target\"\n  test \"$(git hash-object \"$target\")\" = \"$(git rev-parse\
-      \ \"$baseline:$target\")\"\ndone\n"
+      \ \"$baseline:$target\")\"\ndone\npython3 scripts/prepare-discovery-red-compat.py \"$baseline\" . HEAD --target ws --fixture\
+      \ backend/internal/handler/openai_ws_plaintext_owner_test.go --manifest \"$RUNNER_TEMP/plaintext-repair870-compatibility.json\"\
+      \n"
     shell: bash
   - name: Exact later-turn HTTP wire behavior
     env:
@@ -54,5 +56,9 @@ runs:
     with:
       name: sync-20261116-ws-plaintext-owner-repair870-plaintext-repair870-${{ inputs.sync_matrix_phase }}-${{ github.event.pull_request.head.sha
         || github.sha }}
-      path: ${{ runner.temp }}/plaintext-repair870.jsonl
+      path: '${{ runner.temp }}/plaintext-repair870.jsonl
+
+        ${{ runner.temp }}/plaintext-repair870-compatibility.json
+
+        '
       if-no-files-found: error

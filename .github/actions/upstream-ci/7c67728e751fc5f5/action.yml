@@ -55,8 +55,7 @@ runs:
 
       test "$result" -ne 0
 
-      ! grep -Eq -- ''build failed|setup failed|undefined:|syntax error:|no tests to run|panic:|signal:|SIGSEGV|fatal error:|WARNING:
-      DATA RACE|--- SKIP:'' evidence/chain-red.log
+      bash candidate/scripts/assert-test-log-clean.sh red evidence/chain-red.log
 
       grep -F ''real degradation worker must commit treatment before cache compensation'' evidence/chain-red.log
 
@@ -74,7 +73,7 @@ runs:
       ''^TestOAuthDegradationOutboxSchedulerChain$|^TestOAuthDegradationDeterministic|^TestOAuthDegradationTransactionFailures$''
       15m
 
-      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/reviewed-integration-race.log
+      bash candidate/scripts/assert-test-log-clean.sh green evidence/reviewed-integration-race.log
 
       '
   - name: Exact head real PostgreSQL Redis evaluator outbox and scheduler race GREEN
@@ -90,9 +89,9 @@ runs:
       ''^TestGroupUsage|^TestUsageTrendAggregateTimezoneRealBuckets$|^TestUsageLogRolling24HoursHalfOpenBoundaries$|^TestPelicanGroupTestRepo_CostsSurviveRetentionAndPlanDeletion$''
       15m
 
-      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/timezone-integration-race.log
+      bash candidate/scripts/assert-test-log-clean.sh green evidence/timezone-integration-race.log
 
-      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/integration-race.log
+      bash candidate/scripts/assert-test-log-clean.sh green evidence/integration-race.log
 
       '
   - uses: actions/upload-artifact@v7

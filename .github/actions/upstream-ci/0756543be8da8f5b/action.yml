@@ -23,7 +23,8 @@ runs:
       \ \"$RUNNER_TEMP/ws-provenance-red/$target\")\" = \"$(git rev-parse \"$BASELINE:$target\")\"\n        printf '%s %s\\\
       n' \"$(git rev-parse \"$BASELINE:$target\")\" \"$target\" >> \"$RUNNER_TEMP/ws-provenance-evidence/baseline-blobs.txt\"\
       \n      else\n        rm -- \"$RUNNER_TEMP/ws-provenance-red/$target\"\n      fi ;;\n  esac\ndone\nbash scripts/prepare-free-fast-red-fixtures.sh\
-      \ \"$BASELINE\" \"$RUNNER_TEMP/ws-provenance-red\" \"$CANDIDATE\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
+      \ \"$BASELINE\" \"$RUNNER_TEMP/ws-provenance-red\" \"$CANDIDATE\"\nbash scripts/prepare-usage-sort-red-fixture.sh \"\
+      $BASELINE\" \"$RUNNER_TEMP/ws-provenance-red\" \"$CANDIDATE\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
       \ \"$RUNNER_TEMP/ws-provenance-red/backend\"\nset +e\n(cd \"$RUNNER_TEMP/ws-provenance-red/backend\" && go test -p=2\
       \ -tags=unit,ownerconflict ./internal/handler -run '^TestOpenAIWSMixedOwnerToolProvenance$' -count=1 -json -timeout=2m)\
       \ > \"$RUNNER_TEMP/ws-provenance-evidence/red.jsonl\" 2>&1\nstatus=$?\nset -e\ncat \"$RUNNER_TEMP/ws-provenance-evidence/red.jsonl\"\

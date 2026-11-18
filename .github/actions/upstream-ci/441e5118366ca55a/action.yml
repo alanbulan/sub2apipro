@@ -29,25 +29,31 @@ runs:
   - name: Build and prefetch before runtime isolation (CI only)
     shell: bash
     run: "set -euo pipefail\nfixture_context=\"$RUNNER_TEMP/pelican-harness-context\"\nmkdir -p \"$fixture_context/scripts\"\
-      \ncp harness/scripts/pelican-*.mjs \"$fixture_context/scripts/\"\ndocker build --build-arg COMMIT=\"$APP_SHA\" --tag\
-      \ \"pelican-app-base:$APP_SHA\" app\ndocker build --target runner --tag \"pelican-runner:$HARNESS_SHA\" \\\n  --file\
-      \ harness/.github/fixtures/pelican-question-e2e/Dockerfile \"$fixture_context\"\ndocker build --target app --build-arg\
-      \ \"APP_IMAGE=pelican-app-base:$APP_SHA\" \\\n  --tag \"pelican-app:$APP_SHA\" \\\n  --file harness/.github/fixtures/pelican-question-e2e/Dockerfile\
-      \ \"$fixture_context\"\ndocker pull postgres:18-alpine\ndocker pull redis:7-alpine\n"
+      \ncp harness/scripts/pelican-*.mjs \"$fixture_context/scripts/\"\ndocker build --build-arg COMMIT=\"$APP_SHA\" \\\n\
+      \  --build-arg GOPROXY=https://proxy.golang.org,direct \\\n  --build-arg GOSUMDB=sum.golang.org \\\n  --tag \"pelican-app-base:$APP_SHA\"\
+      \ app\ndocker build --target runner --tag \"pelican-runner:$HARNESS_SHA\" \\\n  --file harness/.github/fixtures/pelican-question-e2e/Dockerfile\
+      \ \"$fixture_context\"\ndocker build --target app --build-arg \"APP_IMAGE=pelican-app-base:$APP_SHA\" \\\n  --tag \"\
+      pelican-app:$APP_SHA\" \\\n  --file harness/.github/fixtures/pelican-question-e2e/Dockerfile \"$fixture_context\"\n\
+      docker pull postgres:18-alpine\ndocker pull redis:7-alpine\n"
   - name: Start only the internal runtime network and real migrated application
     working-directory: harness/.github/fixtures/pelican-question-e2e
     shell: bash
-    run: "set -euo pipefail\ndocker compose up --detach --no-build --pull never --wait --wait-timeout 180 postgres redis fake-upstream\
-      \ app\ndocker compose exec -T postgres psql --username fixture --dbname fixture --set ON_ERROR_STOP=1 < seed.sql\n#\
-      \ Start the browser as a service (not `compose run` with a second network).\ndocker compose up --detach --no-build --pull\
-      \ never browser\ndocker network inspect \"${COMPOSE_PROJECT_NAME}_isolated\" \\\n  --format '{{json .Internal}}' > \"\
-      $EVIDENCE_DIR/network-internal.json\"\ntest \"$(cat \"$EVIDENCE_DIR/network-internal.json\")\" = true\nfor service in\
-      \ postgres redis fake-upstream app browser; do\n  container_id=\"$(docker compose ps --all --quiet \"$service\")\"\n\
-      \  test -n \"$container_id\"\n  docker inspect \"$container_id\" --format \\\n    '{\"service\":{{json (index .Config.Labels\
-      \ \"com.docker.compose.service\")}},\"networks\":{{json .NetworkSettings.Networks}},\"ports\":{{json .HostConfig.PortBindings}},\"\
-      networkMode\":{{json .HostConfig.NetworkMode}},\"privileged\":{{json .HostConfig.Privileged}},\"user\":{{json .Config.User}},\"\
-      mounts\":{{json .Mounts}}}' \\\n    > \"$EVIDENCE_DIR/network-$service.json\"\ndone\nnode ../../../scripts/pelican-question-e2e.mjs\
-      \ topology\n"
+    run: "set -euo pipefail\nif ! docker compose up --detach --no-build --pull never --wait --wait-timeout 180 postgres redis\
+      \ fake-upstream app; then\n  # Emit only fixed diagnostic phrases, never full application logs,\n  # configuration,\
+      \ credentials or generated bootstrap values.\n  docker compose logs --no-color app | grep -Eo \\\n    'Auto setup failed|Failed\
+      \ to load config|Failed to initialize logger|Failed to initialize application|Failed to start server|connection refused|connection\
+      \ reset by peer|server closed the connection unexpectedly|database system is starting up|database system is shutting\
+      \ down|SQLSTATE [A-Z0-9]{5}|permission denied|no space left on device' \\\n    | sort -u > \"$EVIDENCE_DIR/startup-diagnostics.txt\"\
+      \ || true\n  cat \"$EVIDENCE_DIR/startup-diagnostics.txt\"\n  exit 1\nfi\ndocker compose exec -T postgres psql --username\
+      \ fixture --dbname fixture --set ON_ERROR_STOP=1 < seed.sql\n# Start the browser as a service (not `compose run` with\
+      \ a second network).\ndocker compose up --detach --no-build --pull never browser\ndocker network inspect \"${COMPOSE_PROJECT_NAME}_isolated\"\
+      \ \\\n  --format '{{json .Internal}}' > \"$EVIDENCE_DIR/network-internal.json\"\ntest \"$(cat \"$EVIDENCE_DIR/network-internal.json\"\
+      )\" = true\nfor service in postgres redis fake-upstream app browser; do\n  container_id=\"$(docker compose ps --all\
+      \ --quiet \"$service\")\"\n  test -n \"$container_id\"\n  docker inspect \"$container_id\" --format \\\n    '{\"service\"\
+      :{{json (index .Config.Labels \"com.docker.compose.service\")}},\"networks\":{{json .NetworkSettings.Networks}},\"ports\"\
+      :{{json .HostConfig.PortBindings}},\"networkMode\":{{json .HostConfig.NetworkMode}},\"privileged\":{{json .HostConfig.Privileged}},\"\
+      user\":{{json .Config.User}},\"mounts\":{{json .Mounts}}}' \\\n    > \"$EVIDENCE_DIR/network-$service.json\"\ndone\n\
+      node ../../../scripts/pelican-question-e2e.mjs topology\n"
   - name: Wait for the browser's implemented scenarios
     working-directory: harness/.github/fixtures/pelican-question-e2e
     shell: bash

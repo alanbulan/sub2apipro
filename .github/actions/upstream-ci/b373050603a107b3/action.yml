@@ -11,8 +11,10 @@ runs:
     shell: bash
   - run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
 
-      go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run ''^TestProfitOperations''
-      -count=1 -v'
+      go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes ./internal/server/middleware
+      -run ''^Test(ProfitOperations|ProviderProfit|ClientRequestID|ImportedSub2API|UsageUpstreamRequestID)'' -count=1 -v
+
+      '
     working-directory: backend
     shell: bash
   - name: Standard charge cost formula RED against account-statistics substitution
@@ -62,6 +64,9 @@ runs:
       '
   - run: 'python3 "$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py" "$PWD"
 
-      go test -tags=integration ./internal/repository -run ''^TestProfitOperations'' -count=1 -v'
+      go test -tags=integration ./internal/repository -run ''^Test(ProfitOperations|ProviderProfit|MatureProviderImportPreservesCanonicalData|UpstreamChannelEntityHTTPAccountProfitPersistence|UsageBillingQuoteKeeps|UsageBillingRawQuoteBoundary)''
+      -count=1 -v
+
+      '
     working-directory: backend
     shell: bash

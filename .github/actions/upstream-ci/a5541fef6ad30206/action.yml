@@ -23,7 +23,9 @@ runs:
       \ backend | while IFS= read -r target; do\n  case \"$target\" in\n    *_test.go) continue ;;\n    *.go)\n      if git\
       \ cat-file -e \"$baseline:$target\" 2>/dev/null; then\n        mkdir -p -- \"$(dirname -- \"$target\")\"\n        git\
       \ show \"$baseline:$target\" > \"$target\"\n        test \"$(git hash-object \"$target\")\" = \"$(git rev-parse \"$baseline:$target\"\
-      )\"\n      else\n        rm -- \"$target\"\n      fi ;;\n  esac\ndone\n"
+      )\"\n      else\n        rm -- \"$target\"\n      fi ;;\n  esac\ndone\npython3 scripts/prepare-upstream-v0222-red-fixtures.py\
+      \ \"$baseline\" . HEAD\nbash scripts/prepare-usage-sort-red-fixture.sh \"$baseline\" . \"${{ github.event.pull_request.head.sha\
+      \ || github.sha }}\"\n"
   - name: Authenticated HTTP task continuation
     env:
       PHASE: ${{ inputs.sync_matrix_phase }}

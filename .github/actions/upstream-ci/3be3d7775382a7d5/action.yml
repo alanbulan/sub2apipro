@@ -26,9 +26,10 @@ runs:
       \ = \"$(git rev-parse \"$BASELINE:$target\")\"\n        printf '%s %s\\n' \"$(git rev-parse \"$BASELINE:$target\")\"\
       \ \"$target\" >> \"$RUNNER_TEMP/ws-owner-evidence/baseline-blobs.txt\"\n      else\n        rm -- \"$RUNNER_TEMP/ws-owner-red/$target\"\
       \n      fi ;;\n  esac\ndone\nbash scripts/prepare-free-fast-red-fixtures.sh \"$BASELINE\" \"$RUNNER_TEMP/ws-owner-red\"\
-      \ \"$CANDIDATE\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$RUNNER_TEMP/ws-owner-red/backend\"\nset\
-      \ +e\n(cd \"$RUNNER_TEMP/ws-owner-red/backend\" && go test -p=2 -tags=unit,ownerconflict ./internal/handler -run '^TestOpenAIWSMixedOwnerContinuation$/turn_2$'\
-      \ -count=1 -json -timeout=2m) > \"$RUNNER_TEMP/ws-owner-evidence/red.jsonl\" 2>&1\nstatus=$?\nset -e\ncat \"$RUNNER_TEMP/ws-owner-evidence/red.jsonl\"\
+      \ \"$CANDIDATE\"\nbash scripts/prepare-usage-sort-red-fixture.sh \"$BASELINE\" \"$RUNNER_TEMP/ws-owner-red\" \"$CANDIDATE\"\
+      \npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$RUNNER_TEMP/ws-owner-red/backend\"\nset +e\n(cd \"$RUNNER_TEMP/ws-owner-red/backend\"\
+      \ && go test -p=2 -tags=unit,ownerconflict ./internal/handler -run '^TestOpenAIWSMixedOwnerContinuation$/turn_2$' -count=1\
+      \ -json -timeout=2m) > \"$RUNNER_TEMP/ws-owner-evidence/red.jsonl\" 2>&1\nstatus=$?\nset -e\ncat \"$RUNNER_TEMP/ws-owner-evidence/red.jsonl\"\
       \ntest \"$status\" -eq 1\npython3 scripts/ws-owner-conflict-evidence.py red \"$status\" \"$RUNNER_TEMP/ws-owner-evidence/red.jsonl\"\
       \n"
   - name: Candidate GREEN after production repair
@@ -48,10 +49,10 @@ runs:
   - name: Existing policy, shadow and actual-wire contracts
     shell: bash
     run: "set -euo pipefail\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\n(cd backend && go test -race\
-      \ -p=2 -tags=unit,ownerconflict ./internal/handler -run '^Test(OpenAI409(WSReadableContinuation|WSReadableBoundaries|WSCrossModelProofRefused|WSReviewRepairs|WSResidualRepairs|WSNativeNamespaceRecovery|WSRecoveredAudit|WSRecoveredAuditNextTurn|WSAmbiguousOracleMutations|FutureShadowPublicationFences|FutureShadowBoundaries|FutureShadowTaskAssociation|FutureShadowAuditProvenance)|OpenAIWSRevalidation|OpenAIResponsesWebSocketRevalidatesKeyWithoutCache|OpenAIWSKeyQueueAdmissionUsesCurrentTurnPermissions|OpenAIWSTurnPricing|Issue600ClientIdentityNetwork)'\
+      \ -p=2 -tags=unit,ownerconflict ./internal/handler -run '^Test(OpenAI409(WSReadableContinuation|WSReadableBoundaries|WSCrossModelProofRefused|WSReviewRepairs|WSResidualRepairs|WSNativeNamespaceRecovery|WSRecoveredAudit|WSRecoveredAuditNextTurn|WSAmbiguousOracleMutations|FutureShadowPublicationFences|FutureShadowBoundaries|FutureShadowTaskAssociation|FutureShadowAuditProvenance)|OpenAIWSRevalidation|OpenAIResponsesWebSocketRevalidatesKeyWithoutCache|OpenAIWSKeyQueueAdmissionUsesCurrentTurnPermissions|OpenAIWSTurnPricing|Issue600ClientIdentityNetwork|Issue907)'\
       \ -count=1 -json -timeout=10m) > \"$RUNNER_TEMP/ws-owner-evidence/contracts.jsonl\" 2>&1\npython3 scripts/assert-readable-continuation.py\
       \ --clean-log \"$RUNNER_TEMP/ws-owner-evidence/contracts.jsonl\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
-      \ backend\n(cd backend && go test -race -p=2 -tags=unit,ownerconflict ./internal/service -run '^Test(OpenAIWSMixedOwner|OpenAIRecovery(Diagnostics|ShadowRefusalDiagnostics|ShadowRetainsTaskBeforeOpaqueEnvelope|ShadowDoesNotReclassifyClientMetadataText)|OpenAI409(RebuildRechecksOriginalDeliveryBeforeSend|WSUnsentTurnBoundary|WSTicket|ReplayInputTamperingStillFails|OAuthReplayKeepsOriginalSnapshotAndFinalControls)|Issue854BeforeSendRecoveryGuards|Issue715WS)'\
+      \ backend\n(cd backend && go test -race -p=2 -tags=unit,ownerconflict ./internal/service -run '^Test(OpenAIWSMixedOwner|OpenAIRecovery(Diagnostics|ShadowRefusalDiagnostics|ShadowRetainsTaskBeforeOpaqueEnvelope|ShadowDoesNotReclassifyClientMetadataText)|OpenAI409(RebuildRechecksOriginalDeliveryBeforeSend|WSUnsentTurnBoundary|WSTicket|ReplayInputTamperingStillFails|OAuthReplayKeepsOriginalSnapshotAndFinalControls)|Issue854BeforeSendRecoveryGuards|Issue715WS|Issue907)'\
       \ -count=1 -json -timeout=5m) > \"$RUNNER_TEMP/ws-owner-evidence/service-contracts.jsonl\" 2>&1\npython3 scripts/assert-readable-continuation.py\
       \ --clean-log \"$RUNNER_TEMP/ws-owner-evidence/service-contracts.jsonl\"\npython3 - \"$RUNNER_TEMP/ws-owner-evidence/service-contracts.jsonl\"\
       \ <<'PY'\nimport json, sys\nrows = [json.loads(line) for line in open(sys.argv[1]) if line.startswith('{')]\nfor test\

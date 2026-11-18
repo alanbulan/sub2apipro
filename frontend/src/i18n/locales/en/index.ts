@@ -24,7 +24,7 @@ import controlledExperiments from './controlledExperiments'
 import accountOps from './accountOps'
 import aiOps from './aiOps'
 import aiOpsControl from './aiOpsControl'
-import tokenGuard from './tokenGuard'
+import openaiRelogin from './openaiRelogin'
 import pelicanTests from './pelicanTests'
 import modelTrace from './modelTrace'
 import tokenGuardV2 from './tokenGuardV2'
@@ -72,7 +72,7 @@ export default {
   accountOps,
   aiOps,
   aiOpsControl,
-  tokenGuard,
+  openaiRelogin,
   pelicanTests,
   modelTrace,
   tokenGuardV2,

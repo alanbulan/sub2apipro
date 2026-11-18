@@ -15,13 +15,13 @@ runs:
       # Search activation references fields absent in this pool. Retain the\n# standalone recovery helpers needed by current\
       \ HTTP code; the pinned\n# pre-WS handler/transports never call them or publish WS ownership.\nadded=(backend/internal/service/openai_ws_search_activation.go)\n\
       git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git \"$original\"\ntrap 'git restore --source=HEAD\
-      \ -- \"${targets[@]}\" \"${added[@]}\" backend/internal/service/openai_request_timezone_egress.go backend/internal/service/openai_ws_client.go backend/internal/handler/wire.go;\
-      \ git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"${targets[@]}\"\nrm -- \"${added[@]}\"\nfor target\
-      \ in \"${targets[@]}\"; do\n  expected=$(git rev-parse \"$original:$target\")\n  actual=$(git hash-object \"$target\"\
-      )\n  echo \"baseline=$original path=$target expected_blob=$expected tested_blob=$actual\"\n  test \"$expected\" = \"\
-      $actual\"\ndone\n# Current HTTP retains the readable helper; the pinned pre-WS bridge\n# never populates this field\
-      \ or calls that recovery path. Keep all\n# behavior blobs above exact except this audited zero-value storage.\nbash\
-      \ scripts/oauth429-weekly-only-bridge-compat.sh . \"$original\" | tee \"$RUNNER_TEMP/issue715-ws-bridge-compat.log\"\
+      \ -- \"${targets[@]}\" \"${added[@]}\" backend/internal/service/openai_request_timezone_egress.go backend/internal/service/openai_ws_client.go\
+      \ backend/internal/handler/wire.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"${targets[@]}\"\
+      \nrm -- \"${added[@]}\"\nfor target in \"${targets[@]}\"; do\n  expected=$(git rev-parse \"$original:$target\")\n  actual=$(git\
+      \ hash-object \"$target\")\n  echo \"baseline=$original path=$target expected_blob=$expected tested_blob=$actual\"\n\
+      \  test \"$expected\" = \"$actual\"\ndone\n# Current HTTP retains the readable helper; the pinned pre-WS bridge\n# never\
+      \ populates this field or calls that recovery path. Keep all\n# behavior blobs above exact except this audited zero-value\
+      \ storage.\nbash scripts/oauth429-weekly-only-bridge-compat.sh . \"$original\" | tee \"$RUNNER_TEMP/issue715-ws-bridge-compat.log\"\
       \npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n(cd backend && go test -race -tags=unit\
       \ ./internal/handler -run '^TestIssue715WSGeneratedTaskContinuation$/.*/cross-node=true$' -count=1 -v -timeout=5m) >\
       \ \"$RUNNER_TEMP/issue715-ws-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/issue715-ws-red.log\"\ntest \"$result\"\

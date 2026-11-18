@@ -34,7 +34,7 @@ runs:
       (cd backend && go test -race -tags=unit ./internal/repository -run ''^(TestOAuthDegradation|TestAutoConfig|TestAccountQuality|TestOpenAITwoFAAdmission|TestSchedulerReadiness|TestSchedulerCacheSnapshotAccountIDReuseKeepsEmptySnapshotSemantics$|TestSchedulerCacheSnapshotMemoEmptyAndNilMetadataAreNotCached$)''
       -count=1 -v) 2>&1 | tee evidence/repository-unit.log
 
-      ! grep -Eq -- ''--- SKIP:|no tests to run'' evidence/service-unit.log evidence/repository-unit.log
+      bash scripts/assert-test-log-clean.sh green evidence/service-unit.log evidence/repository-unit.log
 
       '
   - name: WebSocket first-message disconnect and timeout log boundaries
@@ -48,7 +48,7 @@ runs:
       (cd backend && go test -race -tags=unit ./internal/handler -run ''^TestOpenAIResponsesWebSocket_(DisconnectBeforeFirstMessageIsInfo|RequestCanceledBeforeFirstMessageIsInfo|FirstMessageTimeoutUsesConfig)$''
       -count=20 -v) 2>&1 | tee evidence/websocket-first-message.log
 
-      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/websocket-first-message.log
+      bash scripts/assert-test-log-clean.sh green evidence/websocket-first-message.log
 
       '
   - uses: actions/upload-artifact@v7

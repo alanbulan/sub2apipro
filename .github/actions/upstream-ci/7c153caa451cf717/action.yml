@@ -26,7 +26,7 @@ runs:
       bash scripts/oauth-degradation-integration-race.sh postgres "$GITHUB_WORKSPACE" ''^(TestOAuthDegradation|TestOAuthRefresh|TestAutoConfigConcurrent|TestOpenAITwoFAAdmission|TestQualityActionsRestore|TestQualityIsolation|TestQualityBPSAndQuarantineCoexist|TestQualityCoexist|TestAstraGroups)''
       25m
 
-      ! grep -Eq -- ''--- SKIP:|no tests to run|WARNING: DATA RACE'' evidence/postgres.log
+      bash scripts/assert-test-log-clean.sh green evidence/postgres.log
 
       '
   - uses: actions/upload-artifact@v7

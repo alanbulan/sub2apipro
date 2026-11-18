@@ -3,18 +3,76 @@ description: Current upstream checks, preserving runner setup and regression ass
 runs:
   using: composite
   steps:
+  - name: Provision upstream PostgreSQL service for OAuth repository unit fixtures
+    shell: bash
+    run: "set -euo pipefail\ntest \"${GITHUB_ACTIONS:-}\" = true\ndocker run -d --name sync-oauth-degradation-postgres \\\n\
+      \  -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=fixture -e POSTGRES_DB=sub2api_test \\\n  -p 127.0.0.1:15432:5432 postgres:16-alpine\n\
+      ready=false\nfor attempt in $(seq 1 60); do\n  if docker exec -e PGPASSWORD=fixture sync-oauth-degradation-postgres\
+      \ \\\n    psql -h 127.0.0.1 -X -qAt -v ON_ERROR_STOP=1 -U fixture -d sub2api_test -c 'SELECT 1' >/dev/null 2>&1; then\n\
+      \    ready=true\n    break\n  fi\n  sleep 1\ndone\ntest \"$ready\" = true\n"
   - uses: actions/checkout@v6
     with:
       ref: 1411d0fc6e1fca51d4b657c21837cd74c87bf84e
       path: baseline
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
   - uses: actions/checkout@v6
     with:
       ref: fb75b87cebe8314d9eba171948367451511f9417
       path: historical-fixtures
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
+  - uses: actions/checkout@v6
+    with:
+      ref: 321f11c1a4d23302961c223ac030fd09e3f9e6e8
+      path: mature-baseline
+      sparse-checkout: backend/migrations
+      persist-credentials: false
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
   - uses: actions/setup-go@v6
     with:
       cache-dependency-path: candidate/backend/go.sum
       go-version: 1.27.4
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
+  - name: Install isolated Redis fixture
+    run: "bash \"$GITHUB_WORKSPACE/candidate/scripts/ci-ubuntu-mirrors.sh\"\nif ! command -v redis-server >/dev/null; then\n\
+      \  bash \"$GITHUB_WORKSPACE/candidate/scripts/ci-ubuntu-mirrors.sh\"\n  sudo apt-get update\n  sudo apt-get install\
+      \ -y --no-install-recommends redis-server\nfi\n"
+    shell: bash
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
   - name: Baseline behavioral RED
     shell: bash
     run: 'set -euo pipefail
@@ -43,13 +101,21 @@ runs:
 
       test "$result" -ne 0
 
-      ! grep -Eq ''build failed|setup failed|undefined:|syntax error:|no tests to run|panic:'' evidence/red.log
+      bash candidate/scripts/assert-test-log-clean.sh red evidence/red.log
 
       grep -F ''degradation hold must prevent'' evidence/red.log
 
       grep -F ''enabling degradation action requires'' evidence/red.log
 
       '
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
   - name: Exact candidate GREEN
     shell: bash
     run: 'set -euo pipefail
@@ -65,10 +131,34 @@ runs:
 
       (cd candidate/backend && go test -race -tags=unit ./internal/repository -count=1 -v) 2>&1 | tee evidence/repository-unit.log
 
+      bash candidate/scripts/assert-test-log-clean.sh green evidence/green.log evidence/repository-unit.log
+
       '
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
   - uses: actions/upload-artifact@v7
     if: always()
     with:
       name: sync-20261116-oauth-degradation-actions-unit-oauth-degradation-unit-${{ github.event_name }}-${{ github.run_id
         }}
       path: evidence/
+    env:
+      SUB2API_UPGRADE_TEST_POSTGRES_URL: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      HARVEST_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SUB2API_EXPERIMENT_TEST_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      SCOPED_ADMIN_TEST_DSN: host=127.0.0.1 port=15432 user=fixture password=fixture dbname=sub2api_test sslmode=disable
+      TRAFFIC_TEST_POSTGRES_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_UPGRADE_DSN: postgres://fixture:fixture@127.0.0.1:15432/sub2api_test?sslmode=disable
+      MATURE_PRODUCTION_MIGRATIONS: ${{ github.workspace }}/mature-baseline/backend/migrations
+  - name: Remove isolated OAuth PostgreSQL service
+    if: always()
+    shell: bash
+    run: 'docker rm -f sync-oauth-degradation-postgres
+
+      '

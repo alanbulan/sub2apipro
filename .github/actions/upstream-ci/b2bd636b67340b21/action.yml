@@ -28,6 +28,9 @@ runs:
 
       test "$(git hash-object "$target")" = "$(git rev-parse "$baseline:$target")"
 
+      python3 scripts/prepare-discovery-red-compat.py "$baseline" . HEAD --target ws --fixture backend/internal/service/openai_ws_unsent_delta_test.go
+      --manifest "$RUNNER_TEMP/unsent-delta-repair877-compatibility.json"
+
       '
   - name: Named instruction and continuation-anchor repair evidence
     env:
@@ -59,5 +62,9 @@ runs:
     with:
       name: sync-20261116-ws-unsent-delta-repair877-unsent-delta-repair877-${{ inputs.sync_matrix_phase }}-${{ github.event.pull_request.head.sha
         || github.sha }}
-      path: ${{ runner.temp }}/unsent-delta-repair877.jsonl
+      path: '${{ runner.temp }}/unsent-delta-repair877.jsonl
+
+        ${{ runner.temp }}/unsent-delta-repair877-compatibility.json
+
+        '
       if-no-files-found: error

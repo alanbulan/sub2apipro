@@ -33,6 +33,13 @@ runs:
       SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/ops-team-browser/node_modules/playwright/index.mjs
     run: node scripts/account-ops-team-screenshots.mjs
     shell: bash
+  - name: Render per-account balance notification settings
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}/account-ops-team-ui
+      EVIDENCE_BASE_SHA: ${{ github.event.pull_request.base.sha || 'b827111805f1b5030b141dbcea4d4a9f6dd413e6' }}
+      SUB2API_PLAYWRIGHT_MODULE: ${{ runner.temp }}/ops-team-browser/node_modules/playwright/index.mjs
+    run: node scripts/account-balance-notification-screenshots.mjs
+    shell: bash
   - uses: actions/upload-artifact@v7
     if: always()
     with:

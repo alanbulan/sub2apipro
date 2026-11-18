@@ -15,24 +15,32 @@ runs:
       \ \"$original\"\n# Manager fields and readable-payload methods live together. Restore\n# both transport callers with\
       \ that manager; retain candidate tests and\n# standalone admission/principal helpers required by current HTTP.\ntrap\
       \ 'git restore --source=HEAD -- \"$target\" \"$caller\" \"$passthrough\" backend/internal/service/openai_request_timezone_egress.go\
-      \ backend/internal/service/openai_ws_client.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
-      $target\" \"$caller\" \"$passthrough\"\nexpected=$(git rev-parse \"$original:$target\")\nactual=$(git hash-object \"\
-      $target\")\necho \"baseline=$original path=$target expected_blob=$expected tested_blob=$actual\"\ntest \"$expected\"\
-      \ = \"$actual\"\nexpected_caller=$(git rev-parse \"$original:$caller\")\nactual_caller=$(git hash-object \"$caller\"\
-      )\necho \"baseline=$original path=$caller expected_blob=$expected_caller tested_blob=$actual_caller\"\ntest \"$expected_caller\"\
-      \ = \"$actual_caller\"\nexpected_passthrough=$(git rev-parse \"$original:$passthrough\")\nactual_passthrough=$(git hash-object\
-      \ \"$passthrough\")\necho \"baseline=$original path=$passthrough expected_blob=$expected_passthrough tested_blob=$actual_passthrough\"\
-      \ntest \"$expected_passthrough\" = \"$actual_passthrough\"\n# Compile-only compatibility with the retained candidate\
-      \ bridge.\n# The old manager never assigns this zero-valued anchor; no old\n# executable statement or built-payload\
-      \ regression is replaced.\npython3 - \"$target\" <<'PY'\nfrom pathlib import Path\nimport sys\npath = Path(sys.argv[1])\n\
-      original = path.read_bytes()\ndeclaration = b'type openAIWSAgentRecovery struct {\\n'\nassert original.count(declaration)\
-      \ == 1\npath.write_bytes(original.replace(declaration, declaration + b'\\tcompletedBridge openAIWSBridgeResponseAnchor\\\
-      n', 1))\nPY\nexpected_overlay=41fc424e64fdf029addeaeff9213f55e150a7a21\nactual_overlay=$(git hash-object \"$target\"\
-      )\necho \"baseline=$original path=$target original_blob=$expected expected_overlay=$expected_overlay tested_overlay=$actual_overlay\"\
-      \ntest \"$expected_overlay\" = \"$actual_overlay\"\nfor retained in backend/internal/service/openai_ws_http_bridge.go\
+      \ backend/internal/service/openai_ws_client.go backend/internal/service/openai_issue892_timezone_test.go; git diff --exit-code'\
+      \ EXIT\ngit restore --source=\"$original\" -- \"$target\" \"$caller\" \"$passthrough\"\nexpected=$(git rev-parse \"\
+      $original:$target\")\nactual=$(git hash-object \"$target\")\necho \"baseline=$original path=$target expected_blob=$expected\
+      \ tested_blob=$actual\"\ntest \"$expected\" = \"$actual\"\nexpected_caller=$(git rev-parse \"$original:$caller\")\n\
+      actual_caller=$(git hash-object \"$caller\")\necho \"baseline=$original path=$caller expected_blob=$expected_caller\
+      \ tested_blob=$actual_caller\"\ntest \"$expected_caller\" = \"$actual_caller\"\nexpected_passthrough=$(git rev-parse\
+      \ \"$original:$passthrough\")\nactual_passthrough=$(git hash-object \"$passthrough\")\necho \"baseline=$original path=$passthrough\
+      \ expected_blob=$expected_passthrough tested_blob=$actual_passthrough\"\ntest \"$expected_passthrough\" = \"$actual_passthrough\"\
+      \n# Compile-only compatibility with the retained candidate bridge.\n# The old manager never assigns this zero-valued\
+      \ anchor; no old\n# executable statement or built-payload regression is replaced.\npython3 - \"$target\" <<'PY'\nfrom\
+      \ pathlib import Path\nimport sys\npath = Path(sys.argv[1])\noriginal = path.read_bytes()\ndeclaration = b'type openAIWSAgentRecovery\
+      \ struct {\\n'\nassert original.count(declaration) == 1\npath.write_bytes(original.replace(declaration, declaration\
+      \ + b'\\tcompletedBridge openAIWSBridgeResponseAnchor\\n', 1))\nPY\nexpected_overlay=41fc424e64fdf029addeaeff9213f55e150a7a21\n\
+      actual_overlay=$(git hash-object \"$target\")\necho \"baseline=$original path=$target original_blob=$expected expected_overlay=$expected_overlay\
+      \ tested_overlay=$actual_overlay\"\ntest \"$expected_overlay\" = \"$actual_overlay\"\npython3 scripts/prepare-discovery-red-compat.py\
+      \ \"$original\" . HEAD --target ws --fixture backend/internal/service/openai_ws_agent_recovery_test.go --manifest \"\
+      $RUNNER_TEMP/issue715-ws-wire-compatibility.json\"\nfor retained in backend/internal/service/openai_ws_http_bridge.go\
       \ backend/internal/service/openai_ws_plaintext_projection.go; do\n  expected_retained=$(git rev-parse \"HEAD:$retained\"\
       )\n  actual_retained=$(git hash-object \"$retained\")\n  echo \"retained_candidate path=$retained expected_blob=$expected_retained\
-      \ tested_blob=$actual_retained\"\n  test \"$expected_retained\" = \"$actual_retained\"\ndone\ngit diff --exit-code HEAD\
+      \ tested_blob=$actual_retained\"\n  test \"$expected_retained\" = \"$actual_retained\"\ndone\n# The later timezone proof\
+      \ fixture requires manager.protected, which\n# this historical manager does not have. Exclude only this untouched\n\
+      # non-target fixture; keep the selected wire regression unchanged.\nfixture=backend/internal/service/openai_issue892_timezone_test.go\n\
+      if test -f \"$fixture\"; then\n  if git cat-file -e \"$original:$fixture\" 2>/dev/null; then\n    echo \"refusing to\
+      \ remove a historical fixture\" >&2\n    exit 1\n  fi\n  expected_fixture=$(git rev-parse \"HEAD:$fixture\")\n  test\
+      \ \"$(git hash-object \"$fixture\")\" = \"$expected_fixture\"\n  printf 'excluded later fixture path=%s candidate_blob=%s\
+      \ baseline=%s\\n' \"$fixture\" \"$expected_fixture\" \"$original\"\n  rm -- \"$fixture\"\nfi\ngit diff --exit-code HEAD\
       \ -- backend/internal/service/openai_ws_agent_recovery_test.go\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\"\
       \ backend\nset +e\n(cd backend && go test -tags=unit ./internal/service -run '^TestIssue715WSBridgeValidatesBuiltPayload$'\
       \ -count=1 -v -timeout=5m) > \"$RUNNER_TEMP/issue715-ws-wire-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/issue715-ws-wire-red.log\"\
@@ -41,3 +49,14 @@ runs:
       ; then exit 1; fi\ngrep -q -- '--- FAIL: TestIssue715WSBridgeValidatesBuiltPayload' \"$RUNNER_TEMP/issue715-ws-wire-red.log\"\
       \ngrep -q 'bridge must validate actual built HTTP body before granting opaque task admission' \"$RUNNER_TEMP/issue715-ws-wire-red.log\"\
       \n"
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: sync-20261116-issue715-agent-recovery-red-ws-wire-issue715-ws-wire-${{ github.event.pull_request.head.sha || github.sha
+        }}
+      path: '${{ runner.temp }}/issue715-ws-wire-red.log
+
+        ${{ runner.temp }}/issue715-ws-wire-compatibility.json
+
+        '
+      if-no-files-found: error

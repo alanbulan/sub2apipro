@@ -146,24 +146,42 @@ runs:
       \ > \"$tested_tree/$target\"\n      git -C \"$tested_tree\" add -N -- \"$target\"\n      test \"$(git hash-object \"\
       $tested_tree/$target\")\" = \"$(git rev-parse \"$baseline:$target\")\"\n    else\n      rm -- \"$tested_tree/$target\"\
       \n    fi\n  done < <(git diff --no-renames --name-only \"$baseline\" \"$CANDIDATE_SHA\" -- 'backend/**/*.go')\n  git\
-      \ -C \"$tested_tree\" diff --exit-code \"$baseline\" -- 'backend/**/*.go' ':!backend/**/*_test.go'\nfi\ngit -C \"$tested_tree\"\
-      \ diff --exit-code \"$CANDIDATE_SHA\" -- 'backend/**/*_test.go'\nif [ \"$PHASE\" = RED ]; then\n  bash scripts/exclude-later-400-red-fixtures.sh\
-      \ \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\" | tee \"$RUNNER_TEMP/ws-evidence/residual-400-exclusions.txt\"\n\
-      \  bash scripts/exclude-later-http2-red-fixtures.sh \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\"\n  bash scripts/prepare-replay-red-fixtures.sh\
-      \ \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\" | tee \"$RUNNER_TEMP/ws-evidence/residual-replay-fixtures.txt\"\n\
-      \  bash scripts/prepare-moderation-red-fixtures.sh \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\" | tee \"$RUNNER_TEMP/ws-evidence/residual-moderation-fixtures.txt\"\
+      \ -C \"$tested_tree\" diff --exit-code \"$baseline\" -- 'backend/**/*.go' ':!backend/**/*_test.go'\n  # BEGIN residual\
+      \ Redis test-support overlay\n  # The complete production baseline is proved above. Restore only\n  # this candidate\
+      \ test dependency, with an explicit blob manifest.\n  helper=backend/internal/testutil/redissession/store.go\n  test\
+      \ \"$helper\" = backend/internal/testutil/redissession/store.go\n  if git cat-file -e \"$baseline:$helper\" 2>/dev/null;\
+      \ then exit 1; fi\n  candidate_blob=$(git rev-parse \"$CANDIDATE_SHA:$helper\")\n  test \"$(git cat-file -t \"$candidate_blob\"\
+      )\" = blob\n  for support_dir in backend backend/internal backend/internal/testutil backend/internal/testutil/redissession;\
+      \ do\n    test ! -L \"$GITHUB_WORKSPACE/$support_dir\"\n    test ! -L \"$tested_tree/$support_dir\"\n  done\n  test\
+      \ -f \"$GITHUB_WORKSPACE/$helper\"\n  test ! -L \"$GITHUB_WORKSPACE/$helper\"\n  source_blob=$(git hash-object \"$GITHUB_WORKSPACE/$helper\"\
+      )\n  test \"$source_blob\" = \"$candidate_blob\"\n  test ! -e \"$tested_tree/$helper\"\n  test ! -L \"$tested_tree/$helper\"\
+      \n  mkdir -p -- \"$(dirname -- \"$tested_tree/$helper\")\"\n  git show \"$CANDIDATE_SHA:$helper\" > \"$tested_tree/$helper\"\
+      \n  restored_blob=$(git hash-object \"$tested_tree/$helper\")\n  test \"$restored_blob\" = \"$candidate_blob\"\n  git\
+      \ -C \"$tested_tree\" diff --exit-code \"$baseline\" -- 'backend/**/*.go' ':!backend/**/*_test.go' \":!$helper\"\n \
+      \ test \"$(git -C \"$tested_tree\" diff --name-only \"$baseline\" -- 'backend/**/*.go' ':!backend/**/*_test.go')\" =\
+      \ \"$helper\"\n  printf 'path=%s baseline=%s baseline_blob=absent candidate=%s candidate_blob=%s source_blob=%s restored_blob=%s\\\
+      n' \"$helper\" \"$baseline\" \"$CANDIDATE_SHA\" \"$candidate_blob\" \"$source_blob\" \"$restored_blob\" > \"$RUNNER_TEMP/ws-evidence/residual-test-support.txt\"\
+      \n  # END residual Redis test-support overlay\nfi\ngit -C \"$tested_tree\" diff --exit-code \"$CANDIDATE_SHA\" -- 'backend/**/*_test.go'\n\
+      if [ \"$PHASE\" = RED ]; then\n  bash scripts/exclude-later-400-red-fixtures.sh \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\"\
+      \ | tee \"$RUNNER_TEMP/ws-evidence/residual-400-exclusions.txt\"\n  bash scripts/exclude-later-http2-red-fixtures.sh\
+      \ \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\"\n  bash scripts/prepare-replay-red-fixtures.sh \"$baseline\" \"\
+      $tested_tree\" \"$CANDIDATE_SHA\" | tee \"$RUNNER_TEMP/ws-evidence/residual-replay-fixtures.txt\"\n  bash scripts/prepare-moderation-red-fixtures.sh\
+      \ \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\" | tee \"$RUNNER_TEMP/ws-evidence/residual-moderation-fixtures.txt\"\
       \n  # The service test package also compiles unrelated fixtures added by\n  # newer production. Match their historical\
       \ APIs in this disposable\n  # RED only; keep every selected 409/ticket test and all GREEN tests.\n  # PR855 route-evidence\
       \ types and later production BPS search APIs\n  # are absent in this baseline. Their unselected tests follow the\n \
-      \ # pinned historical APIs too; the selected ticket oracle stays current.\n  # The shared replay helper already handles\
-      \ the four UltraFast/group\n  # fixtures with source proofs. Do not require their candidate blobs\n  # again after that\
-      \ helper has restored or excluded them.\n  # BPS search is already excluded with blob/contract proofs by the\n  # shared\
-      \ helpers above, so do not inspect/remove it a second time.\n  for target in backend/internal/service/temp_unsched_pending_test.go\
-      \ backend/internal/service/temp_unsched_stream_timing_test.go backend/internal/service/temp_unsched_ws_forward_test.go\
-      \ backend/internal/service/openai_auth_connection_status_test.go backend/internal/service/openai_auth_connections_account_type_test.go\
-      \ backend/internal/service/account_ops_balance_test.go backend/internal/service/openai_excel_bps_bridge_failure_test.go\
-      \ backend/internal/service/quality_5xx_immediate_test.go backend/internal/service/openai_ws_agent_recovery_test.go backend/internal/service/openai_excel_bps_search_business_test.go\
-      \ backend/internal/service/gemini_compat_response_format_test.go; do\n    candidate_blob=$(git rev-parse \"$CANDIDATE_SHA:$target\"\
+      \ # pinned historical APIs too; the selected ticket oracle stays current.\n  # The replay helper already owns the four\
+      \ UltraFast group fixtures\n  # and the base BPS search fixtures. Do not apply them twice here.\n  # The separate search-business\
+      \ fixture still depends on the removed\n  # search helper, so this loop alone owns its historical adaptation.\n  # The\
+      \ shared replay helper already owns PR899 platform-edit fixtures;\n  # do not exclude the same files again in this loop.\n\
+      \  # The later WS close diagnostic fixture also requires candidate-only APIs.\n  # Never change the selected ticket\
+      \ oracle or candidate GREEN tests.\n  for target in backend/internal/service/temp_unsched_pending_test.go backend/internal/service/temp_unsched_stream_timing_test.go\
+      \ backend/internal/service/temp_unsched_ws_forward_test.go backend/internal/service/openai_auth_connection_status_test.go\
+      \ backend/internal/service/openai_auth_connections_account_type_test.go backend/internal/service/account_ops_balance_test.go\
+      \ backend/internal/service/openai_excel_bps_bridge_failure_test.go backend/internal/service/quality_5xx_immediate_test.go\
+      \ backend/internal/service/openai_ws_agent_recovery_test.go backend/internal/service/openai_excel_bps_search_business_test.go\
+      \ backend/internal/service/gemini_compat_response_format_test.go backend/internal/service/openai_ws_close_logging_test.go\
+      \ backend/internal/service/upstream_request_id_test.go; do\n    candidate_blob=$(git rev-parse \"$CANDIDATE_SHA:$target\"\
       )\n    test \"$(git hash-object \"$tested_tree/$target\")\" = \"$candidate_blob\"\n    if git cat-file -e \"$baseline:$target\"\
       \ 2>/dev/null; then\n      expected=$(git rev-parse \"$baseline:$target\")\n      git show \"$baseline:$target\" > \"\
       $tested_tree/$target\"\n      actual=$(git hash-object \"$tested_tree/$target\")\n      test \"$actual\" = \"$expected\"\
@@ -171,12 +189,15 @@ runs:
       \ \"$CANDIDATE_SHA\" \"$candidate_blob\" \"$expected\" \"$actual\" >> \"$RUNNER_TEMP/ws-evidence/residual-service-fixtures.txt\"\
       \n    else\n      rm -- \"$tested_tree/$target\"\n      test ! -e \"$tested_tree/$target\"\n      printf 'path=%s baseline=%s\
       \ candidate=%s candidate_blob=%s baseline_blob=absent actual=absent\\n' \"$target\" \"$baseline\" \"$CANDIDATE_SHA\"\
-      \ \"$candidate_blob\" >> \"$RUNNER_TEMP/ws-evidence/residual-service-fixtures.txt\"\n    fi\n  done\nfi\nfor target\
-      \ in backend/internal/handler/openai_409_ws_rebuild_test.go backend/internal/handler/openai_409_ws_oracle_test.go backend/internal/service/openai_409_ws_ticket_test.go\
-      \ backend/internal/service/openai_ws_agent_recovery.go backend/internal/service/openai_ws_forwarder_payload.go backend/internal/service/openai_gateway_passthrough.go;\
-      \ do\n  git hash-object \"$tested_tree/$target\" >> \"$RUNNER_TEMP/ws-evidence/residual-blobs.txt\"\ndone\n# Run both\
-      \ independently even when one oracle fails. Neither a\n# compilation failure nor a missing diagnostic is accepted as\
-      \ RED.\nfailed=0\nfor suite in ws-residual ws-ticket; do\n  package=handler\n  test_name=TestOpenAI409WSResidualRepairs\n\
+      \ \"$candidate_blob\" >> \"$RUNNER_TEMP/ws-evidence/residual-service-fixtures.txt\"\n    fi\n  done\n  # PR885 unit\
+      \ fixtures require the later request-proxy contract.\n  # Restore the existing warm fixture to its pinned historical\
+      \ blob.\n  # Keep the selected ticket oracle and the proved production baseline.\n  python3 scripts/prepare-request-proxy-historical-tests.py\
+      \ \"$baseline\" \"$tested_tree\" \"$CANDIDATE_SHA\" \"$RUNNER_TEMP/ws-evidence/request-proxy-historical-tests.json\"\
+      \nfi\nfor target in backend/internal/handler/openai_409_ws_rebuild_test.go backend/internal/handler/openai_409_ws_oracle_test.go\
+      \ backend/internal/service/openai_409_ws_ticket_test.go backend/internal/service/openai_ws_agent_recovery.go backend/internal/service/openai_ws_forwarder_payload.go\
+      \ backend/internal/service/openai_gateway_passthrough.go; do\n  git hash-object \"$tested_tree/$target\" >> \"$RUNNER_TEMP/ws-evidence/residual-blobs.txt\"\
+      \ndone\n# Run both independently even when one oracle fails. Neither a\n# compilation failure nor a missing diagnostic\
+      \ is accepted as RED.\nfailed=0\nfor suite in ws-residual ws-ticket; do\n  package=handler\n  test_name=TestOpenAI409WSResidualRepairs\n\
       \  if [ \"$suite\" = ws-ticket ]; then package=service; test_name=TestOpenAI409WSTicketBoundEgress; fi\n  python3 \"\
       $GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" \"$tested_tree/backend\"\n  set +e\n  (cd \"$tested_tree/backend\" &&\
       \ go test -race -json -tags=unit \"./internal/$package\" -run \"^$test_name$\" -count=1 -timeout=5m) > \"$RUNNER_TEMP/ws-evidence/$suite.jsonl\"\

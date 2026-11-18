@@ -11,13 +11,20 @@ runs:
     shell: bash
     run: "set -euo pipefail\ngit rev-parse HEAD\noriginal=6df0cd5bb0ce4d774d34004008f9dd661d236468\nbash scripts/historical-recovery-timezone-callers.sh\n\
       targets=(backend/internal/service/openai_codex_model_metadata.go backend/internal/service/openai_codex_models_service.go\
-      \ backend/internal/service/openai_excel_bps_models_manifest.go)\ngit fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git\
-      \ \"$original\"\ntrap 'git restore --source=HEAD -- \"${targets[@]}\" backend/internal/service/openai_request_timezone_egress.go\
-      \ backend/internal/service/openai_ws_client.go; git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"\
-      ${targets[@]}\"\nfor target in \"${targets[@]}\"; do\n  expected=$(git rev-parse \"$original:$target\")\n  actual=$(git\
-      \ hash-object \"$target\")\n  echo \"baseline=$original path=$target expected_blob=$expected tested_blob=$actual\"\n\
-      \  test \"$expected\" = \"$actual\"\ndone\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset +e\n\
-      (cd backend && go test -tags=unit ./internal/service -run '^TestIssue715(BridgeDoesNotAdvertiseEncryptedAgent|FetchedAndPinnedBridgeCapabilities|LiveBridgeCapabilityCannotOverrideWire)$'\
+      \ backend/internal/service/openai_excel_bps_models_manifest.go)\nmodels_caller=backend/internal/service/openai_models_list.go\n\
+      git fetch --no-tags --depth=1 https://github.com/ranxi2001/sub2api.git \"$original\"\ntrap 'git restore --source=HEAD\
+      \ -- \"${targets[@]}\" \"$models_caller\" backend/internal/service/openai_request_timezone_egress.go backend/internal/service/openai_ws_client.go;\
+      \ git diff --exit-code' EXIT\ngit restore --source=\"$original\" -- \"${targets[@]}\"\nfor target in \"${targets[@]}\"\
+      ; do\n  expected=$(git rev-parse \"$original:$target\")\n  actual=$(git hash-object \"$target\")\n  echo \"baseline=$original\
+      \ path=$target expected_blob=$expected tested_blob=$actual\"\n  test \"$expected\" = \"$actual\"\ndone\n# The historical\
+      \ manifest predates the whitelist-only policy API.\n# Reconnect only its caller; retain candidate policy declarations\
+      \ and\n# the exact historical capability implementation and test assertions.\npython3 - \"$models_caller\" <<'PYTHON'\n\
+      from pathlib import Path\nimport sys\npath = Path(sys.argv[1])\nsource = path.read_text()\ncurrent = 's.fetchNativeCodexModelsManifestWithPolicy(ctx,\
+      \ account, clientVersion, \"\", policy)'\nhistorical = 's.fetchNativeCodexModelsManifest(ctx, account, clientVersion,\
+      \ \"\")'\nif source.count(current) != 1:\n    raise SystemExit(\"missing or ambiguous historical manifest caller\")\n\
+      path.write_text(source.replace(current, historical, 1))\nPYTHON\necho \"historical manifest compatibility caller path=$models_caller\
+      \ blob=$(git hash-object \"$models_caller\")\"\npython3 \"$GITHUB_WORKSPACE/scripts/prepare-sync-ci.py\" backend\nset\
+      \ +e\n(cd backend && go test -tags=unit ./internal/service -run '^TestIssue715(BridgeDoesNotAdvertiseEncryptedAgent|FetchedAndPinnedBridgeCapabilities|LiveBridgeCapabilityCannotOverrideWire)$'\
       \ -count=1 -v -timeout=10m) > \"$RUNNER_TEMP/issue715-red.log\" 2>&1\nresult=$?\nset -e\ncat \"$RUNNER_TEMP/issue715-red.log\"\
       \ntest \"$result\" -ne 0\nif grep -Eq 'build failed|no tests to run|undefined:|panic:' \"$RUNNER_TEMP/issue715-red.log\"\
       ; then exit 1; fi\ngrep -q -- '--- FAIL: TestIssue715BridgeDoesNotAdvertiseEncryptedAgent' \"$RUNNER_TEMP/issue715-red.log\"\

@@ -20,7 +20,9 @@ runs:
     run: "for target in backend/internal/service/openai_ws_agent_recovery.go backend/internal/service/openai_ws_forwarder_ingress.go\
       \ backend/internal/service/openai_ws_readable_continuation.go backend/internal/service/openai_ws_http_bridge.go; do\n\
       \  git show \"2927209f5492d8cb690b83a1964b2f093c19ad7a:$target\" > \"$target\"\n  test \"$(git hash-object \"$target\"\
-      )\" = \"$(git rev-parse \"2927209f5492d8cb690b83a1964b2f093c19ad7a:$target\")\"\ndone\n"
+      )\" = \"$(git rev-parse \"2927209f5492d8cb690b83a1964b2f093c19ad7a:$target\")\"\ndone\npython3 scripts/prepare-discovery-red-compat.py\
+      \ 2927209f5492d8cb690b83a1964b2f093c19ad7a . HEAD --target ws --fixture backend/internal/handler/openai_ws_unsent_delta_test.go\
+      \ --manifest \"$RUNNER_TEMP/unsent-delta-compatibility.json\"\n"
     shell: bash
   - name: Same socket, account pause, result delta and next turn
     env:
@@ -57,5 +59,9 @@ runs:
     with:
       name: sync-20261116-ws-unsent-delta-takeover-unsent-delta-${{ inputs.sync_matrix_phase }}-${{ github.event.pull_request.head.sha
         || github.sha }}
-      path: ${{ runner.temp }}/unsent-delta*.jsonl
+      path: '${{ runner.temp }}/unsent-delta*.jsonl
+
+        ${{ runner.temp }}/unsent-delta-compatibility.json
+
+        '
       if-no-files-found: error

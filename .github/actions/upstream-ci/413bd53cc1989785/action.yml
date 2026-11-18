@@ -49,9 +49,10 @@ runs:
       done\n# The pinned HTTP2 exclusion helper above already handles the handler\n# fixture absent from this baseline; do\
       \ not remove it a second time.\nbash \"$GITHUB_WORKSPACE/scripts/prepare-replay-red-fixtures.sh\" \"$baseline\" . \"\
       $EXPECTED_HEAD_SHA\" | tee \"$RUNNER_TEMP/issue805-evidence/replay-fixtures.txt\"\nbash \"$GITHUB_WORKSPACE/scripts/prepare-moderation-red-fixtures.sh\"\
-      \ \"$baseline\" . \"$EXPECTED_HEAD_SHA\" | tee \"$RUNNER_TEMP/issue805-evidence/moderation-fixtures.txt\"\n# The selected\
-      \ regression and its shared harness must remain exact\n# candidate blobs. The clean GREEN checkout retains all new tests.\n\
-      for target in backend/internal/handler/openai_issue805_delivery_test.go backend/internal/handler/openai_issue805_owner_policy_test.go\
+      \ \"$baseline\" . \"$EXPECTED_HEAD_SHA\" | tee \"$RUNNER_TEMP/issue805-evidence/moderation-fixtures.txt\"\nbash \"$GITHUB_WORKSPACE/scripts/prepare-usage-sort-red-fixture.sh\"\
+      \ \"$baseline\" . \"$EXPECTED_HEAD_SHA\" | tee -a \"$RUNNER_TEMP/issue805-evidence/red-blobs.txt\"\n# The selected regression\
+      \ and its shared harness must remain exact\n# candidate blobs. The clean GREEN checkout retains all new tests.\nfor\
+      \ target in backend/internal/handler/openai_issue805_delivery_test.go backend/internal/handler/openai_issue805_owner_policy_test.go\
       \ backend/internal/handler/openai_issue805_ws_test.go backend/internal/handler/openai_issue715_recovery_test.go backend/internal/handler/openai_responses_failover_cancel_test.go;\
       \ do\n  expected=$(git rev-parse \"$EXPECTED_HEAD_SHA:$target\")\n  actual=$(git hash-object \"$target\")\n  echo \"\
       $target test=candidate expected=$expected actual=$actual\" >> \"$RUNNER_TEMP/issue805-evidence/red-blobs.txt\"\n  test\

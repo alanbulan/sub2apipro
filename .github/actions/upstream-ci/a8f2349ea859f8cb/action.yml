@@ -30,7 +30,8 @@ runs:
       \n  printf '%s %s\\n' \"$candidate_blob\" \"$test_file\" >> evidence/retained-test-blobs.txt\ndone < evidence/retained-tests.txt\n\
       git -C \"$RUNNER_TEMP/oauth429-red\" diff --exit-code -- '*_test.go'\n# The retained helper references the new storage\
       \ field. Add only that\n# zero-value field after proving every original production blob above.\nbash scripts/oauth429-weekly-only-bridge-compat.sh\
-      \ \"$RUNNER_TEMP/oauth429-red\" \"$BASELINE\" | tee evidence/bridge-compat.txt\n# This later, unrelated regression requires\
+      \ \"$RUNNER_TEMP/oauth429-red\" \"$BASELINE\" | tee evidence/bridge-compat.txt\npython3 scripts/prepare-openai-usage-red-compat.py\
+      \ \"$RUNNER_TEMP/oauth429-red\" \"$BASELINE\" | tee evidence/usage-compat.json\n# This later, unrelated regression requires\
       \ the candidate-only WS\n# stream-phase helper. Exclude it only from this disposable old-source\n# checkout; GREEN explicitly\
       \ runs all six tests with candidate sources.\nexcluded=backend/internal/service/temp_unsched_pending_test.go\nif git\
       \ cat-file -e \"$BASELINE:$excluded\" 2>/dev/null; then echo 'historical-exclusion-baseline-present' >&2; exit 1; fi\n\
