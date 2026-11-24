@@ -74,11 +74,12 @@ func (s *FeishuKeyDeliveryService) workOne(parent context.Context) {
 		if b.Worker != s.workerID && b.LeaseUntil > time.Now().Unix() {
 			return nil
 		}
-		if b.Worker != s.workerID || b.LeaseUntil <= time.Now().Unix() {
-			for i := range b.Rows {
-				if b.Rows[i].Status == "sending" {
-					b.Rows[i].Status, b.Rows[i].Reason = "uncertain", "smtp_uncertain"
-				}
+		// workOne is serial within a worker. A leftover sending row owned by
+		// this worker means its SMTP result could not be persisted on the last
+		// tick. Do not keep extending that row's lease forever or resend it.
+		for i := range b.Rows {
+			if b.Rows[i].Status == "sending" {
+				b.Rows[i].Status, b.Rows[i].Reason = "uncertain", "smtp_uncertain"
 			}
 		}
 		b.Worker, b.LeaseUntil = s.workerID, time.Now().Add(5*time.Minute).Unix()

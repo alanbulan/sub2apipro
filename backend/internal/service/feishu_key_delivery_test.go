@@ -408,3 +408,26 @@ func TestFeishuKeyDeliverySMTPUncertainRequiresExplicitRetry(t *testing.T) {
 	require.Equal(t, 1, f.client.RedeemCode.Query().CountX(ctx))
 	require.Equal(t, 10.0, f.client.User.GetX(ctx, f.userID).Balance)
 }
+
+func TestFeishuKeyDeliveryRecoversLostResultWithoutExtendingSendingForever(t *testing.T) {
+	f := newFeishuKeyFixture(t)
+	ctx := context.Background()
+	s := f.service
+	p, err := s.Preview(ctx, 1, nil, true)
+	require.NoError(t, err)
+	_, err = s.Start(ctx, 1, p.ID)
+	require.NoError(t, err)
+	var b feishuKeyBatch
+	_, err = feishuReadJSON(ctx, f.client, feishuKeyJobPrefix+p.ID, &b)
+	require.NoError(t, err)
+	b.Worker = s.workerID
+	b.LeaseUntil = time.Now().Add(5 * time.Minute).Unix()
+	b.Rows[0].Status = "sending"
+	require.NoError(t, feishuWriteJSON(ctx, f.client, feishuKeyJobPrefix+b.ID, &b))
+	s.workOne(ctx)
+	current, err := s.Current(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "partial", current.Status)
+	require.Equal(t, 1, current.Uncertain)
+	require.Empty(t, f.mails)
+}
