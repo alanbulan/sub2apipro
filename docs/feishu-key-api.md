@@ -1,19 +1,32 @@
-# 飞书员工 API Key 发放与余额充值接口
+# 飞书员工同步、API Key 发放、充值与用量查询接口
 
 站点：`https://api.beaconchip-token.com`。接口统一前缀：`/api/v1`。
 
 用途：外部系统查询员工、指定一个或多个本站用户，创建或获取各自的企业专用 Key，然后自行处理后续交付。**这两个新接口均不发送邮件，也不创建邮件任务，不需要配置 SMTP。**
 
-本文也补充了系统**已经上线的用户余额充值接口**，见第 6 节，无需增加后端接口。充值和发放 Key 使用同一个管理员登录 Token。
+本文也包含系统**已经上线的用户余额充值、飞书人员同步和用户用量查询接口**，分别见第 6、7、8 节，无需增加后端接口。全部示例统一使用同一个管理员登录 Token。
+
+| 用途 | 方法与路径 | 章节 |
+| --- | --- | --- |
+| 管理员登录 | `POST /api/v1/auth/login` | 1 |
+| 查询员工及本站用户 ID | `GET /api/v1/admin/users/feishu-key-delivery/employees` | 2 |
+| 创建或复用专用 Key | `POST /api/v1/admin/users/feishu-key-delivery/issue` | 3 |
+| 单人／批量增加余额 | `POST /api/v1/admin/users/batch-recharge` | 6 |
+| 启动飞书人员同步 | `POST /api/v1/admin/users/feishu-sync` | 7 |
+| 查询同步进度 | `GET /api/v1/admin/users/feishu-sync` | 7 |
+| 查询指定用户的请求数、Token 与消费金额 | `GET /api/v1/admin/usage/stats?user_id=25` | 8 |
+| 批量查询用户消费金额 | `POST /api/v1/admin/dashboard/users-usage` | 8 |
 
 每人只有一把企业发放专用 Key，与用户管理页「一键发送 Key」共用。首次调用创建，以后返回同一把；员工自己创建的其他 Key 不受影响。首次赠额只记一次，重试或换入口调用不重复赠额。
 
 ## 最短调用流程
 
 1. 用管理员登录邮箱和密码登录，取得 `access_token`。
-2. 查员工列表，取得要发放的 `user_id`。
-3. 如果员工没有可用余额，且未配置首次赠额或有效订阅，先按第 6 节给用户账户充值。
-4. 调用创建接口，传 `{"user_id":25}` 或 `{"user_ids":[25,26]}`，读取返回的 `items[].key`。
+2. 有新员工尚未同步时，按第 7 节启动同步，并用 GET 等待同一任务完成。
+3. 查员工列表，取得 `synced:true` 且 `user_id>0` 的要发放人员。
+4. 如果员工没有可用余额，且未配置首次赠额或有效订阅，先按第 6 节给用户账户充值。
+5. 调用创建接口，传 `{"user_id":25}` 或 `{"user_ids":[25,26]}`，读取返回的 `items[].key`。
+6. 后续按第 8 节用本站 `user_id` 查询该员工的用量与消费金额。
 
 分组、首次赠额、Key 上限和有效期默认使用用户管理页「一键发送 Key」旁齿轮中的共享配置。也可以在请求里传一个 `group_id`，覆盖首次创建时的分组。
 
@@ -114,7 +127,7 @@ Authorization: Bearer <access_token>
 - `key_issued:true` 表示曾发放；即使原 Key 后来被禁用或删除，该记录仍保留。列表不返回完整 Key。
 - 查询时按 `pages` 取完所有分页。若要批量发放全部待发放人员，应**先收集完名单，再调用创建接口**，避免边发放边翻页导致 `key_issued=false` 的结果变化、跳过人员。
 
-需要通过接口启动已有的用户同步时：`POST /api/v1/admin/users/feishu-sync`，无请求体；用 `GET` 同一路径查询进度，等待 `status` 为 `succeeded` 后重新查询员工。同步沿用现有的飞书权限和发布流程，企业管理员审核仍需在飞书官方页面完成；失败时查看 `error_code`，不要把失败当作名单已完整同步。
+需要通过接口同步尚未建立本站账号的员工时，使用第 7 节的启动与进度查询接口。同步成功后重新查询本节列表，才能取得新创建的本站用户 ID。
 
 ## 3. 创建或获取 Key，不发送邮件
 
@@ -248,12 +261,14 @@ curl --fail-with-body -sS --max-time 125 \
 
 ```python
 import json
+import time
 import urllib.parse
 import urllib.request
+from datetime import date
 
 BASE = "https://api.beaconchip-token.com/api/v1"
 
-def request(path, token=None, body=None, idempotency_key=None):
+def request(path, token=None, body=None, idempotency_key=None, method=None):
     headers = {"User-Agent": "Sub2API-KeyProvision/1.0"}
     if token:
         headers["Authorization"] = "Bearer " + token
@@ -263,7 +278,7 @@ def request(path, token=None, body=None, idempotency_key=None):
     if body is not None:
         headers["Content-Type"] = "application/json"
         data = json.dumps(body).encode()
-    req = urllib.request.Request(BASE + path, data=data, headers=headers)
+    req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
     with urllib.request.urlopen(req, timeout=125) as response:
         payload = json.load(response)
     if payload["code"] != 0:
@@ -275,6 +290,25 @@ def login(email, password):
     if result.get("requires_2fa"):
         raise RuntimeError("请先完成本站登录 2FA，再使用 access_token")
     return result["access_token"]
+
+def sync_employees(token, timeout=960):
+    # POST 无请求体；服务端异步执行。之后只用 GET 轮询，不反复 POST。
+    job = request("/admin/users/feishu-sync", token, method="POST")
+    job_id = job["id"]
+    stop_at = time.monotonic() + timeout
+    while True:
+        if job is None or job["id"] != job_id:
+            raise RuntimeError("当前同步任务已过期或被替换，请人工核对")
+        if job["status"] == "succeeded":
+            return job
+        if job["status"] in ("partial", "failed", "approval_required"):
+            raise RuntimeError("同步未完整成功：" + json.dumps(job, ensure_ascii=False))
+        if job["status"] not in ("preparing", "reading", "syncing"):
+            raise RuntimeError("未知同步状态：" + str(job["status"]))
+        if time.monotonic() >= stop_at:
+            raise TimeoutError("等待超时；先 GET 查询原任务，不要直接重新启动")
+        time.sleep(3)
+        job = request("/admin/users/feishu-sync", token)
 
 def unissued_employees(token):
     # 先读取全部分页；此函数不会创建用户或 Key。
@@ -302,7 +336,37 @@ def recharge_users(token, user_ids, amount, request_id, notes=""):
         "user_ids": list(user_ids), "amount": amount, "notes": notes
     }, idempotency_key=request_id)
 
+def user_usage(token, user_id, period="today", start_date=None, end_date=None,
+               api_key_id=None):
+    # 必须传正数 user_id，避免退化为全站汇总；日期范围必须成对传入。
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        raise ValueError("user_id 必须是本站用户正整数 ID")
+    if (start_date is None) != (end_date is None):
+        raise ValueError("start_date 与 end_date 必须同时填写")
+    if start_date is None and period not in ("today", "week", "month"):
+        raise ValueError("period 仅支持 today、week、month")
+    query = {"user_id": user_id, "timezone": "Asia/Shanghai", "nocache": 1}
+    if start_date is not None:
+        first, last = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        if first.isoformat() != start_date or last.isoformat() != end_date or first > last:
+            raise ValueError("请传入开始不晚于结束的 YYYY-MM-DD 日期")
+        query.update(start_date=start_date, end_date=end_date)
+    else:
+        query["period"] = period
+    if api_key_id is not None:
+        if isinstance(api_key_id, bool) or not isinstance(api_key_id, int) or api_key_id <= 0:
+            raise ValueError("api_key_id 必须是 Key 的正整数 ID")
+        query["api_key_id"] = api_key_id
+    return request("/admin/usage/stats?" + urllib.parse.urlencode(query), token)
+
+def batch_user_costs(token, user_ids):
+    # 返回以字符串用户 ID 为键的字典；统计窗口固定，见第 8.2 节。
+    return request("/admin/dashboard/users-usage", token,
+                   {"user_ids": list(user_ids)})["stats"]
+
 # token = login(admin_email, admin_password)
+# 有新员工时先同步；返回成功后再读取名单。
+# sync_result = sync_employees(token)
 # employees = unissued_employees(token)
 # 需要充值时：每人增加 100；下一笔业务需换新 request_id。
 # recharge_users(token, [25, 26], 100, "employee-credit-20261124-001", "员工额度充值")
@@ -312,6 +376,10 @@ def recharge_users(token, user_ids, amount, request_id, notes=""):
 #         your_delivery_function(item["user_id"], item["key"])
 #     else:
 #         your_failure_handler(item["user_id"], item["reason"])
+# stats = user_usage(token, 25, start_date="2026-11-01", end_date="2026-11-24")
+# print(stats["total_requests"], stats["total_tokens"], stats["total_actual_cost"])
+# costs = batch_user_costs(token, [25, 26])
+# print(costs["25"]["today_actual_cost"])
 ```
 
 ## 6. 用户余额充值（现有接口，可直接调用）
@@ -415,6 +483,225 @@ curl --fail-with-body -sS --max-time 70 \
 
 余额调整记录中的 `value` 是该条调整金额，`notes` 是充值备注。按 `pages` 分页读取；查看是否完成充值时，把调用方保存的业务编号、请求体和备注一并用于对账。`Idempotency-Key` 不会作为独立字段出现在用户余额记录中，可以将业务编号写入 `notes` 便于查询。
 
+## 7. 同步飞书人员（现有接口）
+
+使用系统设置中已保存并启用的飞书应用；请求中不用再传应用密钥、企业 ID 或员工邮箱。同步按当前应用与企业的飞书身份绑定识别人，不按姓名或邮箱合并账号。
+
+### 7.1 启动同步
+
+`POST /api/v1/admin/users/feishu-sync`
+
+只需管理员 `Authorization` 请求头，**无请求体**，不需要 `Idempotency-Key`。返回 HTTP 200 表示后台任务已启动或复用了正在执行的任务，**不代表同步已完成**。
+
+```bash
+curl --fail-with-body -sS --max-time 125 -X POST \
+  'https://api.beaconchip-token.com/api/v1/admin/users/feishu-sync' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+返回任务对象：初始 `status` 是 `preparing`，`id` 用于识别本次任务。已有任务正在执行时返回原任务，不另开一份；任务结束后再 POST 才会新建任务。
+
+服务端先为当前应用配置通讯录只读权限、申请全员通讯录范围并提交发布，再读取部门和员工的全部分页。实际可读取范围受飞书审批结果限制；企业管理员仍需在官方页面完成必要的授权或审核。
+
+### 7.2 查询进度与结果
+
+`GET /api/v1/admin/users/feishu-sync`
+
+```bash
+curl --fail-with-body -sS --max-time 125 \
+  'https://api.beaconchip-token.com/api/v1/admin/users/feishu-sync' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+建议每 2–5 秒 GET 一次。该接口返回**全站当前／最近一份任务**，没有 `job_id` 查询参数；应核对返回的 `id` 与启动时一致。所有管理员看到同一份进度，关闭页面不会取消任务。每次进度保存的有效期为 1 小时；没有可用任务记录时返回 `{"code":0,"message":"success","data":null}`。
+
+完成示例（演示数据）：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "id": "启动接口返回的任务ID",
+    "status": "succeeded",
+    "total": 20,
+    "processed": 20,
+    "created": 3,
+    "updated": 16,
+    "skipped": 1,
+    "failed": 0,
+    "emails_filled": 3,
+    "emails_missing": 0,
+    "emails_conflict": 0,
+    "emails_protected": 0,
+    "emails_unchanged": 16,
+    "started_at": 1795492800,
+    "deadline": 1795493700
+  }
+}
+```
+
+| `status` | 含义与后续动作 |
+| --- | --- |
+| `preparing` | 配置权限和提交应用发布；继续 GET |
+| `reading` | 读取飞书通讯录；继续 GET |
+| `syncing` | 创建或更新本站用户；继续 GET |
+| `succeeded` | 遍历完成且没有单人写入失败；重新查询第 2 节员工列表，取得新的 `user_id` |
+| `partial` | 遍历完成但有单人失败，`failed>0`；已成功人员保留，不要按全员成功处理 |
+| `approval_required` | 权限／审批不足；按 `error_code` 处理，完成飞书审批后重新 POST |
+| `failed` | 整体任务失败；检查 `error_code`，已完成的单人同步不会整体回滚 |
+
+后台执行时限为 **15 分钟**。`started_at` 与 `deadline` 是 Unix 秒时间戳。`total` 是通讯录读取并按应用内 `open_id` 去重后的记录数；读取阶段可能仍为 0。`processed` 是已处理数量；`created`、`updated`、`skipped`、`failed` 分别为新建、已有账号处理成功、跳过和单人失败数量，`updated` 不表示每人的资料都发生了变化。
+
+| 可选 `error_code` | 处理 |
+| --- | --- |
+| `permission_required` | 当前实现识别到通讯录字段、权限或审批不足；到飞书处理权限与发布审核 |
+| `expired` | 超过任务执行时限；先核对已同步的名单，再决定是否重新启动 |
+| `config_changed` | 同步期间飞书配置已变化；核对当前应用和企业后重新启动 |
+| `upstream_error` | 飞书接口返回错误；核对应用发布状态、权限和可访问范围 |
+| `service_error` | 本站服务或任务存储异常；查看服务日志后重试 |
+
+`error_code` 没有值时可能省略；`partial` 的单人失败不会另附逐人错误列表。客户端等待超时或网络断开时，先 GET 查询原任务，不要直接连续 POST。
+
+### 7.3 同步会修改什么
+
+- 在职、已激活且未冻结的员工会创建普通用户，用户名取飞书姓名；已有身份绑定复用原本站用户。离职、未加入等状态跳过；本站已禁用用户也跳过。站点开启“仅管理后台”模式时，会阻止创建新普通用户。
+- 首次创建沿用飞书注册渠道的默认余额、并发和订阅等配置；重复同步不会重新发放注册赠额。同步不创建企业专用 Key、不执行第 6 节批量充值、不发送邮件。
+- 邮箱优先取飞书 **`enterprise_email`（企业邮箱）**，不可用时取 **`email`（联系邮箱）**。只回填飞书注册账号的占位邮箱，不覆盖已有真实邮箱，也不会因为邮箱相同而把两个账号合并。
+- 邮箱计数：`emails_filled` 已回填；`emails_missing` 无可用邮箱；`emails_conflict` 邮箱已被占用；`emails_protected` 保留现有邮箱；`emails_unchanged` 无需修改。即使 `succeeded`，也应核对邮箱缺失、冲突等计数；这不等于每人都有可发送的真实邮箱。
+- 当前流程不会因某人从通讯录消失而自动删除或禁用其本站账号。员工离职停用需由现有账户管理流程处理。
+
+同步任务不返回新用户的 ID 列表。**完成后再 GET 第 2 节员工接口**，以 `synced:true`、`user_id>0` 为准；需要找待发放人员时加 `key_issued=false`，取完所有分页再批量发放。
+
+## 8. 查询用户用量与消费金额（现有真实统计接口）
+
+### 8.1 指定用户：请求数、Token 与消费金额
+
+`GET /api/v1/admin/usage/stats`
+
+使用同一个管理员登录 Token。本文查询员工时必须明确传入**正整数本站 `user_id`**；不传或传非正数会失去用户过滤，可能变成全站汇总。接口不会仅凭“统计结果为 0”证明该用户存在，应先从第 2 节取得 ID。
+
+| 查询参数 | 本文用法 | 说明 |
+| --- | --- | --- |
+| `user_id` | 必填 | 本站用户 ID；如 `25` |
+| `period` | 可选 | `today`（默认）、`week`、`month`，含义见下文 |
+| `start_date`、`end_date` | 可选，成对填写 | `YYYY-MM-DD`，开始日期不晚于结束日期；同时填写时覆盖 `period` |
+| `timezone` | 建议填写 | 如 `Asia/Shanghai`；未填或无效时回退服务器时区 |
+| `api_key_id` | 可选 | Key 的数据库数字 ID；与 `user_id` 同时过滤，可只查发放响应中的 `key_id`，不要传完整 Key |
+| `group_id` | 可选 | 只查指定分组；不传则包含该用户各分组 |
+| `nocache` | 可选 | `1` 绕过统计缓存直接查库；默认统计缓存 TTL 为 30 秒 |
+
+`today` 是所选时区当天 00:00 至现在；`week` 是从当前时间往前 7 天至现在；`month` 是从当前时间往前一个月至现在，**不是自然月，也不等同固定 30 天**。不要使用未实现的 `period=all`，未知值会回退为今天。
+
+日期范围包含 `end_date` 整天：如 `2026-11-01` 至 `2026-11-24`，查询边界为所选时区的 11 月 1 日 00:00（含）至 11 月 25 日 00:00（不含）。两个日期必须一起传；只填一个会被现有实现忽略，转而按 `period` 查询。
+
+```bash
+# 查询员工今天的全部 Key 用量。
+curl --fail-with-body -sS --max-time 125 --get \
+  'https://api.beaconchip-token.com/api/v1/admin/usage/stats' \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'user_id=25' \
+  --data-urlencode 'period=today' \
+  --data-urlencode 'timezone=Asia/Shanghai' \
+  --data-urlencode 'nocache=1'
+
+# 查询指定日期范围；如仅查企业专用 Key，再加 --data-urlencode 'api_key_id=101'。
+curl --fail-with-body -sS --max-time 125 --get \
+  'https://api.beaconchip-token.com/api/v1/admin/usage/stats' \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'user_id=25' \
+  --data-urlencode 'start_date=2026-11-01' \
+  --data-urlencode 'end_date=2026-11-24' \
+  --data-urlencode 'timezone=Asia/Shanghai' \
+  --data-urlencode 'nocache=1'
+```
+
+成功响应示例（演示数据，省略可选的接口维度明细）：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total_requests": 12,
+    "total_input_tokens": 10000,
+    "total_output_tokens": 2000,
+    "total_cache_tokens": 3000,
+    "total_cache_creation_tokens": 1000,
+    "total_cache_read_tokens": 2000,
+    "total_tokens": 15000,
+    "total_cost": 1.50,
+    "total_actual_cost": 1.20,
+    "total_account_cost": 0.90,
+    "average_duration_ms": 850
+  }
+}
+```
+
+| 返回字段 | 含义 |
+| --- | --- |
+| `total_requests` | 匹配条件的已入库使用日志条数；此接口未排除零费用日志，不能当作成功请求数 |
+| `total_input_tokens`、`total_output_tokens` | 输入／输出 Token 合计 |
+| `total_cache_creation_tokens`、`total_cache_read_tokens` | 缓存创建／读取 Token 合计 |
+| `total_cache_tokens` | 上面两个缓存字段之和 |
+| `total_tokens` | 输入 + 输出 + 缓存 Token；已包含缓存，不能再重复加缓存量 |
+| `total_actual_cost` | 用户计费口径的消费金额，包含实际分组倍率等计费结果；金额单位沿用本站美元计费口径 |
+| `total_cost` | 日志中的标准费用合计；不是用户余额，也不等同实际消费金额 |
+| `total_account_cost` | 来源账号统计费用；核对员工消费时使用 `total_actual_cost` |
+| `average_duration_ms` | 平均请求耗时，毫秒 |
+
+统计按已入库日志计算，正在执行或尚未完成异步入库的请求可能尚未出现，`nocache=1` 也不会等待其完成。没有匹配日志时返回零值。只传 `user_id` 会累计该用户全部 Key；增加 `api_key_id` 才只查某一把。
+
+消费金额和余额是两个查询：余额仍用第 6.3 节的 `GET /api/v1/admin/users/25` 读取 `data.balance`。`total_actual_cost` 可包括订阅计费记录，因此不能直接用“充值总额减此值”推算当前现金余额。
+
+**不要使用 `GET /api/v1/admin/users/:id/usage` 做本次对接。**当前代码中的这个旧接口仍是固定返回零值的占位实现；本节使用的 `/admin/usage/stats` 会查询真实使用日志。
+
+### 8.2 批量查询用户消费金额
+
+`POST /api/v1/admin/dashboard/users-usage`
+
+这是只读查询，使用同一个管理员 Token，不需要 `Idempotency-Key`，不会扣费。请求体只需本站用户 ID 数组：
+
+```json
+{ "user_ids": [25, 26] }
+```
+
+```bash
+curl --fail-with-body -sS --max-time 125 \
+  'https://api.beaconchip-token.com/api/v1/admin/dashboard/users-usage' \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"user_ids":[25,26]}'
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "stats": {
+      "25": { "user_id": 25, "today_actual_cost": 1.20, "total_actual_cost": 12.50 },
+      "26": { "user_id": 26, "today_actual_cost": 0, "total_actual_cost": 0 }
+    }
+  }
+}
+```
+
+- `data.stats` 是以**字符串用户 ID**为键的对象，不是数组；Python 读 `result["stats"]["25"]`。可选 `by_platform` 是按平台拆分的同口径金额。
+- `today_actual_cost` 为**服务器时区**当天的用户消费金额；`total_actual_cost` 在这个批量接口中是**最近 30 天至查询时刻**的用户消费金额，**不是历史累计**。
+- 本接口仅汇总 `actual_cost>0` 的使用日志，不返回请求数或 Token。要按自定义日期、时区或 Key 查询，逐用户调用 8.1。
+- 请求不支持 `period`、起止日期或 `timezone`，不要向请求体追加这些参数并期待其生效。结果缓存 TTL 为 30 秒；本接口没有实现 `nocache` 参数。
+- 正数 ID 自动去重；没有用量时返回零值，非正数会被忽略。不存在的正数 ID 也可能返回零值，不能据此确认员工存在；始终先取本站员工列表。
+
+### 8.3 本文核对范围
+
+本次按当前已上线版本的路由、处理器、服务与数据库查询代码逐项核对，包括同步任务状态、邮箱字段、统计时间边界、缓存及费用字段。新增内容是现有接口的说明与调用示例，没有修改后端行为，不需要重新部署。
+
+核对代码依据：[同步任务与状态](https://github.com/alanbulan/sub2apipro/blob/612cee25c704b43487cedb291c5a35b77cff00a7/backend/internal/service/feishu_directory.go)、[用量参数解析](https://github.com/alanbulan/sub2apipro/blob/612cee25c704b43487cedb291c5a35b77cff00a7/backend/internal/handler/admin/usage_handler.go#L221)、[用量与批量消费 SQL](https://github.com/alanbulan/sub2apipro/blob/612cee25c704b43487cedb291c5a35b77cff00a7/backend/internal/repository/usage_log_repo_stats.go)、[旧用量接口的占位实现](https://github.com/alanbulan/sub2apipro/blob/612cee25c704b43487cedb291c5a35b77cff00a7/backend/internal/service/admin_user.go#L703)。链接固定到本次核对的版本。
+
+按项目要求未在本地运行测试或构建；未使用真实管理员凭证执行线上同步、充值、发放或认证后的用量查询。文中的 JSON 均为结构示例，不是线上实测数据。
+
 ## 错误与原有登录策略
 
 | 情况 | 处理 |
@@ -422,6 +709,10 @@ curl --fail-with-body -sS --max-time 70 \
 | HTTP 400 | 检查参数、ID、默认/指定分组与服务端发放配置 |
 | HTTP 401 | Token 缺失、失效或会话已撤销；重新登录或刷新 |
 | HTTP 403 | 需要管理员登录 JWT，或现有安全策略要求二次验证 |
+| 同步 HTTP 404 / `OAUTH_DISABLED` | 系统设置中的飞书登录未启用；先配置并启用 |
+| 同步 HTTP 400 / `FEISHU_CONFIG_INVALID`、`FEISHU_REDIRECT_INVALID` | 系统设置中的当前飞书应用或回调配置不完整／无效 |
+| 同步 HTTP 409 / `FEISHU_SETUP_BUSY` | 其他飞书配置操作占用锁；稍后先 GET 查询任务，再决定是否重试 POST |
+| 用量查询 HTTP 400 | 检查数字 ID、成对的 `YYYY-MM-DD` 日期等；不要传姓名、邮箱或完整 Key 代替 ID |
 | 充值 HTTP 400，提示 `Idempotency-Key is required` 或 `IDEMPOTENCY_KEY_REQUIRED` | 补上 `Idempotency-Key`，检查正数金额和用户 ID；批量接口每次最多 500 个 ID |
 | 充值 HTTP 409 / `IDEMPOTENCY_KEY_CONFLICT` | 同一个幂等键对应了不同请求；核对业务记录，不要换键盲目重试 |
 | 充值 HTTP 409 / `IDEMPOTENCY_IN_PROGRESS`、`IDEMPOTENCY_RETRY_BACKOFF` | 原请求处理中或处于退避期，按 `Retry-After` 等待后复用原键与请求体重试 |
@@ -438,7 +729,7 @@ curl --fail-with-body -sS --max-time 70 \
 | `config_changed` | 飞书应用已切换；重新查询当前企业员工 |
 | `service_error` | 单人事务未完成或读取失败，可重试原参数 |
 
-如果登录返回 `requires_2fa:true`，将 `temp_token` 和 `totp_code` 提交到 `POST /api/v1/auth/login/2fa`，取得正式 `access_token`。如果发放返回 `STEP_UP_REQUIRED`，用同一 Token 调用 `POST /api/v1/user/totp/step-up`，请求体 `{"code":"六位验证码"}`，成功后重试发放。未启用这些策略时不增加额外步骤。
+如果登录返回 `requires_2fa:true`，将 `temp_token` 和 `totp_code` 提交到 `POST /api/v1/auth/login/2fa`，取得正式 `access_token`。如果发放或启动同步返回 `STEP_UP_REQUIRED`，用同一 Token 调用 `POST /api/v1/user/totp/step-up`，请求体 `{"code":"六位验证码"}`，成功后重试原操作。未启用这些策略时不增加额外步骤。
 
 开启登录验证码时，`/auth/login` 仍需要原有的 `turnstile_token`，或腾讯验证码的 `tencent_captcha_ticket` 与 `tencent_captcha_randstr`。也可使用已经在本站完成登录的管理员 Token；不会为此接口绕过验证码。启用会话 IP/UA 绑定时保持同一出口和 User-Agent。
 
