@@ -39,7 +39,8 @@ for migration in archive['migrations']:
 # Dedicated sources must survive even when upstream renames shared entry points.
 for path in ['backend/internal/service/auth_feishu_auto.go', 'backend/internal/service/feishu_key_api.go',
              'backend/internal/service/intelligence_schedule.go', 'backend/internal/service/conversation_log.go',
-             'frontend/src/views/user/PoolDashboardView.vue', 'frontend/src/utils/authStorage.ts']:
+             'frontend/src/views/user/PoolDashboardView.vue', 'frontend/src/utils/authStorage.ts',
+             'backend/internal/repository/feishu_key_transaction_test.go']:
     require(bool(read(path)), f'Missing Pro feature: {path}')
 # Only the current reviewed merge may clear this gate, immediately before an
 # owner-authorized production promotion. Branch checks do not need this flag.

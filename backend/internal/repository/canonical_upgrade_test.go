@@ -178,6 +178,7 @@ func TestCanonicalMigrationFreshInstall(t *testing.T) {
 	testCanonicalPolicyBridge(t, ctx, db)
 	testCanonicalIntelligenceLease(t, ctx, db)
 	testCanonicalIntelligenceHistory(t, ctx, db)
+	testCanonicalFeishuKeyTransaction(t, ctx, db)
 }
 
 func testCanonicalPolicyBridge(t *testing.T, ctx context.Context, db *sql.DB) {

@@ -170,3 +170,6 @@ frontend/src/components/admin/account/__tests__/PelicanRecordsDashboard.spec.ts
 frontend/src/components/admin/account/__tests__/PelicanTestFields.spec.ts
 frontend/src/components/admin/account/__tests__/ScheduledTestsPanel.pelican.spec.ts
 frontend/src/components/admin/account/__tests__/ScheduledTestsPanel.results.spec.ts
+
+# Real canonical repositories must participate in employee key provisioning transactions.
+backend/internal/repository/feishu_key_transaction_test.go
