@@ -1,0 +1,59 @@
+name: Prepare current repair image
+on:
+  push:
+    branches: ['codex/actions-queue-reset-20261124']
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: prepare-current-repair-image
+  cancel-in-progress: true
+jobs:
+  prepare-image:
+    name: Prepare image while the corrected integration checks run
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 60866db2336c96ec26f3902837d0fc2a60aaea6a
+      - name: Verify the exact authorized source is still current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          expected = '60866db2336c96ec26f3902837d0fc2a60aaea6a'
+          request = urllib.request.Request('https://api.github.com/repos/' + os.environ['GH_REPOSITORY'] + '/git/ref/heads/main', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(request, timeout=25) as response:
+              actual = json.load(response)['object']['sha']
+          if actual != expected:
+              raise SystemExit('Main changed; no image will be prepared.')
+          PY
+          test "$(git rev-parse HEAD)" = '60866db2336c96ec26f3902837d0fc2a60aaea6a'
+          python3 scripts/check-pro-contract.py --deployment
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve exact image inputs
+        id: source
+        run: |
+          echo "version=$(tr -d '\r\n' < backend/cmd/server/VERSION)" >> "$GITHUB_OUTPUT"
+          echo "date=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Prepare immutable image and shared build cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ghcr.io/alanbulan/sub2apipro:sha-60866db2336c96ec26f3902837d0fc2a60aaea6a
+          build-args: |
+            VERSION=${{ steps.source.outputs.version }}
+            COMMIT=60866db2336c96ec26f3902837d0fc2a60aaea6a
+            DATE=${{ steps.source.outputs.date }}
+          cache-from: type=gha,scope=application-image
+          cache-to: type=gha,mode=max,scope=application-image
