@@ -1,4 +1,6 @@
 export default {
+  "unlimited": "不限额",
+  "limitsSummary": "当前余额 ${balance} · Key 上限 {quota}",
   "retryStatus": "重新读取进度",
   "action": "一键发送 Key",
   "settings": "Key 发放设置",

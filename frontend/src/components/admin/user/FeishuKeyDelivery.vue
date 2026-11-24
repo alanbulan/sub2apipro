@@ -38,7 +38,7 @@
               </tr></thead>
               <tbody class="divide-y divide-gray-100 dark:divide-dark-700"><tr v-for="(row, index) in display.rows" :key="`${row.user_id}-${index}`">
                 <td class="p-3">{{ row.name || `ID ${row.user_id}` }}</td><td class="max-w-64 break-all p-3">{{ row.email || '—' }}</td>
-                <td class="p-3"><span>{{ t(row.reuse ? 'feishuKeyDelivery.reuse' : 'feishuKeyDelivery.create') }}</span><p class="max-w-64 text-xs text-gray-500">{{ row.group_names?.join('、') || '—' }}</p></td>
+                <td class="p-3"><span>{{ t(row.reuse ? 'feishuKeyDelivery.reuse' : 'feishuKeyDelivery.create') }}</span><p class="max-w-64 text-xs text-gray-500">{{ row.group_names?.join('、') || '—' }}</p><p class="mt-1 text-xs text-gray-500">{{ t('feishuKeyDelivery.limitsSummary', { balance: money(row.balance), quota: row.quota > 0 ? '$' + money(row.quota) : t('feishuKeyDelivery.unlimited') }) }}</p></td>
                 <td class="p-3">${{ money(row.grant) }}</td><td class="p-3"><span :class="row.status === 'sent' ? 'text-emerald-600' : row.reason ? 'text-amber-600' : ''">{{ t(`feishuKeyDelivery.states.${row.status}`) }}</span><p v-if="row.reason" class="max-w-64 text-xs text-gray-500">{{ t(`feishuKeyDelivery.reasons.${row.reason}`) }}</p></td>
               </tr></tbody>
             </table>

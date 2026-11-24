@@ -1,4 +1,6 @@
 export default {
+  "unlimited": "Unlimited",
+  "limitsSummary": "Current balance ${balance} · Key limit {quota}",
   "retryStatus": "Reload progress",
   "action": "Send employee keys",
   "settings": "Key delivery settings",
