@@ -146,7 +146,7 @@
                 <div class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="displayName">
                   {{ displayName }}
                 </div>
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
+                <div v-if="accountLabel" class="truncate text-xs text-gray-500 dark:text-dark-400" :title="accountLabel">{{ accountLabel }}</div>
               </div>
 
               <!-- Balance (mobile only) -->

@@ -13,7 +13,6 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/authguard"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/feishu"
 )
@@ -58,7 +57,7 @@ func (s *AuthService) ensureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 	defer func() { _ = tx.Rollback() }()
 	// Keep the request's abuse/rate checks, but do not count verified employees
 	// sharing an office IP against the public signup lifetime account limit.
-	txCtx := dbent.NewTxContext(authguard.WithoutRegistrationIP(ctx), tx)
+	txCtx := dbent.NewTxContext(ctx, tx)
 	release, err := lockAuthPendingIdentityKeys(txCtx, tx.Client(), "feishu-provision:"+providerKey+":"+info.OpenID)
 	if err != nil {
 		return nil, false, err

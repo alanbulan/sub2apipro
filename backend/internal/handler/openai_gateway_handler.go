@@ -3073,8 +3073,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			MaxReasoningEffort:          maxReasoningEffort,
 			MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
 			ReasoningEffortMappings:     reasoningEffortMappings,
-			TurnStarted:                 recordTurnStart,
+			TurnStarted:                 func(turn int, at time.Time) { recordTurnStart(turn, at); conversationRecorder.setTurnStarted(turn, at) },
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				conversationRecorder.beginTurn(turn, payload, originalModel, getTurnStart(turn))
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)

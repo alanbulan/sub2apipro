@@ -6,6 +6,7 @@
     @close="handleClose"
   >
     <div class="space-y-4">
+      <p v-if="modelLoadError" role="alert" class="text-sm text-amber-600">{{ modelLoadError }}</p>
       <!-- Account Info Card -->
       <div
         v-if="account"
@@ -365,7 +366,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { getAuthItem, AUTH_TOKEN_KEY } from '@/utils/authStorage'
+import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -412,6 +414,7 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
+const modelLoadError = ref('')
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
@@ -426,8 +429,8 @@ const uploadAudioDataURL = ref('')
 const uploadAudioName = ref('')
 const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
-const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
-const isGrokAccount = computed(() => props.account?.platform === 'grok')
+const isOpenAIAccount = computed(() => account.value?.platform === 'openai')
+const isGrokAccount = computed(() => account.value?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
@@ -740,7 +743,7 @@ const pickDefaultModelForMode = () => {
 watch(
   () => props.show,
   async (newVal) => {
-    if (newVal && props.account) {
+    if (newVal && account.value) {
       testPrompt.value = ''
       testMode.value = 'default'
       grokTestMode.value = 'text'
@@ -770,8 +773,8 @@ const loadAvailableModels = async () => {
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
-    availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
+    const models = props.poolContext ? await getPoolDiagnosticModels(props.poolContext) : await adminAPI.accounts.getAvailableModels(account.value.id)
+    availableModels.value = account.value.platform === 'gemini' || account.value.platform === 'antigravity'
       ? sortTestModels(models)
       : models
     if (props.poolContext && !models.length) modelLoadError.value = t('poolDashboard.noTestModels')
@@ -893,7 +896,7 @@ const startTest = async () => {
         'Content-Type': 'application/json',
         ...(!props.poolContext ? { [ADMIN_UI_REQUEST_HEADER]: '1' } : {})
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(props.poolContext ? { model_id: selectedModelId.value } : requestBody),
       signal: abortController.signal
     })
 

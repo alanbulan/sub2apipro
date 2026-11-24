@@ -7,6 +7,7 @@ import channelMonitorV2 from './channelMonitorV2'
 import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
+import intelligence from './intelligence'
 import feishu from './feishu'
 import feishuKeyDelivery from './feishuKeyDelivery'
 import poolDashboard from './poolDashboard'
@@ -21,7 +22,8 @@ export default {
   ...batchImage,
   admin,
   ...misc,
-  ...feishu,
-  ...feishuKeyDelivery,
-  ...poolDashboard,
+  ...intelligence,
+  feishu,
+  feishuKeyDelivery,
+  poolDashboard,
 }

@@ -19,7 +19,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/authguard"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/feishu"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -316,7 +315,7 @@ func TestFeishuProvisioningIsAtomic(t *testing.T) {
 
 func TestFeishuConcurrentProvisioningAndIdentityIsolation(t *testing.T) {
 	h, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{settingValues: feishuTestSettings()})
-	ctx := authguard.WithRegistrationIP(context.Background(), "192.0.2.10")
+	ctx := context.Background()
 	cfg, err := h.settingSvc.GetFeishuOAuthConfig(ctx)
 	require.NoError(t, err)
 	info := &feishu.UserInfo{OpenID: "ou_employee", TenantKey: "company_1", Name: "同名员工"}

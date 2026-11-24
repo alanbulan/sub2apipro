@@ -8,7 +8,7 @@ export default {
   "smtpMissing": "The shared sender is not fully configured. Configure SMTP and send a test email first.",
   "mailSettings": "Open email settings",
   "groups": "Groups for new keys",
-  "groupsHint": "Select 1–20 active groups. Existing permissions are preserved. Subscription groups require an active employee subscription.",
+  "groupsHint": "Select one active group. Existing permissions are preserved. Subscription groups require an active employee subscription.",
   "subscription": "Subscription",
   "limitsHint": "Initial credit is granted once; 0 means no gift. A quota or window limit of 0 means unlimited. Expiry 0 means no expiry; concurrency 0 inherits user limits. Key quotas do not fund balances.",
   "contactFallback": "Allow Feishu contact email when enterprise email is missing (off by default)",

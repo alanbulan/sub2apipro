@@ -3308,11 +3308,13 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 			}
 		}
 	}
-	if stream, ok := c.Request.Context().Value(poolTestStreamKey{}).(*poolTestStream); ok {
-		for _, safe := range stream.events(event) {
-			s.writeTestEvent(c, safe)
+	if c.Request != nil {
+		if stream, ok := c.Request.Context().Value(poolTestStreamKey{}).(*poolTestStream); ok {
+			for _, safe := range stream.events(event) {
+				s.writeTestEvent(c, safe)
+			}
+			return
 		}
-		return
 	}
 	s.writeTestEvent(c, event)
 }

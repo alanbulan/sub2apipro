@@ -8911,6 +8911,7 @@
 </template>
 
 <script setup lang="ts">
+import FeishuSettings from "@/components/settings/FeishuSettings.vue";
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { listPlatformIds } from "@/constants/platformCatalog";
 import { useI18n } from "vue-i18n";

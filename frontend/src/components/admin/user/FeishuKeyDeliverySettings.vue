@@ -8,13 +8,13 @@
       </div>
       <div>
         <label for="feishu-key-groups" class="input-label">{{ t('feishuKeyDelivery.groups') }}</label>
-        <Select id="feishu-key-groups" v-model="draft.group_ids" :options="groupOptions" multiple searchable :disabled="saving" />
+        <Select id="feishu-key-groups" v-model="selectedGroup" :options="groupOptions" searchable :disabled="saving" />
         <p class="mt-1 text-xs text-gray-500">{{ t('feishuKeyDelivery.groupsHint') }}</p>
       </div>
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div v-for="field in numericFields" :key="field">
           <label :for="`feishu-key-${field}`" class="input-label">{{ t(`feishuKeyDelivery.fields.${field}`) }}</label>
-          <input :id="`feishu-key-${field}`" v-model.number="draft[field]" class="input" type="number" min="0" :max="field === 'expires_in_days' ? 3650 : field === 'concurrency' ? 10000 : 1000000000" :step="field === 'expires_in_days' || field === 'concurrency' ? 1 : '0.00000001'" required :disabled="saving" />
+          <input :id="`feishu-key-${field}`" v-model.number="draft[field]" class="input" type="number" min="0" :max="field === 'expires_in_days' ? 3650 : 1000000000" :step="field === 'expires_in_days' ? 1 : '0.00000001'" required :disabled="saving" />
         </div>
       </div>
       <p class="text-xs text-gray-500">{{ t('feishuKeyDelivery.limitsHint') }}</p>
@@ -65,7 +65,8 @@ const draft = ref<FeishuKeyConfig | null>(null)
 const groups = ref<AdminGroup[]>([])
 const saving = ref(false)
 const smtpConfigured = ref(false)
-const numericFields = ['initial_balance', 'quota', 'expires_in_days', 'concurrency', 'rate_limit_5h', 'rate_limit_1d', 'rate_limit_7d'] as const
+const numericFields = ['initial_balance', 'quota', 'expires_in_days', 'rate_limit_5h', 'rate_limit_1d', 'rate_limit_7d'] as const
+const selectedGroup = computed({ get: () => draft.value?.group_ids[0] ?? '', set: (value: string | number | null) => { if (draft.value) draft.value.group_ids = Number(value) > 0 ? [Number(value)] : [] } })
 const groupOptions = computed(() => groups.value.map(g => ({ value: g.id, label: `${g.name}${g.subscription_type === 'subscription' ? ' · ' + t('feishuKeyDelivery.subscription') : ''}` })))
 watch(() => props.show, async show => {
   if (!show) return

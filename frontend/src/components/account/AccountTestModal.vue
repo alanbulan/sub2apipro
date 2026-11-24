@@ -242,6 +242,7 @@
 </template>
 
 <script setup lang="ts">
+import { getAuthItem, AUTH_TOKEN_KEY } from '@/utils/authStorage'
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
