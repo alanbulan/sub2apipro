@@ -1,195 +1,59 @@
-name: Reset Actions queue and restart current candidate
-
+name: Cancel superseded deployment only
 on:
   push:
     branches: ['codex/actions-queue-reset-*']
-
 permissions:
   contents: read
   actions: write
-
 concurrency:
   group: actions-queue-reset
   cancel-in-progress: true
-
 jobs:
-  reset:
-    # This task only calls GitHub's API; keep it outside the Linux test queue.
+  cancel-superseded:
     runs-on: windows-latest
-    timeout-minutes: 40
-    # Cancel the old production gate before requesting a runner, otherwise its
-    # large matrix can keep this API-only maintenance task behind the queue.
-    # The restarted deployment waits for this job to release the group.
-    concurrency:
-      group: production-deploy
-      cancel-in-progress: true
+    timeout-minutes: 5
     steps:
-      - name: Cancel outstanding runs and restart checks before deployment
+      - name: Cancel the obsolete deployment and retain current main
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
-          CONTROL_RUN: ${{ github.run_id }}
-          CONTROL_BRANCH: ${{ github.ref_name }}
-          EXPECTED_MAIN_SHA: 0226a1f40e4019243544c19c476e8b537394809d
-          RESTART_CANDIDATE: 'false'
-          PYTHONUNBUFFERED: '1'
+          EXPECTED_MAIN_SHA: 3704be2c6ea3801dd2d99ecfa805c5b8e6037b2d
+          OLD_SHA: 266bdcf8bf52337893ed48ce9e035b5272cb7d30
+          OLD_RUN_ID: '45339001312'
         shell: python {0}
         run: |
-          import datetime
-          import json
-          import os
-          import time
-          import urllib.error
-          import urllib.parse
-          import urllib.request
-
-          if not os.environ['CONTROL_BRANCH'].startswith('codex/actions-queue-reset-'):
-              raise SystemExit('This one-time control is restricted to its maintenance branch.')
-          repository = os.environ['GH_REPOSITORY']
-          base = 'https://api.github.com/repos/' + repository
-          own_id = int(os.environ['CONTROL_RUN'])
-          expected_sha = os.environ['EXPECTED_MAIN_SHA']
-          active_states = ('queued', 'in_progress', 'waiting', 'pending', 'requested')
-          headers = {
-              'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-          }
-
-          def api(path, method='GET', body=None, conflict_ok=False):
-              data = None if method == 'GET' else (json.dumps(body).encode() if body is not None else b'')
-              request_headers = dict(headers)
-              if body is not None:
-                  request_headers['Content-Type'] = 'application/json'
-              request = urllib.request.Request(base + path, method=method, data=data, headers=request_headers)
-              for attempt in range(4):
-                  try:
-                      with urllib.request.urlopen(request, timeout=30) as response:
-                          content = response.read()
-                          return json.loads(content) if content else None
-                  except urllib.error.HTTPError as error:
-                      if conflict_ok and error.code == 409:
-                          return None
-                      if error.code in (429, 502, 503, 504) and attempt < 3:
-                          time.sleep(5 * (attempt + 1))
-                          continue
-                      raise SystemExit('GitHub API failed: ' + method + ' ' + path + ' HTTP ' + str(error.code))
-
-          def summary(line):
-              print(line, flush=True)
-              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as output:
-                  output.write(line + '\n')
-
-          def assert_candidate():
-              current = api('/git/ref/heads/main')['object']['sha']
-              if current != expected_sha:
-                  raise SystemExit('Main changed; refusing to restart a different candidate: ' + current)
-
-          def outstanding():
-              runs = {}
-              for state in active_states:
-                  page = 1
-                  while True:
-                      query = urllib.parse.urlencode({'status': state, 'per_page': 100, 'page': page})
-                      chunk = api('/actions/runs?' + query)['workflow_runs']
-                      for run in chunk:
-                          if run['id'] != own_id and run['status'] != 'completed':
-                              runs[run['id']] = run
-                      if len(chunk) < 100:
-                          break
-                      page += 1
-              return runs
-
-          assert_candidate()
-          summary('Resetting outstanding repository runs at ' + datetime.datetime.now(datetime.timezone.utc).isoformat())
-          cancelled = {}
-          deadline = time.monotonic() + 360
-          empty_passes = 0
-          while time.monotonic() < deadline:
-              active = outstanding()
-              if not active:
-                  empty_passes += 1
-                  if empty_passes >= 2:
-                      break
+          import json, os, time, urllib.error, urllib.request
+          base = 'https://api.github.com/repos/' + os.environ['GH_REPOSITORY']
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
+          def api(path, method='GET'):
+              request = urllib.request.Request(base + path, headers=headers, method=method, data=None if method == 'GET' else b'')
+              try:
+                  with urllib.request.urlopen(request, timeout=25) as response:
+                      body = response.read()
+                      return json.loads(body) if body else None
+              except urllib.error.HTTPError as error:
+                  if method == 'POST' and error.code == 409:
+                      return None
+                  raise SystemExit('GitHub API returned HTTP ' + str(error.code))
+          current = api('/git/ref/heads/main')['object']['sha']
+          if current != os.environ['EXPECTED_MAIN_SHA']:
+              raise SystemExit('Main changed; preserving every workflow.')
+          path = '/actions/runs/' + os.environ['OLD_RUN_ID']
+          run = api(path)
+          if run['head_sha'] != os.environ['OLD_SHA'] or run['head_branch'] != 'main' or run['name'] != 'Build and Deploy':
+              raise SystemExit('The obsolete run identity does not match; preserving it.')
+          if run['status'] != 'completed':
+              api(path + '/cancel', 'POST')
+              for attempt in range(24):
                   time.sleep(5)
-                  continue
-              empty_passes = 0
-              for run_id, run in active.items():
-                  age = time.monotonic() - cancelled.get(run_id, time.monotonic())
-                  if run_id not in cancelled:
-                      api('/actions/runs/' + str(run_id) + '/cancel', 'POST', conflict_ok=True)
-                      cancelled[run_id] = time.monotonic()
-                      print('Cancel requested:', run_id, run['name'], run['head_branch'], flush=True)
-                  elif age >= 45:
-                      # GitHub documents force-cancel for runs ignoring /cancel,
-                      # including reusable workflows and always() cleanup jobs.
-                      api('/actions/runs/' + str(run_id) + '/force-cancel', 'POST', conflict_ok=True)
-                      print('Force cancel requested:', run_id, flush=True)
-              time.sleep(10)
-          else:
-              raise SystemExit('The old queue did not clear; no replacement runs were started.')
-          summary('Queue cleared. Cancellation requested for ' + str(len(cancelled)) + ' outstanding runs.')
-          if os.environ.get('RESTART_CANDIDATE') == 'false':
-              summary('Queue cleanup only: the canonical-upstream migration requires review before production deployment.')
-              raise SystemExit(0)
-          assert_candidate()
-
-          def workflow_runs(filename):
-              query = urllib.parse.urlencode({'branch': 'main', 'per_page': 50})
-              return api('/actions/workflows/' + filename + '/runs?' + query)['workflow_runs']
-
-          def dispatch(filename, inputs=None):
-              assert_candidate()
-              before = {run['id'] for run in workflow_runs(filename)}
-              body = {'ref': 'main'}
-              if inputs is not None:
-                  body['inputs'] = inputs
-              api('/actions/workflows/' + filename + '/dispatches', 'POST', body)
-              for _ in range(30):
-                  for run in workflow_runs(filename):
-                      if run['id'] not in before and run['head_sha'] == expected_sha and run['event'] == 'workflow_dispatch':
-                          summary('Restarted ' + filename + ': ' + run['html_url'])
-                          return (run['id'], 1)
-                  time.sleep(2)
-              raise SystemExit('Dispatched run did not appear: ' + filename)
-
-          focused = dispatch('feishu-key-delivery.yml')
-          registration = dispatch('feishu-registration-contract.yml')
-          # Security Scan has no dispatch trigger, so rerun its existing exact-SHA
-          # main run after clearing the queue. No source changes are needed.
-          security_candidates = [run for run in workflow_runs('security-scan.yml') if run['head_sha'] == expected_sha]
-          if not security_candidates:
-              raise SystemExit('No current-main security run exists to restart.')
-          security = security_candidates[0]
-          if security['status'] != 'completed':
-              raise SystemExit('Security run was not cleared before restart.')
-          next_attempt = security['run_attempt'] + 1
-          api('/actions/runs/' + str(security['id']) + '/rerun', 'POST')
-          summary('Restarted security-scan.yml: ' + security['html_url'])
-          pending = {
-              focused[0]: ('Feishu key checks', focused[1]),
-              registration[0]: ('Feishu registration contract', registration[1]),
-              security['id']: ('Security Scan', next_attempt),
-          }
-          deadline = time.monotonic() + 1800
-          last_states = {}
-          while pending and time.monotonic() < deadline:
-              for run_id, (label, attempt) in list(pending.items()):
-                  run = api('/actions/runs/' + str(run_id))
-                  state = (run['run_attempt'], run['status'], run['conclusion'])
-                  if last_states.get(run_id) != state:
-                      print(label, run_id, state, flush=True)
-                      last_states[run_id] = state
-                  if run['run_attempt'] < attempt or run['status'] != 'completed':
-                      continue
-                  if run['head_sha'] != expected_sha or run['conclusion'] != 'success':
-                      raise SystemExit(label + ' did not pass; deployment was not restarted. ' + run['html_url'])
-                  summary(label + ' passed: ' + run['html_url'])
-                  del pending[run_id]
-              if pending:
-                  time.sleep(15)
-          if pending:
-              raise SystemExit('Focused checks did not finish within 30 minutes; deployment was not restarted.')
-          assert_candidate()
-          deployment = dispatch('build-and-deploy.yml', {'deploy': 'true'})
-          summary('Current candidate ' + expected_sha + ' is now in the complete production CI gate. Image publication and deployment remain gated by that workflow.')
+                  run = api(path)
+                  if run['status'] == 'completed':
+                      break
+                  if attempt == 9:
+                      api(path + '/force-cancel', 'POST')
+              else:
+                  raise SystemExit('The superseded run has not stopped.')
+          message = 'Superseded deployment ' + os.environ['OLD_RUN_ID'] + ': ' + str(run['conclusion']) + '. Current main deployment was not canceled or restarted.'
+          print(message)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as output:
+              output.write(message + '\n')
