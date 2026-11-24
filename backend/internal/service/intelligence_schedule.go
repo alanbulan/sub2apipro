@@ -34,8 +34,8 @@ func ValidateIntelligenceConfig(c *PelicanTestConfig) error {
 	if c.ParallelCount == 0 {
 		c.ParallelCount = 1
 	}
-	if c.ParallelCount < 1 || c.ParallelCount > 4 {
-		return errors.New("parallel count must be between 1 and 4")
+	if c.ParallelCount < 1 || c.ParallelCount > 8 {
+		return errors.New("parallel count must be between 1 and 8")
 	}
 	if c.QuestionKind == OpenAICodexStateProbeQuestionKind && c.ParallelCount != 1 {
 		return errors.New("state probe runs once per account")

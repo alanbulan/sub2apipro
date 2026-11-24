@@ -11,7 +11,7 @@ import (
 func TestIntelligencePlanRejectsUnsafeAndRetiredPolicy(t *testing.T) {
 	for _, cfg := range []*PelicanTestConfig{
 		{QuestionKind: "unknown", ParallelCount: 1},
-		{QuestionKind: "candy", ParallelCount: 5},
+		{QuestionKind: "candy", ParallelCount: 9},
 		{QuestionKind: "state_probe", ParallelCount: 2},
 		{QuestionKind: "pelican", ReasoningEffort: "invented", ParallelCount: 1},
 	} {
@@ -76,4 +76,9 @@ func TestIntelligenceSchedulesRequireSuccessfulCompletion(t *testing.T) {
 	text, failure := parseIntelligenceSSEOutput("data: {\"type\":\"content\",\"text\":\"42\"}\n\ndata: {\"type\":\"test_complete\",\"success\":true}\n\n")
 	require.Equal(t, "42", text)
 	require.Empty(t, failure)
+}
+
+func TestIntelligencePlanPreservesOriginalEightSampleSchedule(t *testing.T) {
+	plan := &ScheduledTestPlan{ModelID: "fixture-model", MaxResults: 100, PelicanConfig: &PelicanTestConfig{QuestionKind: "candy", ParallelCount: 8}}
+	require.NoError(t, validateIntelligencePlan(plan), "existing Pro schedules retain their eight-sample setting")
 }

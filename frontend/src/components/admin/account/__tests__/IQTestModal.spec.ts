@@ -129,6 +129,15 @@ describe('IQTestModal', () => {
     wrapper.unmount()
   })
 
+  it('preserves the original eight-sample administrator test', async () => {
+    const wrapper = mountModal()
+    ;(wrapper.vm as any).parallelCount = 8
+    await (wrapper.vm as any).startTest()
+    expect(global.fetch).toHaveBeenCalledTimes(8)
+    expect((wrapper.vm as any).runs).toHaveLength(8)
+    wrapper.unmount()
+  })
+
   it('uses the dedicated endpoint and sends identical settings to parallel runs', async () => {
     const wrapper = mountModal()
     ;(wrapper.vm as any).selectQuestion('pelican')

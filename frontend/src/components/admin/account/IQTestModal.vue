@@ -500,7 +500,7 @@ function normalizeCount(): number {
   if (props.poolContext) return 1
   const value = Number(parallelCount.value)
   if (!Number.isFinite(value)) return 1
-  return Math.min(4, Math.max(1, Math.floor(value)))
+  return Math.min(8, Math.max(1, Math.floor(value)))
 }
 
 function readRecords() {

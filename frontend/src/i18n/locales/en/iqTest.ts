@@ -47,7 +47,7 @@ export default {
         reasoningMax: 'Max',
         reasoningUltra: 'Ultra',
         parallel: 'Parallel runs',
-        parallelHint: 'Up to 4 outputs can be generated for the same account at once.',
+        parallelHint: 'Up to 8 outputs can be generated for the same account at once.',
         results: 'New Test',
         history: 'Test records',
         running: 'Generating {count} output(s)',

@@ -47,7 +47,7 @@ export default {
         reasoningMax: '最大',
         reasoningUltra: 'Ultra',
         parallel: '并行数',
-        parallelHint: '同一账号最多同时生成 4 份结果。',
+        parallelHint: '同一账号最多同时生成 8 份结果。',
         results: '新建测试',
         history: '测试记录',
         running: '正在生成 {count} 份结果',
