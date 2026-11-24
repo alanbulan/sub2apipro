@@ -75,11 +75,14 @@ func (s *ScheduledTestService) DeletePlan(ctx context.Context, id int64) error {
 }
 
 // ListResults returns the most recent results for a plan.
-func (s *ScheduledTestService) ListResults(ctx context.Context, planID int64, limit int) ([]*ScheduledTestResult, error) {
+func (s *ScheduledTestService) ListResults(ctx context.Context, planID int64, limit int, includeContent ...bool) ([]*ScheduledTestResult, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	return s.resultRepo.ListByPlanID(ctx, planID, limit)
+	if limit > 200 {
+		limit = 200
+	}
+	return s.resultRepo.ListByPlanID(ctx, planID, limit, includeContent...)
 }
 
 // SaveResult inserts a result and prunes old entries beyond maxResults.

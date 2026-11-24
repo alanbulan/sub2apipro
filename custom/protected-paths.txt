@@ -152,3 +152,21 @@ backend/internal/service/account_test_reasoning.go
 backend/internal/service/account_test_reasoning_test.go
 frontend/src/utils/intelligenceHistory.ts
 docs/canonical-upstream-migration.md
+frontend/src/router/__tests__/pool-route.spec.ts
+
+# Original Pro IQ interface, history cards and compatible canonical adapters.
+frontend/src/components/admin/account/PelicanRecordsDashboard.vue
+frontend/src/components/admin/account/PelicanTestFields.vue
+frontend/src/components/admin/account/TestModelSelect.vue
+frontend/src/api/admin/intelligence.ts
+frontend/src/i18n/locales/en/iqTest.ts
+frontend/src/i18n/locales/zh/iqTest.ts
+backend/internal/service/intelligence_history.go
+backend/internal/repository/intelligence_history.go
+backend/internal/handler/admin/intelligence_history.go
+backend/internal/repository/intelligence_history_test.go
+frontend/src/components/admin/account/__tests__/IQTestModal.spec.ts
+frontend/src/components/admin/account/__tests__/PelicanRecordsDashboard.spec.ts
+frontend/src/components/admin/account/__tests__/PelicanTestFields.spec.ts
+frontend/src/components/admin/account/__tests__/ScheduledTestsPanel.pelican.spec.ts
+frontend/src/components/admin/account/__tests__/ScheduledTestsPanel.results.spec.ts

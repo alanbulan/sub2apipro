@@ -59,3 +59,21 @@ func (h *AccountHandler) ProbeIntelligenceState(c *gin.Context) {
 	}
 	response.Success(c, result)
 }
+
+// GetIntelligenceReasoning uses the same model capability resolver as scoped pool tests.
+func (h *AccountHandler) GetIntelligenceReasoning(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	model := strings.TrimSpace(c.Query("model_id"))
+	if err != nil || id <= 0 || model == "" || len(model) > 100 {
+		response.BadRequest(c, "Invalid account or model")
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
+	defer cancel()
+	account, err := h.adminService.GetAccount(ctx, id)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	response.Success(c, h.accountTestService.GetAccountTestReasoning(ctx, account, model))
+}

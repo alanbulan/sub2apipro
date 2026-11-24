@@ -520,7 +520,8 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/account-pool',
+    path: '/pool-dashboard',
+    alias: '/account-pool',
     name: 'UserAccountPool',
     component: () => import('@/views/user/PoolDashboardView.vue'),
     meta: { requiresAuth: true, requiresAdmin: false, title: 'Account Pool', titleKey: 'nav.accountPool' }

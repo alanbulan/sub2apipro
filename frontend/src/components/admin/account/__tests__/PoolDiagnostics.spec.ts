@@ -12,6 +12,9 @@ vi.mock('@/api/poolDashboard', async original => ({
   getPoolDiagnosticReasoning: reasoning
 }))
 vi.mock('@/api/admin', () => ({ adminAPI: { accounts: { getAvailableModels: adminModels } } }))
+vi.mock('@/api/admin/accounts', () => ({ getAvailableModels: adminModels }))
+vi.mock('@/api/admin/intelligence', () => ({ getModelReasoning: vi.fn().mockResolvedValue({ supported_reasoning_levels: ['medium'], default_reasoning_level: 'medium' }), probeOpenAICodexState: vi.fn() }))
+vi.mock('@/api/admin/scheduledTests', () => ({ scheduledTestsAPI: { listPelicanHistory: vi.fn().mockResolvedValue({ items: [], next_cursor: 0 }), getResult: vi.fn() } }))
 vi.mock('vue-i18n', async original => ({
   ...await original<typeof import('vue-i18n')>(),
   useI18n: () => ({ t: (key: string) => key })
@@ -92,7 +95,8 @@ it('retains administrator IQ history written by the previous upstream UI', async
   adminModels.mockResolvedValue([{id:'gpt-6-astra'}])
   const wrapper = mount(IQTestModal, {props:{show:true,account:context.account as any},global:{stubs,plugins:[createPinia()]}})
   await flushPromises()
-  await wrapper.get('[data-testid="manual-history"] button').trigger('click')
-  expect(wrapper.text()).toContain('legacy answer')
+  await wrapper.get('[data-testid="open-records"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('[data-testid="records-panel"]').text()).toContain('legacy answer')
   wrapper.unmount()
 })

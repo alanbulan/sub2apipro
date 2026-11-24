@@ -160,7 +160,7 @@ func (h *ScheduledTestHandler) ListResults(c *gin.Context) {
 		limit = l
 	}
 
-	results, err := h.scheduledTestSvc.ListResults(c.Request.Context(), planID, limit)
+	results, err := h.scheduledTestSvc.ListResults(c.Request.Context(), planID, limit, c.Query("include_content") != "false")
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

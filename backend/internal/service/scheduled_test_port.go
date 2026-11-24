@@ -56,9 +56,22 @@ type ScheduledTestPlanRepository interface {
 	UpdateAfterRun(ctx context.Context, id int64, lastRunAt time.Time, nextRunAt time.Time) error
 }
 
+// PelicanHistoryResult contains only the account name needed by the IQ record cards.
+type PelicanHistoryResult struct {
+	ScheduledTestResult
+	AccountID   int64  `json:"account_id"`
+	AccountName string `json:"account_name"`
+}
+type PelicanHistoryPage struct {
+	Items      []*PelicanHistoryResult `json:"items"`
+	NextCursor int64                   `json:"next_cursor"`
+}
+
 // ScheduledTestResultRepository defines the data access interface for test results.
 type ScheduledTestResultRepository interface {
+	GetResult(ctx context.Context, planID, resultID int64) (*ScheduledTestResult, error)
+	ListPelicanHistory(ctx context.Context, beforeID int64, limit int, accountID int64) ([]*PelicanHistoryResult, error)
 	Create(ctx context.Context, result *ScheduledTestResult) (*ScheduledTestResult, error)
-	ListByPlanID(ctx context.Context, planID int64, limit int) ([]*ScheduledTestResult, error)
+	ListByPlanID(ctx context.Context, planID int64, limit int, includeContent ...bool) ([]*ScheduledTestResult, error)
 	PruneOldResults(ctx context.Context, planID int64, keepCount int) error
 }

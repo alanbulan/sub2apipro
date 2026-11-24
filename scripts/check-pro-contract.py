@@ -29,7 +29,7 @@ for job in ['shell', 'test', 'frontend', 'golangci-lint', 'release-helpers', 'pr
 for command in ['make test-unit', 'make test-integration', 'make test-frontend']:
     require(command in ci, f'Missing canonical check: {command}')
 pro = read('.github/workflows/pro-ci.yml')
-for command in ['TestCanonicalMigration', 'rememberMePro.spec.ts', 'pnpm build', 'upstream-sync-ci.test.cjs']:
+for command in ['TestCanonicalMigration', 'rememberMePro.spec.ts', 'pnpm build', 'upstream-sync-ci.test.cjs', 'pool-route.spec.ts', 'IQTestModal.spec.ts', 'PelicanRecordsDashboard.spec.ts', 'ScheduledTestsPanel.pelican.spec.ts']:
     require(command in pro, f'Missing Pro validation: {command}')
 archive = json.loads(read('custom/legacy-migrations/manifest.json'))
 for migration in archive['migrations']:

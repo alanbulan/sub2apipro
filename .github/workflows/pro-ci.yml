@@ -96,10 +96,21 @@ jobs:
       - name: Pro themes, authentication, Feishu, keys, pool and IQ regressions
         working-directory: frontend
         run: |
-          pnpm exec vitest run src/__tests__/rememberMePro.spec.ts src/__tests__/useAppTheme.spec.ts src/stores/__tests__/auth.spec.ts src/views/auth/__tests__/LoginView.spec.ts src/views/admin/__tests__/UsersView.spec.ts src/components/account/__tests__/PoolQuotaCard.spec.ts src/components/settings/FeishuSettings.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts src/components/layout/__tests__/AppHeader.feishu.spec.ts src/views/user/__tests__/PoolDashboardView.spec.ts src/components/admin/account/__tests__/PoolDiagnostics.spec.ts src/views/admin/__tests__/ConversationLogsView.spec.ts src/api/__tests__/intelligence.spec.ts
+          pnpm exec vitest run src/__tests__/rememberMePro.spec.ts src/__tests__/useAppTheme.spec.ts src/stores/__tests__/auth.spec.ts src/views/auth/__tests__/LoginView.spec.ts src/views/admin/__tests__/UsersView.spec.ts src/components/account/__tests__/PoolQuotaCard.spec.ts src/components/settings/FeishuSettings.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts src/components/layout/__tests__/AppHeader.feishu.spec.ts src/views/user/__tests__/PoolDashboardView.spec.ts src/components/admin/account/__tests__/PoolDiagnostics.spec.ts src/views/admin/__tests__/ConversationLogsView.spec.ts src/api/__tests__/intelligence.spec.ts src/router/__tests__/pool-route.spec.ts src/components/admin/account/__tests__/IQTestModal.spec.ts src/components/admin/account/__tests__/PelicanRecordsDashboard.spec.ts src/components/admin/account/__tests__/PelicanTestFields.spec.ts src/components/admin/account/__tests__/ScheduledTestsPanel.pelican.spec.ts src/components/admin/account/__tests__/ScheduledTestsPanel.results.spec.ts > "$RUNNER_TEMP/pro-ui-tests.log" 2>&1 || {
+            cat "$RUNNER_TEMP/pro-ui-tests.log"
+            python3 ../scripts/ci-failure-summary.py "$RUNNER_TEMP/pro-ui-tests.log"
+            exit 1
+          }
+          cat "$RUNNER_TEMP/pro-ui-tests.log"
       - name: Build production frontend
         working-directory: frontend
-        run: pnpm build
+        run: |
+          pnpm build > "$RUNNER_TEMP/pro-ui-build.log" 2>&1 || {
+            cat "$RUNNER_TEMP/pro-ui-build.log"
+            python3 ../scripts/ci-failure-summary.py "$RUNNER_TEMP/pro-ui-build.log"
+            exit 1
+          }
+          cat "$RUNNER_TEMP/pro-ui-build.log"
 
       - name: Retain frontend for embedded server validation
         uses: actions/upload-artifact@v4

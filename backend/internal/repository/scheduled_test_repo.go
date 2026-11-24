@@ -116,14 +116,14 @@ func (r *scheduledTestResultRepository) Create(ctx context.Context, result *serv
 	return out, nil
 }
 
-func (r *scheduledTestResultRepository) ListByPlanID(ctx context.Context, planID int64, limit int) ([]*service.ScheduledTestResult, error) {
+func (r *scheduledTestResultRepository) ListByPlanID(ctx context.Context, planID int64, limit int, includeContent ...bool) ([]*service.ScheduledTestResult, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, plan_id, status, response_text, error_message, latency_ms, started_at, finished_at, created_at, pelican_config
+		SELECT id, plan_id, status, CASE WHEN $3 THEN response_text ELSE '' END, error_message, latency_ms, started_at, finished_at, created_at, pelican_config
 		FROM scheduled_test_results
 		WHERE plan_id = $1
 		ORDER BY created_at DESC
 		LIMIT $2
-	`, planID, limit)
+	`, planID, limit, len(includeContent) == 0 || includeContent[0])
 	if err != nil {
 		return nil, err
 	}

@@ -177,6 +177,7 @@ func TestCanonicalMigrationFreshInstall(t *testing.T) {
 	require.Equal(t, len(files), n)
 	testCanonicalPolicyBridge(t, ctx, db)
 	testCanonicalIntelligenceLease(t, ctx, db)
+	testCanonicalIntelligenceHistory(t, ctx, db)
 }
 
 func testCanonicalPolicyBridge(t *testing.T, ctx context.Context, db *sql.DB) {

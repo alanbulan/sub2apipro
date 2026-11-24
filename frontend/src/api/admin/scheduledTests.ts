@@ -64,17 +64,35 @@ export async function deletePlan(id: number): Promise<void> {
  * @param limit - Optional max number of results to return
  * @returns List of test results
  */
-export async function listResults(planId: number, limit?: number): Promise<ScheduledTestResult[]> {
+export async function listResults(planId: number, limit?: number, includeContent = true): Promise<ScheduledTestResult[]> {
   const { data } = await apiClient.get<ScheduledTestResult[]>(
     `/admin/scheduled-test-plans/${planId}/results`,
     {
-      params: limit ? { limit } : undefined
+      params: { limit, include_content: includeContent }
     }
   )
   return data ?? []
 }
 
+export async function getResult(planId: number, resultId: number): Promise<ScheduledTestResult> {
+  const { data } = await apiClient.get<ScheduledTestResult>(`/admin/scheduled-test-plans/${planId}/results/${resultId}`)
+  return data
+}
+
+export interface PelicanHistoryResult extends ScheduledTestResult {
+  account_id: number
+  account_name: string
+}
+// accountId narrows the history to one account; omit it for every account.
+export async function listPelicanHistory(beforeId = 0, accountId?: number): Promise<{ items: PelicanHistoryResult[]; next_cursor: number }> {
+  const params = accountId ? { before_id: beforeId, account_id: accountId } : { before_id: beforeId }
+  const { data } = await apiClient.get('/admin/pelican-test-results', { params })
+  return data
+}
+
 export const scheduledTestsAPI = {
+  getResult,
+  listPelicanHistory,
   listByAccount,
   create,
   update,

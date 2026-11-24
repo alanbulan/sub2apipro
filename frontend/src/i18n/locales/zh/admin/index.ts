@@ -1,3 +1,4 @@
+import iqTest from '../iqTest'
 import overview from './overview'
 import channels from './channels'
 import accounts from './accounts'
@@ -12,6 +13,7 @@ export default {
   ...overview,
   ...channels,
   ...accounts,
+  accounts: { ...accounts.accounts, pelicanTest: iqTest },
   ...resources,
   ...ops,
   ...settings,
