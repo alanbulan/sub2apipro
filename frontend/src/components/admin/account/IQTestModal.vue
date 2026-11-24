@@ -541,8 +541,9 @@ function editSchedule(config: PelicanTestConfig, model: string) {
   if (running.value) return
   modelId.value = model
   // Probe history previews do not change the manual question form.
-  if (config.question_kind && config.question_kind !== 'candy' && config.question_kind !== 'pelican') return
-  questionKind.value = config.question_kind || 'pelican'
+  const kind = config.question_kind || 'pelican'
+  if (kind !== 'candy' && kind !== 'pelican') return
+  questionKind.value = kind
   prompt.value = config.prompt
   modelId.value = model
   reasoningEffort.value = config.reasoning_effort
