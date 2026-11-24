@@ -105,3 +105,4 @@ backend/internal/handler/admin/feishu_key_api.go
 backend/internal/handler/admin/feishu_key_api_test.go
 docs/feishu-key-api.md
 backend/internal/server/routes/feishu_key_api_test.go
+backend/internal/server/routes/feishu_settings.go
