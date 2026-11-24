@@ -195,3 +195,20 @@ func TestFeishuKeyAPIRejectsInvalidScopeAndInactiveEmployee(t *testing.T) {
 	require.Empty(t, out.Items[0].Key)
 	require.Zero(t, f.client.APIKey.Query().CountX(ctx))
 }
+
+func TestFeishuKeyAPIExplicitGroupCannotSilentlyReassignExistingKey(t *testing.T) {
+	f := newFeishuKeyFixture(t)
+	ctx := context.Background()
+	first, err := f.service.IssueKeys(ctx, 1, FeishuKeyIssueRequest{UserID: f.userID})
+	require.NoError(t, err)
+	require.Equal(t, 1, first.Created)
+	other := f.client.Group.Create().SetName("Other pool").SetPlatform(PlatformOpenAI).SetStatus(StatusActive).SaveX(ctx)
+	second, err := f.service.IssueKeys(ctx, 1, FeishuKeyIssueRequest{UserID: f.userID, GroupID: other.ID})
+	require.NoError(t, err)
+	require.Equal(t, 1, second.Failed)
+	require.Equal(t, "group_mismatch", second.Items[0].Reason)
+	require.Empty(t, second.Items[0].Key)
+	require.Equal(t, 1, f.client.APIKey.Query().CountX(ctx))
+	require.Equal(t, 10.0, f.client.User.GetX(ctx, f.userID).Balance)
+	require.Equal(t, 1, f.client.RedeemCode.Query().CountX(ctx))
+}

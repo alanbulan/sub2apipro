@@ -272,7 +272,9 @@ func (s *FeishuKeyDeliveryService) IssueKeys(ctx context.Context, actor int64, r
 					err = s.keys.autoCreditBilling.InvalidateUserBalance(ctx, id)
 				}
 				key, keyErr := s.keys.apiKeyRepo.GetByID(ctx, r.KeyID)
-				if err != nil || keyErr != nil || key == nil || key.UserID != id || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() {
+				if err != nil {
+					item.Reason = "service_error"
+				} else if keyErr != nil || key == nil || key.UserID != id || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() {
 					item.Reason = "key_unavailable"
 				} else {
 					item.Status = "created"

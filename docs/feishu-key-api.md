@@ -307,6 +307,7 @@ def issue_keys(token, user_ids, group_id=None):
 | HTTP 400 | 检查参数、ID、默认/指定分组与服务端发放配置 |
 | HTTP 401 | Token 缺失、失效或会话已撤销；重新登录或刷新 |
 | HTTP 403 | 需要管理员登录 JWT，或现有安全策略要求二次验证 |
+| HTTP 423 / `ADMIN_COMPLIANCE_ACK_REQUIRED` | 该管理员需先在现有管理页面完成一次站点确认，再重试；沿用全站管理接口策略 |
 | HTTP 429 | 触发站点现有限流，退避后重试 |
 | 批次内 `identity_mismatch` | 此 ID 没有当前应用/企业的唯一飞书绑定；从员工接口重新取 ID |
 | `inactive_employee` / `inactive_user` | 飞书员工或本站用户不可用 |
