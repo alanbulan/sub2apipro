@@ -11,7 +11,6 @@ import (
 var usageStatsCache = newSnapshotCache(30 * time.Second)
 
 type usageStatsCacheKeyData struct {
-	Platform              string `json:"platform"`
 	StartTime             string `json:"start_time"`
 	EndTime               string `json:"end_time"`
 	UserID                int64  `json:"user_id"`
@@ -30,14 +29,13 @@ type usageStatsCacheKeyData struct {
 func usageStatsCacheKey(filters usagestats.UsageLogFilters) string {
 	start := ""
 	if filters.StartTime != nil {
-		start = filters.StartTime.UTC().Format(time.RFC3339Nano)
+		start = filters.StartTime.UTC().Format(time.RFC3339)
 	}
 	end := ""
 	if filters.EndTime != nil {
-		end = filters.EndTime.UTC().Format(time.RFC3339Nano)
+		end = filters.EndTime.UTC().Format(time.RFC3339)
 	}
 	return mustMarshalDashboardCacheKey(usageStatsCacheKeyData{
-		Platform:              filters.Platform,
 		StartTime:             start,
 		EndTime:               end,
 		UserID:                filters.UserID,

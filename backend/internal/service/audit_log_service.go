@@ -28,11 +28,9 @@ type AuditLogService struct {
 
 	queue chan *AuditLog
 
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	writerOnce    sync.Once
-	retentionOnce sync.Once
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	droppedCount uint64
 	writeFailed  uint64
@@ -52,30 +50,12 @@ func NewAuditLogService(repo AuditLogRepository, settingService *SettingService)
 
 // Start 启动异步写入与保留期清理协程。
 func (s *AuditLogService) Start() {
-	s.StartWriter()
-	s.StartRetentionCleanup()
-}
-
-// StartWriter drains this process's audit queue, including on gateway replicas.
-func (s *AuditLogService) StartWriter() {
 	if s == nil || s.repo == nil {
 		return
 	}
-	s.writerOnce.Do(func() {
-		s.wg.Add(1)
-		go s.runWriter()
-	})
-}
-
-// StartRetentionCleanup maintains the shared audit table; only full nodes start it.
-func (s *AuditLogService) StartRetentionCleanup() {
-	if s == nil || s.repo == nil {
-		return
-	}
-	s.retentionOnce.Do(func() {
-		s.wg.Add(1)
-		go s.runRetentionLoop()
-	})
+	s.wg.Add(2)
+	go s.runWriter()
+	go s.runRetentionLoop()
 }
 
 // Stop 停止服务并尽量落盘队列中剩余记录。

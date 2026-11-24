@@ -1,3 +1,0 @@
-{"type":"progress","status":"active","error":null}
-{"type":"heartbeat"}
-{"type":"result","payload":{"status":"success","credential":{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":"synthetic-id"}}}

@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -21,55 +19,6 @@ import (
 
 type compositeRouteRepoStub struct {
 	routes []service.CompositeModelRoute
-}
-
-func TestCompositeUltraSuffixPolicySurvivesRouteRewrite(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	for _, path := range []string{"/v1/responses", "/v1/chat/completions", "/v1/messages"} {
-		t.Run(path, func(t *testing.T) {
-			resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{routes: []service.CompositeModelRoute{{
-				ID: 1, GroupID: 1, PublicModel: "staff-ultra", UpstreamModel: "gpt-6.1-sol",
-				TargetPlatform: service.PlatformOpenAI, MatchType: service.CompositeRouteMatchExact,
-				Endpoint: service.CompositeRouteEndpointAny, Enabled: true,
-			}}})
-			cfg := &config.Config{}
-			billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
-			t.Cleanup(billing.Stop)
-			h := handler.NewOpenAIGatewayHandler(&service.OpenAIGatewayService{}, service.NewConcurrencyService(nil),
-				billing, &service.APIKeyService{}, nil, nil, nil, nil, cfg)
-			router := gin.New()
-			router.Use(func(c *gin.Context) {
-				groupID := int64(1)
-				c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 1, GroupID: &groupID,
-					Group: &service.Group{ID: groupID, Platform: service.PlatformComposite, AllowMessagesDispatch: true,
-						ReasoningEffortMappings: []service.ReasoningEffortMapping{{From: "ultra", To: "deny", Model: "staff-ultra", MatchType: "exact"}}},
-					User: &service.User{ID: 2, Status: service.StatusActive},
-				})
-				c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 2})
-			})
-			router.Use(compositeTargetPlatformMiddleware(resolver))
-			router.Use(func(c *gin.Context) {
-				body, err := io.ReadAll(c.Request.Body)
-				require.NoError(t, err)
-				require.Contains(t, string(body), `"model":"gpt-6.1-sol"`)
-				requestmodel.ResetRequestBody(c.Request, body)
-			})
-			switch path {
-			case "/v1/responses":
-				router.POST(path, h.Responses)
-			case "/v1/chat/completions":
-				router.POST(path, h.ChatCompletions)
-			case "/v1/messages":
-				router.POST(path, h.Messages)
-			}
-			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"staff-ultra","messages":[],"input":"test","max_tokens":16}`))
-			req.Header.Set("Content-Type", "application/json")
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
-			require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-			require.Contains(t, rec.Body.String(), "ultra")
-		})
-	}
 }
 
 func (s compositeRouteRepoStub) ListByGroup(ctx context.Context, groupID int64, includeDisabled bool) ([]service.CompositeModelRoute, error) {
@@ -465,4 +414,84 @@ func TestCompositeLiveRouteDispatchesBySessionModelNotTopLevelAlias(t *testing.T
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+// A route that rewrites the model to a Claude 5.5 model also rewrites a
+// thinking mode that model rejects into the nearest one it accepts; a route
+// that keeps the client's model leaves thinking as the client sent it.
+func TestCompositeTargetPlatformMiddlewareAdaptsThinkingToRewrittenModel(t *testing.T) {
+	cases := []struct {
+		name          string
+		publicModel   string
+		upstreamModel string
+		thinking      string
+		wantThinking  string
+	}{
+		{
+			name:          "enabled becomes adaptive on opus 5.5",
+			publicModel:   "claude-sonnet-5",
+			upstreamModel: "claude-opus-5-5",
+			thinking:      `{"type":"enabled","budget_tokens":4096}`,
+			wantThinking:  `{"type":"adaptive"}`,
+		},
+		{
+			name:          "disabled becomes between_tools on sonnet 5.5",
+			publicModel:   "claude-sonnet-5",
+			upstreamModel: "claude-sonnet-5-5",
+			thinking:      `{"type":"disabled"}`,
+			wantThinking:  `{"type":"between_tools"}`,
+		},
+		{
+			name:          "model not rewritten keeps enabled",
+			publicModel:   "claude-opus-5-5",
+			upstreamModel: "claude-opus-5-5",
+			thinking:      `{"type":"enabled","budget_tokens":4096}`,
+			wantThinking:  `{"type":"enabled","budget_tokens":4096}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{
+				routes: []service.CompositeModelRoute{{
+					ID:             1,
+					GroupID:        1,
+					PublicModel:    tc.publicModel,
+					MatchType:      service.CompositeRouteMatchExact,
+					TargetPlatform: service.PlatformAnthropic,
+					UpstreamModel:  tc.upstreamModel,
+					Endpoint:       service.CompositeRouteEndpointAny,
+					Priority:       100,
+					Enabled:        true,
+				}},
+			})
+			router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+				groupID := int64(1)
+				c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+					GroupID: &groupID,
+					Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+				})
+				c.Next()
+			})))
+			router.Use(compositeTargetPlatformMiddleware(resolver))
+			router.POST("/v1/messages", func(c *gin.Context) {
+				body, err := io.ReadAll(c.Request.Body)
+				require.NoError(t, err)
+				require.JSONEq(t,
+					`{"model":"`+tc.upstreamModel+`","max_tokens":64,"thinking":`+tc.wantThinking+`,"messages":[]}`,
+					string(body))
+				c.Status(http.StatusNoContent)
+			})
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(
+				`{"model":"`+tc.publicModel+`","max_tokens":64,"thinking":`+tc.thinking+`,"messages":[]}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusNoContent, w.Code)
+		})
+	}
 }

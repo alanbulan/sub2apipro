@@ -3,10 +3,14 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 var codexToolCapabilityFields = []string{
@@ -22,11 +26,10 @@ func applyCodexToolCapabilities(dst, src map[string]json.RawMessage, overwrite b
 		if len(value) == 0 {
 			continue
 		}
-		// Unlike the scalar capability fields, Codex service_tiers is a
-		// non-nullable array. An explicit null declares no available tiers.
 		if field == "service_tiers" && bytes.Equal(value, []byte("null")) {
-			value = json.RawMessage("[]")
+			value = []byte("[]")
 		}
+		// These Codex fields are nullable booleans or strings, never arbitrary objects.
 		if !bytes.Equal(value, []byte("null")) {
 			if field == "service_tiers" {
 				var tiers []configuredCodexServiceTier
@@ -54,6 +57,30 @@ func applyCodexToolCapabilities(dst, src map[string]json.RawMessage, overwrite b
 	return changed
 }
 
+// On ChatGPT subscriptions, Pro 200 includes GPT-6.2 Sol Ultrafast and
+// Pro 500 includes both GPT-6.2 models. Workspace grants come from discovery.
+func gpt62PlanIncludesUltrafast(account *Account, base string) bool {
+	if !account.IsOpenAIOAuthLike() || (base != "gpt-6.2-sol" && base != "gpt-6.2-astra") {
+		return false
+	}
+	// Use the same subscription SKU aliases as the account plan picker.
+	plan := strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '-', '_':
+			return -1
+		}
+		return r
+	}, strings.ToLower(strings.TrimSpace(account.GetCredential("plan_type"))))
+	switch plan {
+	case "pro", "chatgptpro":
+		return base == "gpt-6.2-sol"
+	case "promax":
+		return true
+	default:
+		return false
+	}
+}
+
 func accountCodexToolCapabilities(account *Account, modelID string) map[string]json.RawMessage {
 	capabilities := make(map[string]json.RawMessage)
 	if account == nil {
@@ -75,7 +102,7 @@ func accountCodexToolCapabilities(account *Account, modelID string) map[string]j
 	parsed, err := url.Parse(baseURL)
 	official := err == nil && (strings.EqualFold(parsed.Hostname(), "api.openai.com") ||
 		(account.IsOpenAIOAuth() && strings.EqualFold(parsed.Hostname(), "chatgpt.com")))
-	if account.IsOpenAI() && (isOpenAIGPT6AstraModel(modelID) || openai.IsGPT61SolModelSpelling(modelID)) && official {
+	if account.IsOpenAI() && (openai.GPT62ModelID(modelID) != "" || isOpenAIGPT6AstraModel(modelID) || openai.IsGPT61SolModelSpelling(modelID) || openai.IsGPT61TerraModelSpelling(modelID)) && official {
 		defaults := map[string]json.RawMessage{
 			"supports_search_tool":  json.RawMessage("true"),
 			"apply_patch_tool_type": json.RawMessage(`"freeform"`),
@@ -93,37 +120,34 @@ func accountCodexToolCapabilities(account *Account, modelID string) map[string]j
 		target := modelID
 		if isOpenAIGPT6AstraModel(target) {
 			target = "gpt-6-astra"
-		} else if openai.IsGPT61SolModelSpelling(target) {
-			target = "gpt-6.1-sol"
 		}
 		_, disabled := apiKeyCodexModelsWithoutResponsesLite[target]
-		if disabled {
-			// Override bundled defaults even when this account has no snapshot.
+		if disabled && bytes.Equal(capabilities["use_responses_lite"], []byte("true")) {
 			capabilities["use_responses_lite"] = json.RawMessage("false")
 		}
 	}
-	// API Astra publicly supports Ultrafast. OAuth must advertise it in its
-	// account manifest; a subscription label alone does not grant the capability.
-	if account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(baseURL) && isOpenAIGPT6AstraModel(modelID) {
-		tiers := configuredCodexServiceTiersForModel(modelID)
-		tiers = append(tiers, configuredCodexServiceTier{ID: OpenAIFastTierUltrafast, Name: "Ultrafast", Description: "Lowest latency; 6x Standard token pricing."})
-		encoded, err := json.Marshal(tiers)
+	// Preserve declared tiers (including their provider-specific fields). An older
+	// OAuth snapshot can list only Fast even for a newly entitled subscription.
+	base := openai.GPT62ModelID(modelID)
+	planIncludesUltra := gpt62PlanIncludesUltrafast(account, base)
+	apiUltra := account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(baseURL) && (base != "" || isOpenAIGPT6AstraModel(modelID))
+	tiers := capabilities["service_tiers"]
+	if (apiUltra && len(tiers) == 0) || (planIncludesUltra && !gjson.GetBytes(tiers, `#(id=="ultrafast")`).Exists()) {
+		if len(tiers) == 0 {
+			tiers, err = json.Marshal(configuredCodexServiceTiersForModel(modelID))
+			if err != nil {
+				panic(err)
+			}
+		}
+		description := "Lowest latency; increased subscription usage."
+		if apiUltra {
+			description = fmt.Sprintf("Lowest latency; %gx Standard token pricing.", openAIUltrafastMultiplier(modelID, time.Now()))
+		}
+		tiers, err = sjson.SetBytes(tiers, "-1", configuredCodexServiceTier{ID: OpenAIFastTierUltrafast, Name: "Ultrafast", Description: description})
 		if err != nil {
 			panic(err)
 		}
-		applyCodexToolCapabilities(capabilities, map[string]json.RawMessage{"service_tiers": encoded}, false)
-	}
-	// This function receives the mapped upstream model. A BPS relay does not
-	// implement Codex's native encrypted multi-agent message contract, even
-	// when the underlying ChatGPT model advertises it. Explicit nulls override
-	// synced/bundled declarations without disabling ordinary plaintext tools.
-	if account.isExcelBPSUpstreamModelEnabled(modelID) ||
-		(account.IsOpenAI() && shouldForwardOpenAIResponsesViaRawChatCompletions(account)) {
-		// The Chat Completions bridge can concatenate plaintext collaboration
-		// messages, but cannot consume native encrypted agent payloads. A synced
-		// native manifest must not enable v2 on a different wire protocol.
-		capabilities["multi_agent_version"] = json.RawMessage("null")
-		capabilities["multi_agent_reasoning_effort"] = json.RawMessage("null")
+		capabilities["service_tiers"] = tiers
 	}
 	return capabilities
 }
@@ -204,6 +228,7 @@ func groupCodexModelMetadata(
 	publicAlias := upstreamModel != modelID
 	candidates := make([]UpstreamModelMetadata, 0)
 	missingMetadata := false
+	audioInput := true
 	for i := range accounts {
 		account := &accounts[i]
 		if !codexAccountServesPlatformModel(account, platform, modelID) {
@@ -228,6 +253,7 @@ func groupCodexModelMetadata(
 			publicAlias = true
 		}
 		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
+		audioInput = audioInput && accountCodexModelSupportsAudioInput(account, lookupModel, metadata.InputModalities)
 		if !ok {
 			if explicitTargetsConflict {
 				return codexModelMetadataOverride{
@@ -253,7 +279,23 @@ func groupCodexModelMetadata(
 		metadata.DisplayName = modelID
 		metadata.Description = configuredCodexCustomDescription
 	}
+	metadata.audioInput = audioInput
 	return metadata, true
+}
+
+func accountCodexModelSupportsAudioInput(account *Account, modelID string, modalities []string) bool {
+	if account == nil || !account.IsOpenAI() {
+		return false
+	}
+	if resolveUpstreamProtocol(account, APIProtocolResponses, modelID, nil) != APIProtocolResponses {
+		return false
+	}
+	if len(modalities) > 0 {
+		return stringSliceContains(modalities, "audio")
+	}
+	// The bundled Codex subscription manifest declares audio for Sol. The
+	// public API model with the same slug has different input capabilities.
+	return account.IsOpenAIOAuthLike() && openai.GPT62ModelID(modelID) == "gpt-6.2-sol"
 }
 
 func codexExplicitModelTargetsConflict(accounts []Account, modelID string) bool {

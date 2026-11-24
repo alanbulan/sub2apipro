@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"context"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -14,22 +13,9 @@ type inflightReservationEstimator interface {
 	EstimateInflightReservation(ctx context.Context, apiKey *service.APIKey, req service.InflightEstimateRequest) (float64, bool)
 }
 
-var inflightOutputLimitPaths = [...]string{
-	"max_tokens",
-	"max_completion_tokens",
-	"max_output_tokens",
-	"generationConfig.maxOutputTokens",
-	"generation_config.max_output_tokens",
-}
-
 // requestMaxOutputTokens 从请求体中提取输出 token 上限（兼容 Anthropic / OpenAI Chat / Responses / Gemini）。
 func requestMaxOutputTokens(body []byte) int {
-	// Every supported field contains "max". Escaped keys must still be
-	// decoded by gjson, so only skip the lookups when neither can occur.
-	if !bytes.Contains(body, []byte("max")) && !bytes.Contains(body, []byte(`\u`)) {
-		return 0
-	}
-	for _, path := range inflightOutputLimitPaths {
+	for _, path := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens", "generationConfig.maxOutputTokens", "generation_config.max_output_tokens"} {
 		if v := gjson.GetBytes(body, path); v.Exists() && v.Type == gjson.Number && v.Int() > 0 {
 			return int(v.Int())
 		}
@@ -85,13 +71,6 @@ func reserveInflightBalanceCtx(
 	subscription *service.UserSubscription,
 	req service.InflightEstimateRequest,
 ) (context.Context, func(), error) {
-	if provider, ok := estimator.(interface {
-		RegionalFundsReadiness() *service.RegionalMetering
-	}); ok {
-		if funds := provider.RegionalFundsReadiness(); funds != nil {
-			return ctx, inflightNoop, funds.Check(ctx)
-		}
-	}
 	if billing == nil || estimator == nil || apiKey == nil || apiKey.User == nil || !billing.InflightReservationEnabled() {
 		return ctx, inflightNoop, nil
 	}

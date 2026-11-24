@@ -20,7 +20,6 @@ import (
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/authguard"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -141,29 +140,6 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		}
 	}
 
-	if key, enabled := authguard.RegistrationIP(txCtx); enabled {
-		if key == "" {
-			return service.ErrServiceUnavailable
-		}
-		// Atomic UPSERT serializes concurrent signups across instances. Using
-		// txClient also covers injected transaction clients without a Tx context.
-		result, err := txClient.ExecContext(txCtx, `
-INSERT INTO registration_ip_quotas (ip_hash, account_count) VALUES ($1, 1)
-ON CONFLICT (ip_hash) DO UPDATE
-SET account_count = registration_ip_quotas.account_count + 1
-WHERE registration_ip_quotas.account_count < 2`, key)
-		if err != nil {
-			return fmt.Errorf("claim registration IP quota: %w", err)
-		}
-		count, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if count == 0 {
-			return service.ErrRegistrationIPLimit
-		}
-	}
-
 	created, err := txClient.User.Create().
 		SetEmail(userIn.Email).
 		SetUsername(userIn.Username).
@@ -178,7 +154,6 @@ WHERE registration_ip_quotas.account_count < 2`, key)
 		SetNillableLastActiveAt(userIn.LastActiveAt).
 		SetRpmLimit(userIn.RPMLimit).
 		SetRestrictPublicGroups(userIn.RestrictPublicGroups).
-		SetObserverGroupIds(userIn.ObserverGroupIDs).
 		Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
@@ -202,7 +177,7 @@ WHERE registration_ip_quotas.account_count < 2`, key)
 }
 
 func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, error) {
-	m, err := clientFromContext(ctx, r.client).User.Query().Where(dbuser.IDEQ(id)).Only(ctx)
+	m, err := r.client.User.Query().Where(dbuser.IDEQ(id)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
@@ -272,23 +247,23 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	}
 
 	// 使用 ent 事务包裹用户更新与 allowed_groups 同步，避免跨层事务不一致。
-	var tx *dbent.Tx
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+
 	var txClient *dbent.Client
 	txCtx := ctx
-	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-		txClient = existingTx.Client()
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		txClient = tx.Client()
+		txCtx = dbent.NewTxContext(ctx, tx)
 	} else {
-		var err error
-		tx, err = r.client.Tx(ctx)
-		switch {
-		case errors.Is(err, dbent.ErrTxStarted):
+		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
+		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+			txClient = existingTx.Client()
+		} else {
 			txClient = r.client
-		case err != nil:
-			return err
-		default:
-			defer func() { _ = tx.Rollback() }()
-			txClient = tx.Client()
-			txCtx = dbent.NewTxContext(ctx, tx)
 		}
 	}
 
@@ -342,9 +317,6 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	if fields.Status {
 		updateOp = updateOp.SetStatus(userIn.Status)
 	}
-	if fields.ObserverGroupIDs {
-		updateOp = updateOp.SetObserverGroupIds(userIn.ObserverGroupIDs)
-	}
 	if fields.RestrictPublicGroups {
 		updateOp = updateOp.SetRestrictPublicGroups(userIn.RestrictPublicGroups)
 	}
@@ -379,14 +351,22 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 			return err
 		}
 	}
-	// 始终以库中的邮箱为准补齐 email 身份：未改邮箱时 updated.Email == oldEmail，
-	// 这里退化为幂等的身份补写，与改邮箱前的行为一致。
-	// Imported Feishu contacts are profile data, not verified email credentials.
-	// Ordinary profile updates must not silently turn them into email identities.
-	if updated.SignupSource != "feishu" || (fields.Email && !strings.EqualFold(strings.TrimSpace(oldEmail), strings.TrimSpace(updated.Email))) {
-		if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
+	// 停用或降级时在同一事务内吊销 MCP 授权，恢复账号或角色后旧授权不会复活。
+	disabled := fields.Status && updated.Status != existing.Status && updated.Status != service.StatusActive
+	demoted := fields.Role && updated.Role != existing.Role && updated.Role != service.RoleAdmin
+	if disabled || demoted {
+		exec := txAwareSQLExecutor(txCtx, r.sql, r.client)
+		if exec == nil {
+			return fmt.Errorf("sql executor is not configured")
+		}
+		if err := revokeMCPGrants(txCtx, exec, updated.ID, !disabled, time.Now().UTC()); err != nil {
 			return err
 		}
+	}
+	// 始终以库中的邮箱为准补齐 email 身份：未改邮箱时 updated.Email == oldEmail，
+	// 这里退化为幂等的身份补写，与改邮箱前的行为一致。
+	if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
+		return err
 	}
 
 	if tx != nil {
@@ -478,8 +458,7 @@ func normalizeEmailAuthIdentitySubject(email string) string {
 	if strings.HasSuffix(normalized, service.LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, service.OIDCConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, service.WeChatConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(normalized, service.DingTalkConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(normalized, service.FeishuConnectSyntheticEmailDomain) {
+		strings.HasSuffix(normalized, service.DingTalkConnectSyntheticEmailDomain) {
 		return ""
 	}
 	return normalized
@@ -594,13 +573,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		// 注意：SoftDeleteMixin 的拦截器不会自动下沉到 HasAPIKeysWith 子查询，
 		// 必须显式加 apikey.DeletedAtIsNil()，否则已软删除的 key 会污染过滤结果。
 		q = q.Where(dbuser.HasAPIKeysWith(
-			apiKeyInGroup(filters.APIKeyGroupID),
+			apikey.GroupIDEQ(filters.APIKeyGroupID),
 			apikey.DeletedAtIsNil(),
 		))
-	}
-
-	if len(filters.UserIDs) > 0 {
-		q = q.Where(dbuser.IDIn(filters.UserIDs...))
 	}
 
 	// If attribute filters are specified, we need to filter by user IDs first
@@ -1486,7 +1461,7 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 		return out, nil
 	}
 
-	rows, err := clientFromContext(ctx, r.client).UserAllowedGroup.Query().
+	rows, err := r.client.UserAllowedGroup.Query().
 		Where(userallowedgroup.UserIDIn(userIDs...)).
 		All(ctx)
 	if err != nil {
@@ -1580,7 +1555,7 @@ func userSignupSourceOrDefault(signupSource string) string {
 	switch strings.TrimSpace(strings.ToLower(signupSource)) {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc", "dingtalk", "feishu":
+	case "linuxdo", "wechat", "oidc", "dingtalk":
 		return strings.TrimSpace(strings.ToLower(signupSource))
 	default:
 		return "email"

@@ -101,6 +101,40 @@ func TestForwardSystemOneForwardsNativeProtocolAndUsage(t *testing.T) {
 	require.Equal(t, 7, result.Usage.OutputTokens)
 }
 
+func TestForwardSystemOneAppliesAccountModelMapping(t *testing.T) {
+	const requestBody = `{"model":"jev-latest","state":{"model":"sample"},"questions":{"q":{"type":"noul","instructions":"Evaluate the sample"}},"stream":false}`
+	const mappedBody = `{"model":"decision-model-preview","state":{"model":"sample"},"questions":{"q":{"type":"noul","instructions":"Evaluate the sample"}},"stream":false}`
+	const responseBody = `{"model":"decision-model-2026-10","answers":{"q":{"type":"noul"}},"usage":{"input_tokens":12,"output_tokens":2}}`
+	var sentBody []byte
+	upstream := &systemOneHTTPUpstream{do: func(req *http.Request) (*http.Response, error) {
+		var err error
+		sentBody, err = io.ReadAll(req.Body)
+		require.NoError(t, err)
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(responseBody))}, nil
+	}}
+	svc := newSystemOneTestService(upstream)
+	svc.billingService = NewBillingService(&config.Config{}, nil)
+	account := &Account{ID: 7, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url":      "http://typesafe.test",
+		"api_key":       "ts-fixture",
+		"model_mapping": map[string]any{"jev-latest": "decision-model-preview"},
+	}}
+	c := newSystemOneTestContext()
+	body := []byte(requestBody)
+	result, err := svc.ForwardSystemOne(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.JSONEq(t, mappedBody, string(sentBody))
+	require.Equal(t, requestBody, string(body))
+	require.Equal(t, typesafe.JevLatestModel, result.Model)
+	require.Equal(t, "decision-model-preview", result.UpstreamModel)
+	require.Equal(t, "decision-model-preview", c.GetString(OpsUpstreamModelKey))
+	require.Equal(t, "decision-model-2026-10", result.UpstreamResponseModel)
+	require.Equal(t, []byte(responseBody), result.Body)
+	apiKey := &APIKey{Group: &Group{Platform: PlatformTypeSafe}}
+	usageFields := ChannelUsageFields{OriginalModel: result.Model, BillingModelSource: BillingModelSourceUpstream}
+	require.Equal(t, typesafe.JevLatestModel, svc.recordUsageBillingModel(context.Background(), apiKey, &result.ForwardResult, usageFields))
+}
+
 func TestForwardSystemOneAllowsSuccessfulResponseWithoutModel(t *testing.T) {
 	responseBody := []byte(`{"answers":{"q":{"type":"noul","answer":"ok"}},"usage":{"input_tokens":12}}`)
 	upstream := &systemOneHTTPUpstream{do: func(*http.Request) (*http.Response, error) {
@@ -394,42 +428,6 @@ func TestTypeSafeAccountBaseURLNeverFallsBackToAnthropic(t *testing.T) {
 	}
 	anthropic := &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk"}}
 	require.Equal(t, "https://api.anthropic.com", anthropic.GetBaseURL())
-}
-
-func TestForwardSystemOneEditableURLUsesExistingSecurityPolicy(t *testing.T) {
-	for _, tc := range []struct {
-		name, base, want string
-		policy           config.URLAllowlistConfig
-		rejected         bool
-	}{
-		{"default", "", typesafe.DefaultBaseURL + typesafe.SystemOnePath, config.URLAllowlistConfig{}, false},
-		{"api base", "https://relay.example/relay/v1/", "https://relay.example/relay/v1/systemone", config.URLAllowlistConfig{}, false},
-		{"full endpoint", "https://relay.example/relay/v1/systemone/", "https://relay.example/relay/v1/systemone", config.URLAllowlistConfig{}, false},
-		{"allowlisted", "https://relay.example/v1/", "https://relay.example/v1/systemone", config.URLAllowlistConfig{Enabled: true, UpstreamHosts: []string{"relay.example"}}, false},
-		{"unlisted", "https://other.example/v1", "", config.URLAllowlistConfig{Enabled: true, UpstreamHosts: []string{"relay.example"}}, true},
-		{"private host", "https://127.0.0.1/v1", "", config.URLAllowlistConfig{Enabled: true, UpstreamHosts: []string{"127.0.0.1"}}, true},
-		{"private ipv6", "https://[::1]/v1", "", config.URLAllowlistConfig{Enabled: true, UpstreamHosts: []string{"::1"}}, true},
-		{"http denied", "http://relay.example/v1", "", config.URLAllowlistConfig{}, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			calls := 0
-			upstream := &systemOneHTTPUpstream{do: func(req *http.Request) (*http.Response, error) {
-				calls++
-				require.Equal(t, tc.want, req.URL.String())
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"answers":{}}`))}, nil
-			}}
-			s := &GatewayService{cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: tc.policy}}, httpUpstream: upstream}
-			account := &Account{ID: 123, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": tc.base, "api_key": "fixture-key"}}
-			_, err := s.ForwardSystemOne(context.Background(), newSystemOneTestContext(), account, []byte(`{}`))
-			if tc.rejected {
-				require.Error(t, err)
-				require.Zero(t, calls)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, 1, calls)
-			}
-		})
-	}
 }
 
 func TestTypeSafeModelsListCandidates(t *testing.T) {

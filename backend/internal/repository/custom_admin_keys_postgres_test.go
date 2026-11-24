@@ -37,7 +37,7 @@ func scopedAdminKeyTestDB(t *testing.T) *sql.DB {
 	})
 	_, err = db.Exec(`CREATE TABLE users(id BIGINT PRIMARY KEY); INSERT INTO users(id) VALUES(9)`)
 	require.NoError(t, err)
-	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "310_scoped_admin_api_keys.sql"))
+	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "247_scoped_admin_api_keys.sql"))
 	require.NoError(t, err)
 	_, err = db.Exec(string(migration))
 	require.NoError(t, err)
@@ -143,4 +143,24 @@ func TestScopedAdminKeyPostgresMigrationAndLifecycle(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrScopedAdminKeyNotFound)
 	_, _, err = settings.RotateScopedAdminKey(ctx, item.ID)
 	require.ErrorIs(t, err, service.ErrScopedAdminKeyNotFound)
+}
+
+func TestAdminFullAccessPostgresStaleEditCannotRestorePrivileges(t *testing.T) {
+	db := scopedAdminKeyTestDB(t)
+	repo := NewScopedAdminKeyRepository(db)
+	settings := service.NewSettingService(nil, nil)
+	settings.SetScopedAdminKeyRepository(repo)
+	ctx := context.Background()
+	key, item, err := settings.CreateScopedAdminKey(ctx, service.ScopedAdminKeyInput{Name: "兼容", Enabled: true, ConfirmFullAccess: true, Policy: adminaccess.Policy{FullAccess: true}}, 9)
+	require.NoError(t, err)
+	stale, err := repo.GetScopedAdminKey(ctx, item.ID)
+	require.NoError(t, err)
+	stale.ExpectedUpdatedAt = stale.UpdatedAt
+	_, err = settings.UpdateScopedAdminKey(ctx, item.ID, service.ScopedAdminKeyInput{Name: "收权", Enabled: true})
+	require.NoError(t, err)
+	stale.UpdatedAt = time.Now().UTC()
+	require.ErrorIs(t, repo.UpdateScopedAdminKey(ctx, stale), service.ErrScopedAdminKeyConflict)
+	current, err := settings.AuthenticateScopedAdminKey(ctx, key, "192.0.2.1")
+	require.NoError(t, err)
+	require.False(t, current.Policy.FullAccess)
 }

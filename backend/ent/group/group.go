@@ -108,12 +108,6 @@ const (
 	FieldFallbackGroupID = "fallback_group_id"
 	// FieldFallbackGroupIDOnInvalidRequest holds the string denoting the fallback_group_id_on_invalid_request field in the database.
 	FieldFallbackGroupIDOnInvalidRequest = "fallback_group_id_on_invalid_request"
-	// FieldBlockSubagents holds the string denoting the block_subagents field in the database.
-	FieldBlockSubagents = "block_subagents"
-	// FieldCodexCliOnly holds the string denoting the codex_cli_only field in the database.
-	FieldCodexCliOnly = "codex_cli_only"
-	// FieldStreamOnly holds the string denoting the stream_only field in the database.
-	FieldStreamOnly = "stream_only"
 	// FieldModelRouting holds the string denoting the model_routing field in the database.
 	FieldModelRouting = "model_routing"
 	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
@@ -130,10 +124,10 @@ const (
 	FieldAllowLive = "allow_live"
 	// FieldForceOpenaiFast holds the string denoting the force_openai_fast field in the database.
 	FieldForceOpenaiFast = "force_openai_fast"
+	// FieldForceOpenaiUltrafast holds the string denoting the force_openai_ultrafast field in the database.
+	FieldForceOpenaiUltrafast = "force_openai_ultrafast"
 	// FieldFreeOpenaiFast holds the string denoting the free_openai_fast field in the database.
 	FieldFreeOpenaiFast = "free_openai_fast"
-	// FieldFreeOpenaiUltrafast holds the string denoting the free_openai_ultrafast field in the database.
-	FieldFreeOpenaiUltrafast = "free_openai_ultrafast"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
 	FieldRequireOauthOnly = "require_oauth_only"
 	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
@@ -281,9 +275,6 @@ var Columns = []string{
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
-	FieldBlockSubagents,
-	FieldCodexCliOnly,
-	FieldStreamOnly,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
 	FieldMcpXMLInject,
@@ -292,8 +283,8 @@ var Columns = []string{
 	FieldAllowMessagesDispatch,
 	FieldAllowLive,
 	FieldForceOpenaiFast,
+	FieldForceOpenaiUltrafast,
 	FieldFreeOpenaiFast,
-	FieldFreeOpenaiUltrafast,
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
@@ -408,12 +399,6 @@ var (
 	DefaultLongContextPricingEnabled bool
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
-	// DefaultBlockSubagents holds the default value on creation for the "block_subagents" field.
-	DefaultBlockSubagents bool
-	// DefaultCodexCliOnly holds the default value on creation for the "codex_cli_only" field.
-	DefaultCodexCliOnly bool
-	// DefaultStreamOnly holds the default value on creation for the "stream_only" field.
-	DefaultStreamOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
 	DefaultModelRoutingEnabled bool
 	// DefaultMcpXMLInject holds the default value on creation for the "mcp_xml_inject" field.
@@ -428,10 +413,10 @@ var (
 	DefaultAllowLive bool
 	// DefaultForceOpenaiFast holds the default value on creation for the "force_openai_fast" field.
 	DefaultForceOpenaiFast bool
+	// DefaultForceOpenaiUltrafast holds the default value on creation for the "force_openai_ultrafast" field.
+	DefaultForceOpenaiUltrafast bool
 	// DefaultFreeOpenaiFast holds the default value on creation for the "free_openai_fast" field.
 	DefaultFreeOpenaiFast bool
-	// DefaultFreeOpenaiUltrafast holds the default value on creation for the "free_openai_ultrafast" field.
-	DefaultFreeOpenaiUltrafast bool
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
 	DefaultRequireOauthOnly bool
 	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
@@ -689,21 +674,6 @@ func ByFallbackGroupIDOnInvalidRequest(opts ...sql.OrderTermOption) OrderOption 
 	return sql.OrderByField(FieldFallbackGroupIDOnInvalidRequest, opts...).ToFunc()
 }
 
-// ByBlockSubagents orders the results by the block_subagents field.
-func ByBlockSubagents(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldBlockSubagents, opts...).ToFunc()
-}
-
-// ByCodexCliOnly orders the results by the codex_cli_only field.
-func ByCodexCliOnly(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCodexCliOnly, opts...).ToFunc()
-}
-
-// ByStreamOnly orders the results by the stream_only field.
-func ByStreamOnly(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldStreamOnly, opts...).ToFunc()
-}
-
 // ByModelRoutingEnabled orders the results by the model_routing_enabled field.
 func ByModelRoutingEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelRoutingEnabled, opts...).ToFunc()
@@ -734,14 +704,14 @@ func ByForceOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldForceOpenaiFast, opts...).ToFunc()
 }
 
+// ByForceOpenaiUltrafast orders the results by the force_openai_ultrafast field.
+func ByForceOpenaiUltrafast(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForceOpenaiUltrafast, opts...).ToFunc()
+}
+
 // ByFreeOpenaiFast orders the results by the free_openai_fast field.
 func ByFreeOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFreeOpenaiFast, opts...).ToFunc()
-}
-
-// ByFreeOpenaiUltrafast orders the results by the free_openai_ultrafast field.
-func ByFreeOpenaiUltrafast(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldFreeOpenaiUltrafast, opts...).ToFunc()
 }
 
 // ByRequireOauthOnly orders the results by the require_oauth_only field.

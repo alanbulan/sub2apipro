@@ -48,17 +48,16 @@ type BatchImageUserGroupRateRepository interface {
 }
 
 type BatchImageSubmitRequest struct {
-	BeforeGeneration func(context.Context, *Account) error `json:"-"`
-	Model            string                                `json:"model"`
-	TaskName         string                                `json:"task_name"`
-	ParentBatchID    string                                `json:"parent_batch_id"`
-	Provider         string                                `json:"provider"`
-	Items            []BatchImageSubmitItem                `json:"items"`
-	ResponseMimeType string                                `json:"response_mime_type"`
-	AspectRatio      string                                `json:"aspect_ratio"`
-	ImageSize        string                                `json:"image_size"`
-	Metadata         map[string]string                     `json:"metadata"`
-	SessionID        *string                               `json:"-"`
+	Model            string                 `json:"model"`
+	TaskName         string                 `json:"task_name"`
+	ParentBatchID    string                 `json:"parent_batch_id"`
+	Provider         string                 `json:"provider"`
+	Items            []BatchImageSubmitItem `json:"items"`
+	ResponseMimeType string                 `json:"response_mime_type"`
+	AspectRatio      string                 `json:"aspect_ratio"`
+	ImageSize        string                 `json:"image_size"`
+	Metadata         map[string]string      `json:"metadata"`
+	SessionID        *string                `json:"-"`
 }
 
 type BatchImageSubmitItem struct {
@@ -236,11 +235,6 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	if err != nil {
 		return nil, err
 	}
-	if req.BeforeGeneration != nil {
-		if err := req.BeforeGeneration(ctx, account); err != nil {
-			return nil, err
-		}
-	}
 	pricingSnapshot, err := s.resolvePricingSnapshot(ctx, owner, normalized, provider.Name(), account)
 	if err != nil {
 		return nil, err
@@ -283,7 +277,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		HoldMultiplier:          pricingSnapshot.HoldMultiplier,
 		BillableUnitPrice:       pricingSnapshot.BillableUnitPrice,
 		HoldUnitPrice:           pricingSnapshot.HoldUnitPrice,
-		PricingSnapshotVersion:  2,
+		PricingSnapshotVersion:  1,
 		Currency:                "USD",
 		HoldID:                  &holdID,
 		IdempotencyKey:          batchImageOptionalStringPtr(idempotencyKey),
@@ -650,7 +644,7 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 				if _, err := s.Pricing.BatchImageUnitPrice(ctx, &BatchImageJob{Provider: providerName, Model: model}); err != nil {
 					continue
 				}
-				if !account.IsModelSupportedInGroup(owner.GroupID, model) {
+				if !account.IsModelSupported(model) {
 					continue
 				}
 				if modelsByProvider[providerName] == nil {
@@ -959,7 +953,7 @@ func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, 
 		})
 		for i := range accounts {
 			account := accounts[i]
-			if !account.IsSchedulable() || !account.IsModelSupportedInGroup(owner.GroupID, model) {
+			if !account.IsSchedulable() || !account.IsModelSupported(model) {
 				continue
 			}
 			if provider.SupportsAccount(&account) {
@@ -1089,10 +1083,8 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		HoldMultiplier:          holdMultiplier,
 		BillableUnitPrice:       billableUnitPrice,
 		HoldUnitPrice:           holdUnitPrice,
-		// Round the complete amount once, using the existing monetary policy.
-		// Version 2 persists exactly the amount moved between the two money columns.
-		EstimatedCost: QuantizeUsageBillingAmount(billableUnitPrice * float64(len(req.Items))),
-		HoldAmount:    QuantizeUsageBillingAmount(holdUnitPrice * float64(len(req.Items))),
+		EstimatedCost:           billableUnitPrice * float64(len(req.Items)),
+		HoldAmount:              holdUnitPrice * float64(len(req.Items)),
 	}, nil
 }
 

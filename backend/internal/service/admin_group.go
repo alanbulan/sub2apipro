@@ -369,8 +369,8 @@ func sanitizeGroupOpenAIFast(group *Group) {
 	if group == nil || !groupSupportsOpenAIFast(group.Platform) {
 		if group != nil {
 			group.ForceOpenAIFast = false
+			group.ForceOpenAIUltrafast = false
 			group.FreeOpenAIFast = false
-			group.FreeOpenAIUltrafast = false
 		}
 	}
 }
@@ -534,9 +534,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	allowImageGeneration := input.AllowImageGeneration || DefaultAllowImageGenerationForPlatform(platform)
-	if input.AllowImageGenerationExplicit != nil {
-		allowImageGeneration = *input.AllowImageGenerationExplicit
-	}
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
 	imageCountBilling := input.ImageCountBilling && allowImageGeneration &&
 		(platform == PlatformComposite || platform == PlatformOpenAI)
@@ -622,9 +619,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AudioTTSPricePerMillionChars:    audioTTSPricePerMillionChars,
 		AudioSTTPricePerHour:            audioSTTPricePerHour,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
-		StreamOnly:                      input.StreamOnly,
-		CodexCLIOnly:                    input.CodexCLIOnly,
-		BlockSubagents:                  input.BlockSubagents,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
@@ -633,8 +627,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
 		AllowLive:                       input.AllowLive,
 		ForceOpenAIFast:                 input.ForceOpenAIFast,
+		ForceOpenAIUltrafast:            input.ForceOpenAIUltrafast,
 		FreeOpenAIFast:                  input.FreeOpenAIFast,
-		FreeOpenAIUltrafast:             input.FreeOpenAIUltrafast,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -974,15 +968,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ClaudeCodeOnly != nil {
 		group.ClaudeCodeOnly = *input.ClaudeCodeOnly
 	}
-	if input.StreamOnly != nil {
-		group.StreamOnly = *input.StreamOnly
-	}
-	if input.CodexCLIOnly != nil {
-		group.CodexCLIOnly = *input.CodexCLIOnly
-	}
-	if input.BlockSubagents != nil {
-		group.BlockSubagents = *input.BlockSubagents
-	}
 	if input.FallbackGroupID != nil {
 		// 校验降级分组
 		if *input.FallbackGroupID > 0 {
@@ -1036,11 +1021,11 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ForceOpenAIFast != nil {
 		group.ForceOpenAIFast = *input.ForceOpenAIFast
 	}
+	if input.ForceOpenAIUltrafast != nil {
+		group.ForceOpenAIUltrafast = *input.ForceOpenAIUltrafast
+	}
 	if input.FreeOpenAIFast != nil {
 		group.FreeOpenAIFast = *input.FreeOpenAIFast
-	}
-	if input.FreeOpenAIUltrafast != nil {
-		group.FreeOpenAIUltrafast = *input.FreeOpenAIUltrafast
 	}
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly
@@ -1365,58 +1350,6 @@ func (s *adminServiceImpl) BatchSetGroupRPMOverrides(ctx context.Context, groupI
 	return nil
 }
 
-// ClearGroupUserDeniedModels 清空分组内所有用户的禁用模型。
-func (s *adminServiceImpl) ClearGroupUserDeniedModels(ctx context.Context, groupID int64) error {
-	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationDeniedModels); err != nil {
-		return err
-	}
-	if s.userGroupRateRepo == nil {
-		return nil
-	}
-	if err := s.userGroupRateRepo.ClearGroupDeniedModels(ctx, groupID); err != nil {
-		return err
-	}
-	// 禁用模型嵌入 auth cache snapshot (v25)，变更后必须失效相关缓存。
-	if s.authCacheInvalidator != nil {
-		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, groupID)
-	}
-	return nil
-}
-
-// BatchSetGroupUserDeniedModels 整组覆盖用户的禁用模型：未列出的用户、清单为空的条目都恢复为不限制。
-func (s *adminServiceImpl) BatchSetGroupUserDeniedModels(ctx context.Context, groupID int64, entries []GroupUserDeniedModelsInput) error {
-	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationDeniedModels); err != nil {
-		return err
-	}
-	if s.userGroupRateRepo == nil {
-		return nil
-	}
-	normalized := make([]GroupUserDeniedModelsInput, 0, len(entries))
-	seen := make(map[int64]struct{}, len(entries))
-	for _, e := range entries {
-		if e.UserID <= 0 {
-			return infraerrors.BadRequest("INVALID_USER_GROUP_DENIED_MODELS", "user_id must be positive")
-		}
-		if _, dup := seen[e.UserID]; dup {
-			return infraerrors.BadRequest("INVALID_USER_GROUP_DENIED_MODELS", fmt.Sprintf("duplicate user_id %d", e.UserID))
-		}
-		seen[e.UserID] = struct{}{}
-		models, err := NormalizeUserGroupDeniedModels(e.DeniedModels)
-		if err != nil {
-			return err
-		}
-		normalized = append(normalized, GroupUserDeniedModelsInput{UserID: e.UserID, DeniedModels: models})
-	}
-	if err := s.userGroupRateRepo.SyncGroupDeniedModels(ctx, groupID, normalized); err != nil {
-		return err
-	}
-	// 禁用模型嵌入 auth cache snapshot (v25)，变更后必须失效相关缓存。
-	if s.authCacheInvalidator != nil {
-		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, groupID)
-	}
-	return nil
-}
-
 func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
 	if err := s.ValidateSimpleModeGroupOperation(AdminGroupOperationSort); err != nil {
 		return err
@@ -1427,53 +1360,25 @@ func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []
 // AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
 // groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
 func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
-	return s.AdminUpdateAPIKeySettings(ctx, keyID, AdminUpdateAPIKeySettingsInput{GroupID: groupID})
-}
-
-// AdminUpdateAPIKeySettings writes the selected key's policy and group together.
-// Field masks ensure ordinary user edits and omitted policy fields cannot reset it.
-func (s *adminServiceImpl) AdminUpdateAPIKeySettings(ctx context.Context, keyID int64, input AdminUpdateAPIKeySettingsInput) (*AdminUpdateAPIKeyGroupIDResult, error) {
-	if err := input.Validate(); err != nil {
-		return nil, err
-	}
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
 	if err != nil {
 		return nil, err
 	}
 
-	groupID := input.GroupID
-	fields := APIKeyUpdateFields{GroupID: groupID != nil, ModelMapping: input.ModelMapping != nil, ReasoningEffort: input.ReasoningEffort != nil, AllowLongContext: input.AllowLongContext != nil, ContextTokenLimit: input.ContextTokenLimit != nil, RateLimitUsage: input.ResetRateLimitUsage}
-	if fields.IsEmpty() {
+	if groupID == nil {
+		// nil 表示不修改，直接返回
 		return &AdminUpdateAPIKeyGroupIDResult{APIKey: apiKey}, nil
 	}
-	if input.ModelMapping != nil {
-		apiKey.ModelMapping = make(map[string]string, len(*input.ModelMapping))
-		for source, target := range *input.ModelMapping {
-			apiKey.ModelMapping[source] = target
-		}
-	}
-	if input.ReasoningEffort != nil {
-		apiKey.ReasoningEffort = *input.ReasoningEffort
-	}
-	if input.ContextTokenLimit != nil {
-		apiKey.ContextTokenLimit = *input.ContextTokenLimit
-	}
-	if input.AllowLongContext != nil {
-		apiKey.AllowLongContext = *input.AllowLongContext
-	}
-	if input.ResetRateLimitUsage {
-		apiKey.Usage5h, apiKey.Usage1d, apiKey.Usage7d = 0, 0, 0
-		apiKey.Window5hStart, apiKey.Window1dStart, apiKey.Window7dStart = nil, nil, nil
+
+	if *groupID < 0 {
+		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be non-negative")
 	}
 
 	result := &AdminUpdateAPIKeyGroupIDResult{}
 
-	if groupID == nil {
-		// Policy-only updates preserve all configured groups.
-	} else if *groupID == 0 {
+	if *groupID == 0 {
 		// 0 表示解绑分组（不修改 user_allowed_groups，避免影响用户其他 Key）
 		apiKey.GroupID = nil
-		apiKey.GroupIDs = nil
 		apiKey.Group = nil
 	} else {
 		// 验证目标分组存在且状态为 active
@@ -1499,7 +1404,6 @@ func (s *adminServiceImpl) AdminUpdateAPIKeySettings(ctx context.Context, keyID 
 
 		gid := *groupID
 		apiKey.GroupID = &gid
-		apiKey.GroupIDs = []int64{gid}
 		apiKey.Group = group
 
 		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
@@ -1521,7 +1425,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeySettings(ctx context.Context, keyID 
 			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
 				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
 			}
-			if err := s.apiKeyRepo.Update(opCtx, apiKey, fields); err != nil {
+			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
 				return nil, fmt.Errorf("update api key: %w", err)
 			}
 			if tx != nil {
@@ -1535,7 +1439,9 @@ func (s *adminServiceImpl) AdminUpdateAPIKeySettings(ctx context.Context, keyID 
 			result.GrantedGroupName = group.Name
 
 			// 失效认证缓存（在事务提交后执行）
-			s.invalidateAdminAPIKeySettingsCaches(ctx, apiKey, input.ResetRateLimitUsage)
+			if s.authCacheInvalidator != nil {
+				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+			}
 
 			result.APIKey = apiKey
 			return result, nil
@@ -1543,12 +1449,14 @@ func (s *adminServiceImpl) AdminUpdateAPIKeySettings(ctx context.Context, keyID 
 	}
 
 	// 非专属分组 / 解绑：无需事务，单步更新即可
-	if err := s.apiKeyRepo.Update(ctx, apiKey, fields); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 
 	// 失效认证缓存
-	s.invalidateAdminAPIKeySettingsCaches(ctx, apiKey, input.ResetRateLimitUsage)
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	}
 
 	result.APIKey = apiKey
 	return result, nil

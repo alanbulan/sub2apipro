@@ -191,8 +191,7 @@ func (h *AuthHandler) findDingTalkCompatEmailUser(ctx context.Context, email str
 		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.FeishuConnectSyntheticEmailDomain) {
+		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) {
 		return nil, nil
 	}
 

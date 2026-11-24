@@ -42,12 +42,6 @@ export default {
 
     // Proxies Management
     proxies: {
-      managementSections: '代理管理分类',
-      proxyList: '静态代理 / IP 代理池',
-      subscriptions: '订阅',
-      dynamicProxies: '动态代理',
-      nodes: '节点',
-      kernelRules: '内核与规则',
       title: 'IP管理',
       description: '管理代理服务器配置',
       createProxy: '添加代理',
@@ -235,8 +229,7 @@ export default {
       nDays: '{days} 天',
       expiryDaysPlaceholder: '自定义天数，留空 = 永不过期',
       expiryWarnDays: '到期提醒提前天数',
-      fallbackMode: '故障/到期回退',
-      fallbackModeHint: '到期时按所选策略处理；OpenAI HTTP 转发遇到符合条件的建连故障时，仅在确认请求尚未发出时回退，不重放已输出的流。直连使用 平台 所在运行环境的网络。',
+      fallbackMode: '到期回退',
       fallbackNone: '不回退',
       fallbackProxy: '指定备用代理',
       fallbackDirect: '回退直连',
@@ -424,18 +417,9 @@ export default {
         conditionType: '条件类型',
         conditionSubscription: '订阅套餐',
         conditionBalance: '余额',
-        conditionUser: '指定用户',
         operator: '运算符',
         balanceValue: '余额阈值',
-        selectPackages: '选择套餐',
-        targetingUsers: '指定用户',
-        targetingUsersHint: '只有选中的用户能看到这条公告，适合单独提醒或警告某个用户。通知方式选「弹窗」时，对方登录或刷新页面后会弹出提醒，直到点「标记已读」为止。',
-        selectUsers: '选择用户',
-        selectUsersRequired: '请至少选择一个用户',
-        searchUsersPlaceholder: '输入邮箱或用户名搜索',
-        noUsersFound: '没有找到匹配的用户',
-        noUsersSelected: '还没有选择用户',
-        userUnavailable: '用户不存在'
+        selectPackages: '选择套餐'
       },
       operators: {
         gt: '>',
@@ -446,7 +430,6 @@ export default {
       },
       targetingSummaryAll: '全部用户',
       targetingSummaryCustom: '自定义（{groups} 组）',
-      targetingSummaryUsers: '指定用户（{count} 人）',
       timeImmediate: '立即',
       timeNever: '永久',
       readStatus: '已读情况',
@@ -522,23 +505,8 @@ export default {
       failedToLoadUsages: '加载使用记录失败'
     },
 
-    conversationLogs: {
-      title: '会话记录', description: '查看每次用户对话请求及模型回复，便于问题排查与后续分析',
-      empty: '暂无会话记录', failedToLoad: '加载会话记录失败', detailTitle: '会话详情', request: '用户请求', response: '模型回复',
-      payloadSize: '请求 / 回复大小', truncated: '正文超过单条保存上限，当前展示内容已截断。',
-      filters: { sessionId: '会话 ID', sessionPlaceholder: '搜索会话 ID', requestId: '请求 ID', user: '用户', userId: '用户 ID', userPlaceholder: '按邮箱搜索用户', allUsers: '全部用户', deletedUser: '已删除', apiKeyId: 'API 密钥 ID', model: '模型', protocol: '协议', status: '状态', startTime: '开始时间', endTime: '结束时间' },
-      status: { pending: '记录中', completed: '已完成', failed: '失败', incomplete: '未完整' },
-      columns: { time: '时间', session: '会话', user: '用户 / 密钥', model: '模型', protocol: '协议', endpoint: '接口', status: '状态', httpStatus: 'HTTP 状态', duration: '耗时' }
-    },
-
     // Usage Records
     usage: {
-      platform: '平台',
-      allPlatforms: '全部平台',
-      unknownPlatform: '未知（历史记录）',
-      platformHistoryHint: '按请求发生时记录的平台筛选。未记录平台的历史数据保留在“未知（历史记录）”中。',
-      platformCleanupUnavailable: '清理记录前请重置平台筛选。',
-
       title: '使用记录',
       description: '查看和管理所有用户的使用记录',
       userFilter: '用户',
@@ -606,7 +574,6 @@ export default {
         button: '清理',
         title: '清理使用记录',
         warning: '清理不可恢复，且会影响历史统计回看。',
-        calendarRangeRequired: '滚动或精确时间范围不可直接清理。请先选择自然日；清理将删除所选日期的整日记录。',
         submit: '提交清理',
         submitting: '提交中...',
         confirmTitle: '确认清理',

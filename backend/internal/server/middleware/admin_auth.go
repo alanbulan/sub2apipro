@@ -213,9 +213,7 @@ func validateJWTForAdmin(
 	}
 
 	// 检查管理员权限
-	if user.Role == service.RoleObserver && ObserverAccountRouteAllowed(c.Request.Method, c.FullPath()) {
-		c.Request = c.Request.WithContext(service.WithObserverScope(c.Request.Context(), user.ObserverGroupIDs))
-	} else if !user.IsAdmin() {
+	if !user.IsAdmin() {
 		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
 		return false
 	}
@@ -270,7 +268,7 @@ func recordAdminKeyRequest(c *gin.Context, audit *service.AuditLogService, item 
 	}
 	entry := &service.AuditLog{CreatedAt: time.Now().UTC(), AuthMethod: service.AuditAuthMethodAdminAPIKey, Action: "admin.api_key.request", Method: c.Request.Method, Path: c.Request.URL.Path, StatusCode: c.Writer.Status(), ClientIP: SecurityClientIP(c), UserAgent: c.Request.UserAgent()}
 	if item != nil {
-		entry.Extra = map[string]any{"admin_key_id": item.ID, "admin_key_name": item.Name}
+		entry.Extra = map[string]any{"admin_key_id": item.ID, "admin_key_name": item.Name, "full_access": item.Policy.FullAccess}
 		uid := item.CreatedBy
 		entry.ActorUserID = &uid
 	}

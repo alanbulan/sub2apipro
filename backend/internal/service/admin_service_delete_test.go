@@ -5,8 +5,6 @@ package service
 import (
 	"context"
 	"errors"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"net/http"
 	"testing"
 	"time"
 
@@ -342,7 +340,6 @@ type proxyRepoStub struct {
 	countErr     error
 	accountCount int64
 	deletedIDs   []int64
-	proxy        *Proxy
 }
 
 func (s *proxyRepoStub) Create(ctx context.Context, proxy *Proxy) error {
@@ -350,11 +347,7 @@ func (s *proxyRepoStub) Create(ctx context.Context, proxy *Proxy) error {
 }
 
 func (s *proxyRepoStub) GetByID(ctx context.Context, id int64) (*Proxy, error) {
-	return s.proxy, nil
-}
-
-func (s *proxyRepoStub) GetByMihomoNodeID(ctx context.Context, name string) (*Proxy, error) {
-	return nil, nil
+	panic("unexpected GetByID call")
 }
 
 func (s *proxyRepoStub) ListByIDs(ctx context.Context, ids []int64) ([]Proxy, error) {
@@ -647,8 +640,6 @@ func TestAdminService_DeleteUser_AdminGuard(t *testing.T) {
 	err := svc.DeleteUser(context.Background(), 1)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "cannot delete admin user")
-	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
-	require.Equal(t, "ADMIN_DELETE_FORBIDDEN", infraerrors.Reason(err))
 	require.Empty(t, repo.deletedIDs)
 }
 

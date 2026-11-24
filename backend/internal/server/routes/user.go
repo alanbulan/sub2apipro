@@ -24,43 +24,17 @@ func RegisterUserRoutes(
 	authenticated.Use(panelRateLimiter.Global())
 	// 用户管理面变更类操作入审计（含 TOTP 启用/禁用、step-up 验证、密码修改等安全事件）
 	authenticated.Use(gin.HandlerFunc(auditLog))
-	if h.QQBot != nil {
-		bot := authenticated.Group("/user/qqbot")
-		bot.GET("/binding", h.QQBot.Binding)
-		bot.POST("/binding-code", panelRateLimiter.Heavy(), h.QQBot.CreateBindingCode)
-		bot.POST("/binding-confirm", h.QQBot.ConfirmBinding)
-	}
-	if h.Lottery != nil {
-		lottery := authenticated.Group("/lottery")
-		lottery.Use(handler.LotteryVisitorContext)
-		lottery.GET("/pools", h.Lottery.Pools)
-		lottery.GET("/pools/:id/invite", h.Lottery.InviteLink)
-		lottery.POST("/invitations/claim", h.Lottery.ClaimInvitation)
-		lottery.POST("/pools/:id/draw", h.Lottery.Draw)
-		lottery.GET("/records", h.Lottery.Records)
-	}
 	{
 		// 用户接口
 		user := authenticated.Group("/user")
 		{
-			if h.Admin != nil && h.Admin.Account != nil {
-				user.GET("/pool-dashboard", h.Admin.Account.SharedPoolDashboard)
-				diagnostics := user.Group("/pool-dashboard/groups/:group_id/accounts/:id")
-				diagnostics.Use(panelRateLimiter.Heavy())
-				diagnostics.GET("/models", h.Admin.Account.PoolDiagnosticModels)
-				diagnostics.GET("/models/reasoning", h.Admin.Account.PoolDiagnosticReasoning)
-				diagnostics.POST("/test", h.Admin.Account.PoolConnectionTest)
-				diagnostics.POST("/pelican-test", h.Admin.Account.PoolIntelligenceTest)
-			}
 			user.GET("/profile", h.User.GetProfile)
-			if h.Admin != nil && h.Admin.Setting != nil {
-				user.GET("/key-risks", h.Admin.Setting.GetMyKeyRisks)
-				user.POST("/key-risks/:id/acknowledge", h.Admin.Setting.AcknowledgeMyKeyRisk)
-			}
-			if h.Admin != nil && h.Admin.PromptAudit != nil {
-				user.GET("/security/summary", h.Admin.PromptAudit.MyPenaltySummary)
-				user.GET("/security/events", h.Admin.PromptAudit.MyPenaltyEvents)
-				user.GET("/security/events/:id", h.Admin.PromptAudit.MyPenaltyEvent)
+			if h.MCPOAuth != nil {
+				user.GET("/mcp/config", h.MCPOAuth.ConnectionConfig)
+				user.GET("/mcp/grants", h.MCPOAuth.ListGrants)
+				user.DELETE("/mcp/grants/:id", h.MCPOAuth.RevokeGrant)
+				user.GET("/mcp/authorize", h.MCPOAuth.Preview)
+				user.POST("/mcp/authorize", h.MCPOAuth.Decide)
 			}
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
@@ -109,8 +83,6 @@ func RegisterUserRoutes(
 		keys := authenticated.Group("/keys")
 		{
 			keys.GET("", h.APIKey.List)
-			// 必须在动态 /:id 路由之前注册，避免被参数路由吞掉。
-			keys.GET("/concurrency", h.APIKey.GetConcurrencyQueue)
 			keys.GET("/:id", h.APIKey.GetByID)
 			keys.POST("", h.APIKey.Create)
 			keys.PUT("/:id", h.APIKey.Update)
@@ -135,13 +107,9 @@ func RegisterUserRoutes(
 		usage.Use(panelRateLimiter.Heavy())
 		{
 			usage.GET("", h.Usage.List)
-			usage.GET("/traffic", h.Usage.Traffic)
-			usage.GET("/traffic/keys", h.Usage.TrafficKeys)
 			usage.GET("/errors", h.Usage.ListErrors)
 			usage.GET("/errors/:id", h.Usage.GetErrorDetail)
 			usage.GET("/:id", h.Usage.GetByID)
-			usage.GET("/:id/timing", h.Usage.ObserverTiming)
-			usage.GET("/filter-options", h.Usage.ObserverFilterOptions)
 			usage.GET("/stats", h.Usage.Stats)
 			// User dashboard endpoints
 			usage.GET("/dashboard/stats", h.Usage.DashboardStats)
@@ -156,18 +124,6 @@ func RegisterUserRoutes(
 		{
 			announcements.GET("", h.Announcement.List)
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
-		}
-
-		// 网站工单（关闭时 service 返回 SUPPORT_TICKET_DISABLED）
-		tickets := authenticated.Group("/support-tickets")
-		{
-			tickets.GET("", h.SupportTicket.List)
-			tickets.POST("", h.SupportTicket.Create)
-			tickets.GET("/summary", h.SupportTicket.Summary)
-			tickets.GET("/:id", h.SupportTicket.Get)
-			tickets.POST("/:id/messages", h.SupportTicket.Reply)
-			tickets.POST("/:id/close", h.SupportTicket.Close)
-			tickets.POST("/:id/reopen", h.SupportTicket.Reopen)
 		}
 
 		// 卡密兑换
@@ -193,13 +149,6 @@ func RegisterUserRoutes(
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
 
-		// 鹈鹕测智展示（用户只读；功能关闭时返回空画廊）
-		showcase := authenticated.Group("/pelican-showcase")
-		{
-			showcase.GET("", h.PelicanShowcase.List)
-			showcase.GET("/items/:id", h.PelicanShowcase.GetItem)
-		}
-
 		// V2 passive views require feature on + mode=v2.
 		monitorV2 := authenticated.Group("/channel-monitor-v2")
 		monitorV2.Use(panelRateLimiter.Heavy())
@@ -211,15 +160,6 @@ func RegisterUserRoutes(
 			monitorV2.GET("/matrix", h.ChannelMonitorV2.Matrix)
 			monitorV2.GET("/errors", h.ChannelMonitorV2.Errors)
 			monitorV2.GET("/users", h.ChannelMonitorV2.Users)
-		}
-
-		// V3 component status page requires feature on + mode=v3.
-		monitorV3 := authenticated.Group("/channel-monitor-v3")
-		monitorV3.Use(panelRateLimiter.Heavy())
-		monitorV3.Use(channelMonitorModeV3Guard(settingService))
-		{
-			monitorV3.GET("/status", h.ChannelMonitorV3.Status)
-			monitorV3.GET("/incidents", h.ChannelMonitorV3.Incidents)
 		}
 	}
 }

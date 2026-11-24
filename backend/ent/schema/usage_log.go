@@ -31,8 +31,6 @@ func (UsageLog) Annotations() []schema.Annotation {
 // Fields 定义使用日志实体的所有字段。
 func (UsageLog) Fields() []ent.Field {
 	return []ent.Field{
-		// Historical provider snapshot. NULL remains unknown; never backfill from mutable entities.
-		field.String("platform").MaxLen(50).Optional().Nillable(),
 		// 关联字段
 		field.Int64("user_id"),
 		field.Int64("api_key_id"),
@@ -138,10 +136,6 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int("first_token_ms").
 			Optional().
 			Nillable(),
-		field.Int("queue_wait_ms").
-			Optional().
-			Nillable().
-			Comment("请求到达网关到开始转发的等待毫秒数"),
 		field.String("user_agent").
 			MaxLen(512).
 			Optional().
@@ -190,10 +184,6 @@ func (UsageLog) Fields() []ent.Field {
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),
-
-		field.JSON("customer_cost_details", map[string]any{}).Optional().Immutable().Comment("Request-time Standard customer cost display snapshot; NULL is unknown history"),
-
-		field.JSON("queue_timing", map[string]any{}).Optional().Comment("Explicit measured server/forward boundaries; NULL means unknown"),
 
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").

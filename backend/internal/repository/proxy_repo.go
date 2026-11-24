@@ -42,9 +42,6 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 		SetStatus(proxyIn.Status).
 		SetFallbackMode(proxyIn.FallbackMode).
 		SetExpiryWarnDays(proxyIn.ExpiryWarnDays)
-	if proxyIn.MihomoNodeID != "" {
-		builder.SetMihomoNodeID(proxyIn.MihomoNodeID)
-	}
 	if proxyIn.Username != "" {
 		builder.SetUsername(proxyIn.Username)
 	}
@@ -71,17 +68,6 @@ func (r *proxyRepository) GetByID(ctx context.Context, id int64) (*service.Proxy
 		if dbent.IsNotFound(err) {
 			return nil, service.ErrProxyNotFound
 		}
-		return nil, err
-	}
-	return proxyEntityToService(m), nil
-}
-
-func (r *proxyRepository) GetByMihomoNodeID(ctx context.Context, name string) (*service.Proxy, error) {
-	m, err := r.client.Proxy.Query().Where(proxy.MihomoNodeIDEQ(name)).Only(ctx)
-	if dbent.IsNotFound(err) {
-		return nil, nil
-	}
-	if err != nil {
 		return nil, err
 	}
 	return proxyEntityToService(m), nil
@@ -608,7 +594,6 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 		Protocol:       m.Protocol,
 		Host:           m.Host,
 		Port:           m.Port,
-		MihomoNodeID:   valueOrEmpty(m.MihomoNodeID),
 		Status:         m.Status,
 		CreatedAt:      m.CreatedAt,
 		UpdatedAt:      m.UpdatedAt,

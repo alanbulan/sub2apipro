@@ -45,7 +45,6 @@
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
               <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
-            <LotteryRechargeNotice source="recharge" />
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
@@ -76,26 +75,24 @@
                 :selected="selectedMethod"
                 @select="selectedMethod = $event"
               />
-              <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && Object.keys(stripeSubMethods).length" v-model="selectedSubtype" :methods="stripeSubMethods" />
             </div>
-            <RechargeCouponPicker :amount="validAmount" :method="selectedMethod" :currency="selectedCurrency" :disabled="submitting" :initial-id="Number(route.query.coupon) || undefined" @change="onCouponChange" />
-            <div v-if="validAmount > 0 && (!selectedCouponId || couponQuote)" class="card p-6">
+            <div v-if="validAmount > 0" class="card p-6">
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
                   <span :class="discountAmount > 0 ? 'text-gray-400 line-through dark:text-gray-500' : 'text-gray-900 dark:text-white'">{{ formatSelectedPaymentAmount(validAmount) }}</span>
                 </div>
                 <div v-if="discountAmount > 0" class="flex justify-between" data-testid="recharge-discount-row">
-                  <span class="text-gray-500 dark:text-gray-400">{{ selectedCouponId ? t('coupon.discount') : t('payment.rechargeBonus.discountLabelWithPercent', { percent: formatRechargeBonusNumber(bonusQuote.percent) }) }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.rechargeBonus.discountLabelWithPercent', { percent: formatRechargeBonusNumber(bonusQuote.percent) }) }}</span>
                   <span class="font-medium text-red-600 dark:text-red-400">-{{ formatSelectedPaymentAmount(discountAmount) }}</span>
                 </div>
-                <div v-if="hasFee" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRateLabel }}%)</span>
-                  <span class="text-gray-900 dark:text-white">{{ formatQuoteRange(rechargeQuote, 'fee') }}</span>
+                <div v-if="feeRate > 0" class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                  <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(feeAmount) }}</span>
                 </div>
                 <div v-if="showActualPay" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t(feeRangeVaries ? 'payment.estimatedPay' : 'payment.actualPay') }}</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatQuoteRange(rechargeQuote, 'total') }}</span>
+                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(totalAmount) }}</span>
                 </div>
                 <div v-if="showBonusRow" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': !showActualPay }" data-testid="recharge-bonus-row">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.rechargeBonus.amountLabelWithPercent', { percent: formatRechargeBonusNumber(bonusQuote.percent) }) }}</span>
@@ -110,13 +107,12 @@
                 </p>
               </div>
             </div>
-            <p v-if="feeRangeVaries" class="text-xs text-gray-500 dark:text-gray-400" data-testid="fee-range-hint">{{ t('payment.feeRangeHint') }}</p>
             <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
               <span v-if="submitting" class="flex items-center justify-center gap-2">
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
               </span>
-              <span v-else>{{ t('payment.createOrder') }} {{ formatQuoteRange(rechargeQuote, 'total') }}</span>
+              <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(totalAmount) }}</span>
             </button>
             </template>
           </template>
@@ -176,82 +172,35 @@
                   </div>
                 </div>
               </div>
-              <div
-                v-if="selectedActiveSubscription"
-                class="card bg-white p-6 dark:bg-dark-800"
-                data-test="renewal-mode-selector"
-              >
-                <div class="mb-3">
-                  <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.renewalMode.title') }}</p>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('payment.renewalMode.currentExpiry', { date: formatDateTimeToMinute(selectedActiveSubscription.expires_at) }) }}
-                  </p>
-                </div>
-                <div class="grid grid-cols-2 gap-3" role="radiogroup" :aria-label="t('payment.renewalMode.title')">
-                  <button
-                    type="button"
-                    role="radio"
-                    :aria-checked="renewalMode === 'restart'"
-                    :class="[
-                      'min-h-[60px] min-w-0 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
-                      renewalMode === 'restart'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm dark:bg-primary-900/30 dark:text-primary-300'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200'
-                    ]"
-                    @click="renewalMode = 'restart'"
-                  >
-                    {{ t('payment.renewalMode.restart') }}
-                  </button>
-                  <button
-                    type="button"
-                    role="radio"
-                    :aria-checked="renewalMode === 'extend'"
-                    :class="[
-                      'min-h-[60px] min-w-0 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
-                      renewalMode === 'extend'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm dark:bg-primary-900/30 dark:text-primary-300'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200'
-                    ]"
-                    @click="renewalMode = 'extend'"
-                  >
-                    {{ t('payment.renewalMode.extend') }}
-                  </button>
-                </div>
-                <p class="mt-3 text-xs leading-relaxed" :class="renewalMode === 'restart' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'">
-                  {{ t(`payment.renewalMode.${renewalMode}Hint`) }}
-                </p>
-              </div>
               <div v-if="enabledMethods.length >= 1" class="card p-6">
                 <PaymentMethodSelector
                   :methods="subMethodOptions"
                   :selected="selectedMethod"
                   @select="selectedMethod = $event"
                 />
-                <StripeSubtypeSelector v-if="selectedMethod === 'stripe' && Object.keys(stripeSubMethods).length" v-model="selectedSubtype" :methods="stripeSubMethods" />
               </div>
-              <div v-if="hasFee && selectedPlan.price > 0" class="card p-6">
+              <div v-if="feeRate > 0 && selectedPlan.price > 0" class="card p-6">
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
                     <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subPaymentAmount) }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRateLabel }}%)</span>
-                    <span class="text-gray-900 dark:text-white">{{ formatQuoteRange(subscriptionQuote, 'fee') }}</span>
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subFeeAmount) }}</span>
                   </div>
                   <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t(feeRangeVaries ? 'payment.estimatedPay' : 'payment.actualPay') }}</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatQuoteRange(subscriptionQuote, 'total') }}</span>
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
                   </div>
                 </div>
               </div>
-              <p v-if="feeRangeVaries" class="text-xs text-gray-500 dark:text-gray-400" data-testid="fee-range-hint">{{ t('payment.feeRangeHint') }}</p>
-            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
+              <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
                 <span v-if="submitting" class="flex items-center justify-center gap-2">
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} {{ formatQuoteRange(subscriptionQuote, 'total') }}</span>
+                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
@@ -345,16 +294,11 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, SubscriptionRenewalMode } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import { formatBalanceRechargeMultiplier, formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import LotteryRechargeNotice from '@/components/lottery/LotteryRechargeNotice.vue'
-import RechargeCouponPicker from '@/components/payment/RechargeCouponPicker.vue'
-import type { CouponQuote } from '@/api/coupons'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
-import StripeSubtypeSelector from '@/components/payment/StripeSubtypeSelector.vue'
-import { paymentFeeRange, quotePaymentFee, paymentRangeFitsLimits } from '@/components/payment/fees'
 import { METHOD_ORDER, getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
@@ -371,9 +315,8 @@ import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, pl
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, hasPaymentAmountPrecision, normalizePaymentCurrency, paymentCurrencyFractionDigits } from '@/components/payment/currency'
+import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import { planValiditySuffix as validitySuffixOf } from '@/components/payment/validity'
-import { formatDateTimeToMinute } from '@/utils/format'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
@@ -410,17 +353,8 @@ const errorHintMessage = ref('')
 const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
-const selectedSubtype = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
-const renewalMode = ref<SubscriptionRenewalMode>('restart')
 const previewImage = ref('')
-
-const selectedActiveSubscription = computed(() => {
-  if (!selectedPlan.value) return null
-  return activeSubscriptions.value.find(subscription =>
-    subscription.group_id === selectedPlan.value?.group_id && subscription.status === 'active'
-  ) ?? null
-})
 
 const paymentPhase = ref<'select' | 'paying'>('select')
 
@@ -430,7 +364,6 @@ interface CreateOrderOptions {
   paymentType?: string
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
-  renewalMode?: SubscriptionRenewalMode
 }
 
 interface WeixinJSBridgeLike {
@@ -536,7 +469,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number; renewalMode?: SubscriptionRenewalMode },
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -556,12 +489,6 @@ function buildWechatOAuthAuthorizeUrl(
       redirectUrl.searchParams.set('plan_id', String(context.planId))
     } else {
       redirectUrl.searchParams.delete('plan_id')
-    }
-
-    if (context.orderType === 'subscription' && context.renewalMode) {
-      redirectUrl.searchParams.set('renewal_mode', context.renewalMode)
-    } else {
-      redirectUrl.searchParams.delete('renewal_mode')
     }
 
     if (context.orderAmount > 0) {
@@ -660,59 +587,14 @@ const planGridClass = computed(() => {
   return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
 })
 
-const stripeSubMethods = computed(() => visibleMethods.value.stripe?.sub_methods ?? {})
-watch(stripeSubMethods, (methods) => {
-  if (!(selectedSubtype.value in methods)) selectedSubtype.value = Object.keys(methods)[0] ?? ''
-}, { immediate: true })
-
-function methodFeeRange(method: string) {
-  const limits = visibleMethods.value[method]
-  const rates = method === 'stripe' && selectedSubtype.value
-    ? limits?.sub_methods?.[selectedSubtype.value] ?? limits
-    : limits
-  return paymentFeeRange(rates, checkout.value.recharge_fee_rate)
-}
-
-function methodQuote(base: number, method: string) {
-  const currency = normalizePaymentCurrency(visibleMethods.value[method]?.currency)
-  const rates = methodFeeRange(method)
-  return {
-    min: quotePaymentFee(base, rates.min, currencyFractionDigits(currency)),
-    max: quotePaymentFee(base, rates.max, currencyFractionDigits(currency)),
-  }
-}
-
-// Aggregated limits are a preview; the server checks each candidate with its own quote.
-function amountFitsMethod(base: number, method: string): boolean {
-  if (base <= 0) return true
-  const limits = visibleMethods.value[method]
-  if (!limits) return false
-  const quote = methodQuote(base, method)
-  return paymentRangeFitsLimits(quote.min.total, quote.max.total, limits.single_min, limits.single_max)
-}
-
-// A Stripe button stays selectable if any configured subtype can handle the amount.
-function methodAvailableForAmount(base: number, method: string): boolean {
-  const limits = visibleMethods.value[method]
-  if (!limits || limits.available === false) return false
-  if (method !== 'stripe' || !limits.sub_methods) return amountFitsMethod(base, method)
-  const digits = currencyFractionDigits(normalizePaymentCurrency(limits.currency))
-  return Object.values(limits.sub_methods).some(rates => {
-    const range = paymentFeeRange(rates, checkout.value.recharge_fee_rate)
-    return paymentRangeFitsLimits(
-      quotePaymentFee(base, range.min, digits).total,
-      quotePaymentFee(base, range.max, digits).total,
-      limits.single_min, limits.single_max,
-    )
-  })
-}
-
-function rechargeBaseForMethod(method: string): number {
-  return quoteRechargeBonus(rechargeBonusTiers.value, validAmount.value, {
-    multiplier: balanceRechargeMultiplier.value,
-    mode: rechargeBonusMode.value,
-    currencyDigits: currencyFractionDigits(normalizePaymentCurrency(visibleMethods.value[method]?.currency)),
-  }).payBase
+// Check if an amount fits a method's [min, max]. 0 = no limit.
+function amountFitsMethod(amt: number, methodType: string): boolean {
+  if (amt <= 0) return true
+  const ml = visibleMethods.value[methodType]
+  if (!ml) return false
+  if (ml.single_min > 0 && amt < ml.single_min) return false
+  if (ml.single_max > 0 && amt > ml.single_max) return false
+  return true
 }
 
 // Visible methods decide the amount range shown to users.
@@ -742,13 +624,26 @@ const localeCode = computed(() => {
 })
 
 function currencyFractionDigits(currency: string): number {
-  return paymentCurrencyFractionDigits(currency)
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+    }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    return 2
+  }
 }
 
 function roundPaymentAmount(value: number, currency: string): number {
   if (!Number.isFinite(value)) return 0
   const factor = 10 ** currencyFractionDigits(currency)
   return Math.round(value * factor) / factor
+}
+
+function ceilPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** currencyFractionDigits(currency)
+  return Math.ceil(value * factor) / factor
 }
 
 function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
@@ -772,13 +667,11 @@ const bonusQuote = computed(() => quoteRechargeBonus(rechargeBonusTiers.value, v
   mode: rechargeBonusMode.value,
   currencyDigits: currencyFractionDigits(selectedCurrency.value),
 }))
-const selectedCouponId = ref(0), couponPending = ref(false), couponQuote = ref<CouponQuote | null>(null)
-function onCouponChange(id: number, quote: CouponQuote | null, pending: boolean) { selectedCouponId.value=id;couponQuote.value=quote;couponPending.value=pending }
-const payBaseAmount = computed(() => couponQuote.value?.pay_base ?? bonusQuote.value.payBase)
+const payBaseAmount = computed(() => bonusQuote.value.payBase)
 const discountAmount = computed(() => roundPaymentAmount(validAmount.value - payBaseAmount.value, selectedCurrency.value))
-const creditedAmount = computed(() => couponQuote.value?.credited ?? bonusQuote.value.credited)
-const showBonusRow = computed(() => !selectedCouponId.value && bonusQuote.value.mode !== 'discount' && bonusQuote.value.bonus > 0)
-const showCreditedBalance = computed(() => !!selectedCouponId.value || balanceRechargeMultiplier.value !== 1 || bonusQuote.value.percent > 0)
+const creditedAmount = computed(() => bonusQuote.value.credited)
+const showBonusRow = computed(() => bonusQuote.value.mode !== 'discount' && bonusQuote.value.bonus > 0)
+const showCreditedBalance = computed(() => balanceRechargeMultiplier.value !== 1 || bonusQuote.value.percent > 0)
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
@@ -786,58 +679,42 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
     return {
       type,
       display_name: ml?.display_name,
-      fee_rate: methodFeeRange(type).min,
-      fee_rate_min: methodFeeRange(type).min,
-      fee_rate_max: methodFeeRange(type).max,
-      available: methodAvailableForAmount(rechargeBaseForMethod(type), type),
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(payBaseAmount.value, type),
     }
   })
 )
 
-const selectedFeeRange = computed(() => methodFeeRange(selectedMethod.value))
-const feeRangeVaries = computed(() => selectedFeeRange.value.min !== selectedFeeRange.value.max)
-const feeRateLabel = computed(() => feeRangeVaries.value
-  ? `${selectedFeeRange.value.min}–${selectedFeeRange.value.max}`
-  : String(selectedFeeRange.value.min))
-const hasFee = computed(() => selectedFeeRange.value.max > 0)
-const rechargeQuote = computed(() => methodQuote(payBaseAmount.value, selectedMethod.value))
-const showActualPay = computed(() => hasFee.value || discountAmount.value > 0)
-
-function formatQuoteRange(quote: ReturnType<typeof methodQuote>, field: 'fee' | 'total'): string {
-  const min = formatSelectedPaymentAmount(quote.min[field])
-  const max = formatSelectedPaymentAmount(quote.max[field])
-  return min === max ? min : `${min} – ${max}`
-}
+const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
+const feeAmount = computed(() =>
+  feeRate.value > 0 && payBaseAmount.value > 0
+    ? Math.ceil(((payBaseAmount.value * feeRate.value) / 100) * 100) / 100
+    : 0
+)
+const totalAmount = computed(() =>
+  feeRate.value > 0 && payBaseAmount.value > 0
+    ? Math.round((payBaseAmount.value + feeAmount.value) * 100) / 100
+    : payBaseAmount.value
+)
+const showActualPay = computed(() => feeRate.value > 0 || discountAmount.value > 0)
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
-	if (!hasPaymentAmountPrecision(validAmount.value, selectedCurrency.value)) {
-		return t('payment.amountPrecision', {
-			currency: selectedCurrency.value,
-			digits: currencyFractionDigits(selectedCurrency.value),
-		})
-	}
   // No method can handle this amount
-  if (!enabledMethods.value.some((m) => methodAvailableForAmount(rechargeBaseForMethod(m), m))) {
+  if (!enabledMethods.value.some((m) => amountFitsMethod(payBaseAmount.value, m))) {
     return t('payment.amountNoMethod')
   }
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && rechargeQuote.value.max.total < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
-    if (ml.single_max > 0 && rechargeQuote.value.min.total > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
+    if (ml.single_min > 0 && payBaseAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
+    if (ml.single_max > 0 && payBaseAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
   }
   return ''
 })
 
-const stripeSubtypeReady = computed(() => selectedMethod.value !== 'stripe'
-  || !selectedLimit.value?.sub_methods
-  || Object.prototype.hasOwnProperty.call(stripeSubMethods.value, selectedSubtype.value))
-
 const canSubmit = computed(() =>
-  (!selectedCouponId.value || (!couponPending.value && couponQuote.value !== null)) && validAmount.value > 0
-		&& hasPaymentAmountPrecision(validAmount.value, selectedCurrency.value)
-    && stripeSubtypeReady.value
+  validAmount.value > 0
     && amountFitsMethod(payBaseAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
@@ -847,7 +724,22 @@ const subPaymentAmount = computed(() => {
   return subscriptionPaymentAmountForCurrency(price, selectedCurrency.value)
 })
 
-const subscriptionQuote = computed(() => methodQuote(subPaymentAmount.value, selectedMethod.value))
+const subFeeAmount = computed(() => {
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return 0
+  return ceilPaymentAmount((subPaymentAmount.value * feeRate.value) / 100, selectedCurrency.value)
+})
+
+const subTotalAmount = computed(() => {
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return subPaymentAmount.value
+  return roundPaymentAmount(subPaymentAmount.value + subFeeAmount.value, selectedCurrency.value)
+})
+
+function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
+  const paymentAmount = subscriptionPaymentAmountForCurrency(value, currency)
+  if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
+  const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
+  return roundPaymentAmount(paymentAmount + fee, currency)
+}
 
 // Subscription-specific: method options based on gateway pay amount
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
@@ -858,25 +750,22 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
     return {
       type,
       display_name: ml?.display_name,
-      fee_rate: methodFeeRange(type).min,
-      fee_rate_min: methodFeeRange(type).min,
-      fee_rate_max: methodFeeRange(type).max,
-      available: methodAvailableForAmount(subscriptionPaymentAmountForCurrency(price, currency), type),
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
     }
   })
 })
 
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
-    && stripeSubtypeReady.value
-    && amountFitsMethod(subPaymentAmount.value, selectedMethod.value)
+    && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [payBaseAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (activeTab.value !== 'recharge' || amt <= 0 || methodAvailableForAmount(rechargeBaseForMethod(method), method)) return
-  const available = enabledMethods.value.find((m) => methodAvailableForAmount(rechargeBaseForMethod(m), m))
+  if (amt <= 0 || amountFitsMethod(amt, method)) return
+  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
   if (available) selectedMethod.value = available
 })
 
@@ -918,7 +807,6 @@ function planPeakRateLabel(plan: SubscriptionPlan): string {
 
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
-  renewalMode.value = 'restart'
   errorMessage.value = ''
 }
 
@@ -926,7 +814,6 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   showRenewalModal.value = false
   renewGroupId.value = null
   selectedPlan.value = plan
-  renewalMode.value = 'restart'
   errorMessage.value = ''
 }
 
@@ -942,7 +829,7 @@ async function handleSubmitRecharge() {
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, { renewalMode: renewalMode.value })
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
@@ -950,24 +837,18 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   errorMessage.value = ''
   errorHintMessage.value = ''
   const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
-  const effectiveRenewalMode = orderType === 'subscription'
-    ? (options.renewalMode ?? renewalMode.value)
-    : undefined
   try {
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
-      paymentSubtype: requestType === 'stripe' ? selectedSubtype.value : undefined,
       orderType,
       planId,
-      renewalMode: effectiveRenewalMode,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
       forceQRCode: !!(checkout.value.alipay_force_qrcode && normalizeVisibleMethod(requestType) === 'alipay'),
       mobilePrecreateDeepLink: checkout.value.alipay_mobile_precreate_deep_link === true,
     })
-    if (orderType === 'balance' && selectedCouponId.value) payload.coupon_id = selectedCouponId.value
     if (options.openid) {
       payload.openid = options.openid
     }
@@ -1026,7 +907,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         orderType,
         planId,
         orderAmount,
-        renewalMode: effectiveRenewalMode,
       })
       return
     }
@@ -1067,7 +947,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderAmount,
               orderType,
               planId,
-              renewalMode: effectiveRenewalMode,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -1086,7 +965,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderAmount,
           orderType,
           planId,
-          renewalMode: effectiveRenewalMode,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -1116,7 +994,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderAmount,
       orderType,
       planId,
-      renewalMode: effectiveRenewalMode,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -1144,7 +1021,6 @@ interface MobileQrFallbackContext {
   orderAmount: number
   orderType: OrderType
   planId?: number
-  renewalMode?: SubscriptionRenewalMode
   paymentType: string
   attempted: boolean
 }
@@ -1194,7 +1070,6 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
-      renewalMode: context.renewalMode,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1265,7 +1140,6 @@ async function resumeWechatPaymentFromQuery() {
   }
   if (resume.orderType === 'subscription' && resume.planId) {
     selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
-    renewalMode.value = resume.renewalMode ?? 'restart'
   }
 
   await router.replace({ path: route.path, query: stripWechatResumeQuery(route.query) })
@@ -1275,7 +1149,6 @@ async function resumeWechatPaymentFromQuery() {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
       isResume: true,
-      renewalMode: resume.renewalMode,
     })
     return
   }
@@ -1285,7 +1158,6 @@ async function resumeWechatPaymentFromQuery() {
       openid: resume.openid,
       paymentType: resume.paymentType,
       isResume: true,
-      renewalMode: resume.renewalMode,
     })
   }
 }

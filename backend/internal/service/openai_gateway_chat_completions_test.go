@@ -373,6 +373,8 @@ func TestForwardAsChatCompletions_StructuredInputRejectionDoesNotRetryIneligible
 		mode          string
 		unknown       bool
 		platform      string
+		protocol      string
+		endpoint      string
 		accountType   string
 		responsesBody bool
 		nativeIngress bool
@@ -385,6 +387,10 @@ func TestForwardAsChatCompletions_StructuredInputRejectionDoesNotRetryIneligible
 		{name: "Responses shaped Chat ingress", responsesBody: true},
 		{name: "native Responses ingress", responsesBody: true, nativeIngress: true},
 		{name: "native CN Responses protocol", platform: PlatformDeepseek},
+		{name: "adaptive Chat ingress stays raw", platform: PlatformKimi, protocol: APIProtocolAdaptive, endpoint: "/chat/completions"},
+		{name: "adaptive Responses shaped ingress stays Responses", platform: PlatformKimi, protocol: APIProtocolAdaptive, responsesBody: true},
+		{name: "adaptive Responses shaped ingress converts to Chat", platform: PlatformZhipu, protocol: APIProtocolAdaptive, responsesBody: true, endpoint: "/chat/completions"},
+		{name: "model routed Responses is not OpenAI retry eligible", platform: PlatformCommandCode, protocol: APIProtocolResponses},
 		{name: "OAuth", accountType: AccountTypeOAuth},
 		{name: "authentication", status: http.StatusUnauthorized},
 		{name: "authorization", status: http.StatusForbidden},
@@ -410,6 +416,9 @@ func TestForwardAsChatCompletions_StructuredInputRejectionDoesNotRetryIneligible
 			if test.platform != "" {
 				account.Platform = test.platform
 				account.Credentials["api_protocol"] = APIProtocolResponses
+			}
+			if test.protocol != "" {
+				account.Credentials["api_protocol"] = test.protocol
 			}
 			if test.accountType != "" {
 				account.Type = test.accountType
@@ -440,7 +449,11 @@ func TestForwardAsChatCompletions_StructuredInputRejectionDoesNotRetryIneligible
 			require.Error(t, err)
 			require.Nil(t, result)
 			require.Len(t, upstream.requests, 1)
-			require.True(t, strings.HasSuffix(upstream.requests[0].URL.Path, "/responses"))
+			endpoint := test.endpoint
+			if endpoint == "" {
+				endpoint = "/responses"
+			}
+			require.True(t, strings.HasSuffix(upstream.requests[0].URL.Path, endpoint))
 			var failover *UpstreamFailoverError
 			if status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests {
 				require.ErrorAs(t, err, &failover)
@@ -614,9 +627,9 @@ func TestHandleChatStreamingResponse_ClassifiesHTTP2ReadError(t *testing.T) {
 	code, message, ok := OpenAIUpstreamStreamReadErrorDetails(err)
 	require.True(t, ok)
 	require.Equal(t, OpenAIUpstreamHTTP2StreamErrorCode, code)
-	require.Equal(t, "Upstream connection reset by peer (HTTP/2 INTERNAL_ERROR). Content may be incomplete. Do not automatically retry the same request.", message)
+	require.Equal(t, "Upstream HTTP/2 stream failed", message)
 	require.NotContains(t, message, "stream ID")
-	require.Contains(t, message, "INTERNAL_ERROR")
+	require.NotContains(t, message, "INTERNAL_ERROR")
 }
 
 func TestNormalizeResponsesRequestServiceTier(t *testing.T) {

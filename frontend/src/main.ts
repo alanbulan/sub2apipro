@@ -6,7 +6,6 @@ import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
-import { initAppTheme } from '@/composables/useAppTheme'
 import './style.css'
 
 function initIOSViewportZoomFix() {
@@ -23,9 +22,17 @@ function initIOSViewportZoomFix() {
   viewport.setAttribute('content', `${content}, maximum-scale=1.0`)
 }
 
+function initThemeClass() {
+  const savedTheme = localStorage.getItem('theme')
+  const shouldUseDark =
+    savedTheme === 'dark' ||
+    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  document.documentElement.classList.toggle('dark', shouldUseDark)
+}
+
 async function bootstrap() {
   // Apply theme class globally before app mount to keep all routes consistent.
-  initAppTheme()
+  initThemeClass()
   initIOSViewportZoomFix()
 
   const app = createApp(App)
@@ -38,8 +45,8 @@ async function bootstrap() {
   appStore.initFromInjectedConfig()
 
   // Set document title immediately after config is loaded
-  if (appStore.siteName) {
-    document.title = appStore.siteName
+  if (appStore.siteName && appStore.siteName !== 'Sub2API') {
+    document.title = `${appStore.siteName} - AI API Gateway`
   }
   updateFavicon(appStore.siteLogo)
 

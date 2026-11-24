@@ -4,7 +4,6 @@
  */
 
 import { apiClient } from '../client'
-import { AUTH_USER_KEY, getAuthItem } from '@/utils/authStorage'
 
 export type Provider =
   | 'openai'
@@ -239,7 +238,7 @@ interface DuplicateOperationScope {
 
 function getCurrentAdminID(): string | null {
   try {
-    const rawUser = getAuthItem(AUTH_USER_KEY)
+    const rawUser = globalThis.localStorage?.getItem('auth_user')
     if (!rawUser) return null
 
     const user: unknown = JSON.parse(rawUser)

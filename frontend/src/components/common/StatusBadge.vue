@@ -6,7 +6,7 @@
         variantClass
       ]"
     ></span>
-    <span class="app-theme-readable text-sm">
+    <span class="text-sm text-gray-700 dark:text-gray-300">
       {{ label }}
     </span>
   </div>

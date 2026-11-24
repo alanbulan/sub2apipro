@@ -209,6 +209,27 @@ func TestProjectAccountModelsPassthroughIgnoresStaleMappings(t *testing.T) {
 	require.JSONEq(t, string(body), string(projected))
 }
 
+func TestProjectAccountModelsPassthroughFilterKeepsSourceNames(t *testing.T) {
+	for _, codex := range []bool{false, true} {
+		t.Run(fmt.Sprint(codex), func(t *testing.T) {
+			account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+			account.Extra = map[string]any{"openai_passthrough": true, "openai_passthrough_model_filter": true}
+			account.Credentials["model_mapping"] = map[string]any{
+				"qwen3.8-max": "must-not-rewrite", "qwen3.8-*": "also-not-a-model", "absent-alias": "gpt-6.1-sol",
+			}
+			body := `{"object":"list","data":[{"id":"qwen3.8-max","display_name":"Qwen Max"},{"id":"qwen3.8-plus"},{"id":"gpt-6.1-sol"}]}`
+			want := `{"object":"list","data":[{"id":"qwen3.8-max","display_name":"Qwen Max"},{"id":"qwen3.8-plus"}]}`
+			if codex {
+				body = strings.NewReplacer(`"data"`, `"models"`, `"id"`, `"slug"`).Replace(body)
+				want = strings.NewReplacer(`"data"`, `"models"`, `"id"`, `"slug"`).Replace(want)
+			}
+			projected, err := projectAccountModelsBody([]byte(body), account, nil, codex)
+			require.NoError(t, err)
+			require.JSONEq(t, want, string(projected))
+		})
+	}
+}
+
 func TestFetchOpenAIModelsListEmptyAndMalformedResponses(t *testing.T) {
 	for _, body := range []string{`{"data":[]}`, `{"data":null}`, `{}`, `{"data":{}}`, `{"data":[{}]}`, `{"data":[null]}`} {
 		t.Run(body, func(t *testing.T) {
@@ -230,23 +251,6 @@ func TestFetchOpenAIModelsListEmptyAndMalformedResponses(t *testing.T) {
 			require.Empty(t, result.Data)
 		})
 	}
-}
-
-func TestModelsRefreshReusesCacheFilledAfterCallerLookup(t *testing.T) {
-	s := &OpenAIGatewayService{}
-	const key = "late-refresh"
-	_, state := s.openAIModelsCache.get(key, time.Now())
-	require.Equal(t, openAIModelsCacheMiss, state)
-	manifest := &OpenAIModelsResponse{Body: []byte(`{"data":[{"id":"shared-model"}]}`)}
-	s.openAIModelsCache.set(key, manifest, time.Now())
-	var calls atomic.Int32
-	result := <-s.refreshCachedOpenAIModels(key, openAIModelsRequest{}, func(context.Context, string) (*OpenAIModelsResponse, error) {
-		calls.Add(1)
-		return manifest, nil
-	})
-	require.NoError(t, result.Err)
-	require.Same(t, manifest, result.Val)
-	require.Zero(t, calls.Load())
 }
 
 func TestPinnedOpenAIModelsListMixedAccountsShareColdCacheAcrossGroups(t *testing.T) {

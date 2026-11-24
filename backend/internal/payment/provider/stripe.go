@@ -102,10 +102,7 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 	}
 
 	// Collect all Stripe payment_method_types from the instance's configured sub-methods
-	methods, err := resolveStripeOrderMethodTypes(req)
-	if err != nil {
-		return nil, err
-	}
+	methods := resolveStripeMethodTypes(req.InstanceSubMethods)
 
 	pmTypes := make([]*string, len(methods))
 	for i, m := range methods {
@@ -325,18 +322,6 @@ func resolveStripeMethodTypes(instanceSubMethods string) []string {
 		return []string{"card"}
 	}
 	return methods
-}
-
-func resolveStripeOrderMethodTypes(req payment.CreatePaymentRequest) ([]string, error) {
-	methods := resolveStripeMethodTypes(req.InstanceSubMethods)
-	if req.PaymentSubtype == "" {
-		return methods, nil
-	}
-	selected, ok := stripePaymentMethodTypes[req.PaymentSubtype]
-	if !ok || len(selected) != 1 || !payment.StripeInstanceSupportsSubtype(req.InstanceSubMethods, req.PaymentSubtype) {
-		return nil, fmt.Errorf("stripe payment subtype is not supported by the selected instance")
-	}
-	return selected, nil
 }
 
 // hasStripeMethod checks if the given Stripe method list contains the target method.

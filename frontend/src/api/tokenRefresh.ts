@@ -1,13 +1,11 @@
 import axios from 'axios'
 import type { ApiResponse } from '@/types'
 import { getAPIBaseURL } from './url'
-import {
-  AUTH_TOKEN_KEY,
-  AUTH_USER_KEY,
-  REFRESH_TOKEN_KEY,
-  TOKEN_EXPIRES_AT_KEY,
-  getAuthStorage
-} from '@/utils/authStorage'
+
+const AUTH_TOKEN_KEY = 'auth_token'
+const AUTH_USER_KEY = 'auth_user'
+const REFRESH_TOKEN_KEY = 'refresh_token'
+const TOKEN_EXPIRES_AT_KEY = 'token_expires_at'
 const TOKEN_REFRESH_LOCK_NAME = 'sub2api-auth-token-refresh'
 const TOKEN_REFRESH_TIMEOUT_MS = 30_000
 const PEER_REFRESH_WAIT_MS = 1_000
@@ -27,7 +25,6 @@ export interface RefreshAuthTokensOptions {
 }
 
 interface AuthSnapshot {
-  storage: Storage
   accessToken: string | null
   refreshToken: string
   expiresAt: number
@@ -36,8 +33,8 @@ interface AuthSnapshot {
 
 let inFlightRefresh: Promise<RefreshTokenResponse> | null = null
 
-function getStoredUserID(storage: Storage): number | null {
-  const rawUser = storage.getItem(AUTH_USER_KEY)
+function getStoredUserID(): number | null {
+  const rawUser = localStorage.getItem(AUTH_USER_KEY)
   if (!rawUser) {
     return null
   }
@@ -51,32 +48,30 @@ function getStoredUserID(storage: Storage): number | null {
 }
 
 function readAuthSnapshot(): AuthSnapshot {
-  const storage = getAuthStorage()
-  const refreshToken = storage.getItem(REFRESH_TOKEN_KEY)
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
   if (!refreshToken) {
     throw new Error('No refresh token available')
   }
 
   return {
-    storage,
-    accessToken: storage.getItem(AUTH_TOKEN_KEY),
+    accessToken: localStorage.getItem(AUTH_TOKEN_KEY),
     refreshToken,
-    expiresAt: Number(storage.getItem(TOKEN_EXPIRES_AT_KEY)),
-    userID: getStoredUserID(storage)
+    expiresAt: Number(localStorage.getItem(TOKEN_EXPIRES_AT_KEY)),
+    userID: getStoredUserID()
   }
 }
 
 function readStoredTokenPair(snapshot: AuthSnapshot): RefreshTokenResponse | null {
-  const accessToken = snapshot.storage.getItem(AUTH_TOKEN_KEY)
-  const refreshToken = snapshot.storage.getItem(REFRESH_TOKEN_KEY)
-  const expiresAt = Number(snapshot.storage.getItem(TOKEN_EXPIRES_AT_KEY))
+  const accessToken = localStorage.getItem(AUTH_TOKEN_KEY)
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+  const expiresAt = Number(localStorage.getItem(TOKEN_EXPIRES_AT_KEY))
 
   if (
     !accessToken ||
     !refreshToken ||
     !Number.isFinite(expiresAt) ||
     expiresAt <= Date.now() ||
-    getStoredUserID(snapshot.storage) !== snapshot.userID
+    getStoredUserID() !== snapshot.userID
   ) {
     return null
   }
@@ -129,11 +124,11 @@ async function waitForPeerRefresh(
   return readPeerRefreshResult(snapshot, failedAccessToken)
 }
 
-function persistTokenPair(storage: Storage, tokens: RefreshTokenResponse): void {
-  storage.setItem(AUTH_TOKEN_KEY, tokens.access_token)
-  storage.setItem(TOKEN_EXPIRES_AT_KEY, String(Date.now() + tokens.expires_in * 1000))
+function persistTokenPair(tokens: RefreshTokenResponse): void {
+  localStorage.setItem(AUTH_TOKEN_KEY, tokens.access_token)
+  localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(Date.now() + tokens.expires_in * 1000))
   // The rotating refresh token is written last so other tabs can treat its change as a commit marker.
-  storage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token)
+  localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token)
 }
 
 async function requestTokenPair(
@@ -158,8 +153,8 @@ async function requestTokenPair(
     }
 
     if (
-      snapshot.storage.getItem(REFRESH_TOKEN_KEY) !== snapshot.refreshToken ||
-      getStoredUserID(snapshot.storage) !== snapshot.userID
+      localStorage.getItem(REFRESH_TOKEN_KEY) !== snapshot.refreshToken ||
+      getStoredUserID() !== snapshot.userID
     ) {
       const peerResult = readPeerRefreshResult(snapshot, failedAccessToken)
       if (peerResult) {
@@ -168,7 +163,7 @@ async function requestTokenPair(
       throw new Error('Session changed during token refresh')
     }
 
-    persistTokenPair(snapshot.storage, payload.data)
+    persistTokenPair(payload.data)
     return payload.data
   } catch (error) {
     // A peer tab may have rotated the one-time refresh token while this request was in flight.

@@ -27,7 +27,6 @@ const (
 	NotificationEmailEventSubscriptionExpiryReminder  = "subscription.expiry_reminder"
 	NotificationEmailEventBalanceLow                  = "balance.low"
 	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
-	NotificationEmailEventAutoCreditSuccess           = "balance.auto_credit_success"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
@@ -117,8 +116,6 @@ type NotificationEmailPreviewInput struct {
 }
 
 type NotificationEmailSendInput struct {
-	// Recheck source-specific eligibility after rendering, before delivery.
-	beforeSend       func(context.Context) error
 	Event            string
 	Locale           string
 	RecipientEmail   string
@@ -422,11 +419,6 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 
 	if s.emailService == nil {
 		return notificationEmailConfigErr(errors.New("email service is not configured"))
-	}
-	if input.beforeSend != nil {
-		if err := input.beforeSend(ctx); err != nil {
-			return err
-		}
 	}
 	if err := s.emailService.SendEmail(ctx, recipient, rendered.Subject, rendered.HTML); err != nil {
 		return notificationEmailDeliveryErr(err)
@@ -916,15 +908,10 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"subscription_days":   "30",
 			"expiry_time":         "2026-06-18 12:00",
 			"days_remaining":      "3",
-			"hourly_spend":        "1.2500",
-			"hours_remaining":     "9.9",
-			"observation_hours":   "24.0",
 			"current_balance":     "12.34",
 			"threshold":           "20.00",
 			"recharge_url":        "https://example.com/recharge",
 			"recharge_amount":     "50.00",
-			"credit_amount":       "300.00000000",
-			"ledger_id":           "42",
 			"order_id":            "1024",
 			"unsubscribe_url":     "https://example.com/unsubscribe",
 			"account_id":          "1001",
@@ -969,15 +956,10 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"subscription_days":   "30",
 		"expiry_time":         "2026-06-18 12:00",
 		"days_remaining":      "3",
-		"hourly_spend":        "1.2500",
-		"hours_remaining":     "9.9",
-		"observation_hours":   "24.0",
 		"current_balance":     "12.34",
 		"threshold":           "20.00",
 		"recharge_url":        "https://example.com/recharge",
 		"recharge_amount":     "50.00",
-		"credit_amount":       "300.00000000",
-		"ledger_id":           "42",
 		"order_id":            "1024",
 		"unsubscribe_url":     "https://example.com/unsubscribe",
 		"account_id":          "1001",
@@ -1046,7 +1028,6 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventSubscriptionExpiryReminder,
 	NotificationEmailEventBalanceLow,
 	NotificationEmailEventBalanceRechargeSuccess,
-	NotificationEmailEventAutoCreditSuccess,
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
@@ -1056,12 +1037,6 @@ var notificationEmailEventOrder = []string{
 }
 
 var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
-	NotificationEmailEventAutoCreditSuccess: {
-		Event: NotificationEmailEventAutoCreditSuccess, Label: "VIP automatic credit success",
-		Description: "Sent to the VIP account email after committed automatic credit, only when its administrator enabled notification.",
-		Category:    "billing", Optional: false,
-		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "credit_amount", "current_balance", "ledger_id"),
-	},
 	NotificationEmailEventAuthVerifyCode: {
 		Event:        NotificationEmailEventAuthVerifyCode,
 		Label:        "Email verification code",
@@ -1297,16 +1272,6 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>请及时充值以免服务中断。</p>
 <p><a class="button" href="{{recharge_url}}">立即充值</a></p>
 <p class="muted"><a href="{{unsubscribe_url}}">退订此类余额提醒</a></p>`),
-		},
-	},
-	NotificationEmailEventAutoCreditSuccess: {
-		notificationEmailDefaultLocale: {
-			Subject: "[{{site_name}}] VIP automatic credit successful",
-			HTML:    notificationEmailCard("#16a34a", "VIP automatic credit successful", `<p>Hello {{recipient_name}},</p><p>An automatic credit of <strong>${{credit_amount}}</strong> has been added to your balance.</p><p>Balance after credit: <strong>${{current_balance}}</strong></p><p>Ledger ID: {{ledger_id}}</p><p>This entry records an automatic advance. Contact the administrator to confirm its collection status.</p>`),
-		},
-		notificationEmailLocaleChinese: {
-			Subject: "[{{site_name}}] VIP 自动垫付成功",
-			HTML:    notificationEmailCard("#16a34a", "VIP 自动垫付成功", `<p>{{recipient_name}}，您好：</p><p>已为您自动垫付 <strong>${{credit_amount}}</strong>。</p><p>垫付后余额：<strong>${{current_balance}}</strong></p><p>账本编号：{{ledger_id}}</p><p>此邮件确认自动垫付记录；费用结清情况以管理员登记为准。</p>`),
 		},
 	},
 	NotificationEmailEventBalanceRechargeSuccess: {

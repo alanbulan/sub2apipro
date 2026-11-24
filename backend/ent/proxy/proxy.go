@@ -29,8 +29,6 @@ const (
 	FieldHost = "host"
 	// FieldPort holds the string denoting the port field in the database.
 	FieldPort = "port"
-	// FieldMihomoNodeID holds the string denoting the mihomo_node_id field in the database.
-	FieldMihomoNodeID = "mihomo_node_id"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
 	// FieldPassword holds the string denoting the password field in the database.
@@ -80,7 +78,6 @@ var Columns = []string{
 	FieldProtocol,
 	FieldHost,
 	FieldPort,
-	FieldMihomoNodeID,
 	FieldUsername,
 	FieldPassword,
 	FieldStatus,
@@ -120,8 +117,6 @@ var (
 	ProtocolValidator func(string) error
 	// HostValidator is a validator for the "host" field. It is called by the builders before save.
 	HostValidator func(string) error
-	// MihomoNodeIDValidator is a validator for the "mihomo_node_id" field. It is called by the builders before save.
-	MihomoNodeIDValidator func(string) error
 	// UsernameValidator is a validator for the "username" field. It is called by the builders before save.
 	UsernameValidator func(string) error
 	// PasswordValidator is a validator for the "password" field. It is called by the builders before save.
@@ -179,11 +174,6 @@ func ByHost(opts ...sql.OrderTermOption) OrderOption {
 // ByPort orders the results by the port field.
 func ByPort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPort, opts...).ToFunc()
-}
-
-// ByMihomoNodeID orders the results by the mihomo_node_id field.
-func ByMihomoNodeID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldMihomoNodeID, opts...).ToFunc()
 }
 
 // ByUsername orders the results by the username field.

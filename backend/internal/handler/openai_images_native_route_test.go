@@ -40,7 +40,7 @@ func (u *nativeImageRouteUpstream) Do(req *http.Request, _ string, _ int64, _ in
 	return u.client.Do(forwarded)
 }
 
-func newNativeImageRoute(t *testing.T, delay time.Duration, status int, configure ...func(*OpenAIGatewayHandler, service.AccountRepository, *gin.Engine)) (*httptest.Server, *atomic.Int64) {
+func newNativeImageRoute(t *testing.T, delay time.Duration, status int) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	var calls atomic.Int64
@@ -83,21 +83,18 @@ func newNativeImageRoute(t *testing.T, delay time.Duration, status int, configur
 	repo := openAIImagesFailoverAccountRepo{accounts: []service.Account{{ID: 1, Name: "fixture", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Credentials: map[string]any{"api_key": "fixture-key", "base_url": "https://fixture.example/v1"}}}}
 	transport := &nativeImageRouteUpstream{target: target, client: upstream.Client()}
 	deferred := service.NewDeferredService(repo, nil, time.Minute)
-	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, service.NewBillingService(cfg, nil), nil, nil, transport, deferred, nil, nil, nil, nil, nil, nil, nil)
+	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil, service.NewBillingService(cfg, nil), nil, nil, transport, deferred, nil, nil, nil, nil, nil, nil, nil)
 	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billing.Stop)
 	handler := NewOpenAIGatewayHandler(gateway, service.NewConcurrencyService(nil), billing, service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, cfg)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		groupID := int64(1)
-		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 1, UserID: 1, GroupID: &groupID, Group: &service.Group{ID: 1, Platform: service.PlatformOpenAI, AllowImageGeneration: true}, User: &service.User{ID: 1}})
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 1, GroupID: &groupID, Group: &service.Group{ID: 1, AllowImageGeneration: true}, User: &service.User{ID: 1}})
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1})
 	})
 	router.POST("/v1/images/generations", handler.Images)
 	router.POST("/v1/images/edits", handler.Images)
-	for _, apply := range configure {
-		apply(handler, repo, router)
-	}
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	return server, &calls

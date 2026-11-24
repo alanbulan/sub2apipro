@@ -1,13 +1,5 @@
 export default {
     ops: {
-      balanceError: {
-        user: '用户余额不足',
-        userHint: '本站用户余额未达到请求要求。请充值该用户余额后重试。',
-        upstream: '上游账户余额不足',
-        upstreamHint: '上游服务报告账户余额不足。请管理员检查并充值或更换上游账户。',
-        unknown: '余额不足（来源未确认）',
-        unknownHint: '这条日志缺少足够的来源信息，请结合原始错误和上游响应确认余额归属。',
-      },
       title: '运维监控',
       description: '运维监控与排障',
       // Dashboard
@@ -369,6 +361,12 @@ export default {
           upstream_message: '上游消息',
           upstream_detail: '上游详情',
           upstream_events: '上游事件'
+        },
+        reportedHeaders: {
+          title: '身份上报请求头',
+          hint: '本次请求转发时实际发给上游的身份请求头（由账号「请求头覆写」中的变量生成），可拿去与上游逐层对账。覆写值里混有固定文本时，固定文本以 … 代替、变量以「名称=值」显示，避免密钥进入日志。',
+          copy: '复制',
+          copied: '已复制'
         },
         basicInfo: '基本信息',
         platform: '平台',

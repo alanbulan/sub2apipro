@@ -2,14 +2,15 @@ package repository
 
 import (
 	"testing"
-	"time"
 
+	appTimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
-func useGroupUsageRepositoryTestTimezone(t *testing.T, name string) configuredTimezone {
+func useGroupUsageRepositoryTestTimezone(t *testing.T, name string) {
 	t.Helper()
-	loc, err := time.LoadLocation(name)
-	require.NoError(t, err)
-	return configuredTimezone{location: loc}
+
+	previousName := appTimezone.Name()
+	require.NoError(t, appTimezone.Init(name))
+	t.Cleanup(func() { require.NoError(t, appTimezone.Init(previousName)) })
 }

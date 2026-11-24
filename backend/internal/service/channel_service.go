@@ -137,12 +137,11 @@ func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) Chan
 		channelMappedModel = r.MappedModel
 	}
 	return ChannelUsageFields{
-		ChannelID:             r.ChannelID,
-		OriginalModel:         reqModel,
-		ChannelMappedModel:    channelMappedModel,
-		ChannelMappingApplied: r.Mapped,
-		BillingModelSource:    r.BillingModelSource,
-		ModelMappingChain:     r.BuildModelMappingChain(reqModel, upstreamModel),
+		ChannelID:          r.ChannelID,
+		OriginalModel:      reqModel,
+		ChannelMappedModel: channelMappedModel,
+		BillingModelSource: r.BillingModelSource,
+		ModelMappingChain:  r.BuildModelMappingChain(reqModel, upstreamModel),
 	}
 }
 
@@ -805,6 +804,7 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 	}{
 		{"fast_multiplier", p.FastMultiplier},
 		{"flex_multiplier", p.FlexMultiplier},
+		{"ultrafast_multiplier", p.UltrafastMultiplier},
 	} {
 		if c.val != nil && *c.val <= 0 {
 			return infraerrors.BadRequest("INVALID_MULTIPLIER", fmt.Sprintf("%s must be > 0", c.field))

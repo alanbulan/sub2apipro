@@ -1,9 +1,6 @@
 package service
 
-import (
-	"encoding/json"
-	"time"
-)
+import "time"
 
 // UserErrorRequest 是面向终端用户的"错误请求"精简脱敏视图（白名单）。
 // 严禁包含 account / api_key_prefix / upstream_endpoint / user_email 等
@@ -42,9 +39,6 @@ type UserErrorRequestList struct {
 // MapUserErrorCategory 把后端 error_phase + error_type 映射为用户侧粗分类码。
 // 返回的是稳定的分类 code（前端做 i18n），不是展示文案。
 func MapUserErrorCategory(phase, errType string) string {
-	if errType == "transport_error" {
-		return "transport_error"
-	}
 	switch phase {
 	case "auth":
 		return "auth"
@@ -60,7 +54,7 @@ func MapUserErrorCategory(phase, errType string) string {
 			return "rate_limit"
 		case "billing_error", "subscription_error":
 			return "quota"
-		case "invalid_request_error", "model_not_found":
+		case "invalid_request_error":
 			return "invalid_request"
 		case "cyber_policy":
 			return "cyber"
@@ -74,8 +68,6 @@ func MapUserErrorCategory(phase, errType string) string {
 // 注意："other" 与未知分类都走 default 返回空切片——"other" 无对应的 phase/type 组合，无法精确反查，因此等价于不过滤。
 func CategoryToFilter(category string) (phases []string, errorTypes []string) {
 	switch category {
-	case "transport_error":
-		return nil, []string{"transport_error"}
 	case "auth":
 		return []string{"auth"}, nil
 	case "service_unavailable":
@@ -89,7 +81,7 @@ func CategoryToFilter(category string) (phases []string, errorTypes []string) {
 	case "quota":
 		return nil, []string{"billing_error", "subscription_error"}
 	case "invalid_request":
-		return []string{"request"}, []string{"invalid_request_error", "model_not_found"}
+		return nil, []string{"invalid_request_error"}
 	case "cyber":
 		return []string{"request"}, []string{"cyber_policy"}
 	default:
@@ -110,10 +102,6 @@ func ToUserErrorRequest(e *OpsErrorLog) *UserErrorRequest {
 	if e.ClientIP != nil {
 		clientIP = *e.ClientIP
 	}
-	message := e.Message
-	if e.Type == "transport_error" {
-		message = openAIHTTP2PeerResetMessage("")
-	}
 	return &UserErrorRequest{
 		ID:              e.ID,
 		CreatedAt:       e.CreatedAt,
@@ -122,7 +110,7 @@ func ToUserErrorRequest(e *OpsErrorLog) *UserErrorRequest {
 		StatusCode:      e.StatusCode,
 		Category:        MapUserErrorCategory(e.Phase, e.Type),
 		Platform:        e.Platform,
-		Message:         message,
+		Message:         e.Message,
 		KeyName:         e.APIKeyName,
 		KeyDeleted:      e.APIKeyDeleted,
 		ClientIP:        clientIP,
@@ -137,7 +125,6 @@ func ToUserErrorRequest(e *OpsErrorLog) *UserErrorRequest {
 // 在 UserErrorRequest 基础上额外暴露 error_body(上游错误响应正文)与 upstream_status_code;
 // 仍严禁任何内部/敏感字段。
 type UserErrorRequestDetail struct {
-	ResetReason string `json:"reset_reason,omitempty"`
 	UserErrorRequest
 	ErrorBody          string `json:"error_body"`
 	UpstreamStatusCode *int   `json:"upstream_status_code,omitempty"`
@@ -149,19 +136,6 @@ func ToUserErrorRequestDetail(e *OpsErrorLogDetail) *UserErrorRequestDetail {
 		return nil
 	}
 	base := ToUserErrorRequest(&e.OpsErrorLog)
-	if e.Type == "transport_error" {
-		var envelope struct {
-			Error struct {
-				ResetReason string `json:"reset_reason"`
-			} `json:"error"`
-		}
-		_ = json.Unmarshal([]byte(e.ErrorBody), &envelope)
-		reason := safeHTTP2ResetReason(envelope.Error.ResetReason)
-		base.Message = openAIHTTP2PeerResetMessage(reason)
-		failure := &OpsTransportFailure{ResetReason: reason}
-		body, _ := json.Marshal(map[string]any{"error": failure.ErrorFields()})
-		return &UserErrorRequestDetail{UserErrorRequest: *base, ErrorBody: string(body), ResetReason: reason}
-	}
 	return &UserErrorRequestDetail{
 		UserErrorRequest:   *base,
 		ErrorBody:          e.ErrorBody,

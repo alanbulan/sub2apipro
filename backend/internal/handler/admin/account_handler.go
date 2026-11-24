@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -21,7 +20,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -51,15 +49,10 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 
 // AccountHandler handles admin account management
 type AccountHandler struct {
-	poolDashboard           poolDashboardCache
-	poolGroupReader         poolGroupReader
-	providerCatalog         *ChannelHandler
-	performance             *service.AccountPerformanceService
-	upstreamChannels        *service.ChannelService
+	claudeResetCredits      claudeResetReader
 	adminService            service.AdminService
 	oauthService            *service.OAuthService
 	openaiOAuthService      *service.OpenAIOAuthService
-	openaiOAuthReauth       *service.OpenAIOAuthReauthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
 	grokOAuthService        service.GrokOAuthTokenService
@@ -74,9 +67,6 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
-	codexTicketSettings     *service.SettingService
-	codexHarvest            *service.CodexHarvestService
-	openAIGatewayService    *service.OpenAIGatewayService
 	cfg                     *config.Config
 	opencodeGoUsage         *service.OpenCodeGoUsageService
 }
@@ -90,21 +80,8 @@ func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUs
 	h.ollamaCloudUsage = usage
 }
 
-// SetCodexTicketSettings supplies the live policy without mutating shared config.
-func (h *AccountHandler) SetCodexTicketSettings(settings *service.SettingService) {
-	h.codexTicketSettings = settings
-}
-
-func (h *AccountHandler) SetOpenAIGatewayService(gateway *service.OpenAIGatewayService) {
-	h.openAIGatewayService = gateway
-}
-
 func (h *AccountHandler) SetOpenCodeGoUsageService(usage *service.OpenCodeGoUsageService) {
 	h.opencodeGoUsage = usage
-}
-
-func (h *AccountHandler) SetOpenAIOAuthReauthService(reauth *service.OpenAIOAuthReauthService) {
-	h.openaiOAuthReauth = reauth
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -144,10 +121,6 @@ func NewAccountHandler(
 
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
-	ProviderID              int64          `json:"provider_id"`
-	ProviderKeyID           string         `json:"provider_key_id"`
-	UpstreamChannelID       int64          `json:"upstream_channel_id"`
-	ConfirmUpstreamChannel  bool           `json:"confirm_upstream_channel_binding"`
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
@@ -158,39 +131,36 @@ type CreateAccountRequest struct {
 	Concurrency             int            `json:"concurrency"`
 	Priority                int            `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
-	GroupRateMultiplier     *float64       `json:"group_rate_multiplier"`
 	LoadFactor              *int           `json:"load_factor"`
 	GroupIDs                []int64        `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
+	GroupSyncEnabled        *bool          `json:"upstream_billing_group_sync_enabled"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name                string         `json:"name"`
-	Notes               *string        `json:"notes"`
-	Type                string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials         map[string]any `json:"credentials"`
-	Extra               map[string]any `json:"extra"`
-	ProxyID             *int64         `json:"proxy_id"`
-	Concurrency         *int           `json:"concurrency"`
-	Priority            *int           `json:"priority"`
-	RateMultiplier      *float64       `json:"rate_multiplier"`
-	GroupRateMultiplier *float64       `json:"group_rate_multiplier"`
-	LoadFactor          *int           `json:"load_factor"`
-	Status              string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	GroupIDs            *[]int64       `json:"group_ids"`
-	// GroupAllowedModels 按分组 ID 覆盖账号在各分组内可用的模型；省略则不改，
-	// 传入时没有列出的分组恢复为不限制。
-	GroupAllowedModels      map[int64][]string `json:"group_allowed_models"`
-	ExpiresAt               *int64             `json:"expires_at"`
-	AutoPauseOnExpired      *bool              `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool              `json:"upstream_billing_probe_enabled"`
-	RateSyncEnabled         *bool              `json:"upstream_billing_rate_sync_enabled"`
-	ConfirmMixedChannelRisk *bool              `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	Name                    string         `json:"name"`
+	Notes                   *string        `json:"notes"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Credentials             map[string]any `json:"credentials"`
+	Extra                   map[string]any `json:"extra"`
+	ProxyID                 *int64         `json:"proxy_id"`
+	Concurrency             *int           `json:"concurrency"`
+	Priority                *int           `json:"priority"`
+	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
+	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs                *[]int64       `json:"group_ids"`
+	ExpiresAt               *int64         `json:"expires_at"`
+	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
+	GroupSyncEnabled        *bool          `json:"upstream_billing_group_sync_enabled"`
+	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
+	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
@@ -202,7 +172,6 @@ type BulkUpdateAccountsRequest struct {
 	Concurrency             *int                      `json:"concurrency"`
 	Priority                *int                      `json:"priority"`
 	RateMultiplier          *float64                  `json:"rate_multiplier"`
-	GroupRateMultiplier     *float64                  `json:"group_rate_multiplier"`
 	LoadFactor              *int                      `json:"load_factor"`
 	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
 	Schedulable             *bool                     `json:"schedulable"`
@@ -231,25 +200,21 @@ type CheckMixedChannelRequest struct {
 
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
-	ModerationScopeEligible bool `json:"moderation_scope_eligible"`
 	*dto.Account
 	simpleMode         bool                         `json:"-"`
 	CurrentConcurrency int                          `json:"current_concurrency"`
 	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
 	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
-	// 以下字段仅在对应账号启用运行时容量控制时返回；OpenAI OAuth 仅使用 RPM 字段
+	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
-	RPMPaused         bool     `json:"rpm_paused,omitempty"`
-	RPMResetAt        *int64   `json:"rpm_reset_at,omitempty"`
 }
 
 // AccountListItemWithConcurrency is the compact account-list envelope used
 // for lite=1. It embeds dto.AccountListItem instead of the full dto.Account,
 // so groups/account_groups never appear in the list payload.
 type AccountListItemWithConcurrency struct {
-	ModerationScopeEligible bool `json:"moderation_scope_eligible"`
 	*dto.AccountListItem
 	CurrentConcurrency int                          `json:"current_concurrency"`
 	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
@@ -257,8 +222,6 @@ type AccountListItemWithConcurrency struct {
 	CurrentWindowCost  *float64                     `json:"current_window_cost,omitempty"`
 	ActiveSessions     *int                         `json:"active_sessions,omitempty"`
 	CurrentRPM         *int                         `json:"current_rpm,omitempty"`
-	RPMPaused          bool                         `json:"rpm_paused,omitempty"`
-	RPMResetAt         *int64                       `json:"rpm_reset_at,omitempty"`
 }
 
 type simpleModeGroupReference struct {
@@ -383,7 +346,6 @@ const accountListGroupUngroupedQueryValue = "ungrouped"
 
 func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromService(account)
-	h.enrichCodexTicketStatus(account, out)
 	if h != nil && h.ollamaCloudUsage != nil && out != nil {
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
@@ -392,7 +354,6 @@ func (h *AccountHandler) accountResponseFromService(account *service.Account) *d
 
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromServiceShallow(account)
-	h.enrichCodexTicketStatus(account, out)
 	if out != nil && account != nil {
 		out.Proxy = dto.ProxyFromService(account.Proxy)
 	}
@@ -402,28 +363,15 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 	return out
 }
 
-func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
-	if h != nil && h.cfg != nil && out != nil {
-		cfg := h.cfg.Gateway.OpenAICodexTicket
-		if h.codexTicketSettings != nil {
-			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
-			cfg.Models = h.codexTicketSettings.GetOpenAICodexTicketModels(context.Background(), cfg.Models)
-			cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background())
-		}
-		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
-	}
-}
-
 func (h *AccountHandler) isSimpleMode() bool {
 	return h != nil && h.cfg != nil && h.cfg.RunMode == config.RunModeSimple
 }
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
-		Account:                 dto.AccountForObserver(ctx, h.accountResponseFromService(account)),
-		ModerationScopeEligible: service.ModerationUpstreamAccountEligible(account),
-		simpleMode:              h.isSimpleMode(),
-		CurrentConcurrency:      0,
+		Account:            h.accountResponseFromService(account),
+		simpleMode:         h.isSimpleMode(),
+		CurrentConcurrency: 0,
 	}
 	if account == nil {
 		return item
@@ -435,8 +383,8 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 	}
 
-	if account.SupportsRPMLimit() {
-		if account.IsAnthropicOAuthOrSetupToken() && h.accountUsageService != nil && account.GetWindowCostLimit() > 0 {
+	if account.IsAnthropicOAuthOrSetupToken() {
+		if h.accountUsageService != nil && account.GetWindowCostLimit() > 0 {
 			startTime := account.GetCurrentWindowStartTime()
 			if stats, err := h.accountUsageService.GetAccountWindowStats(ctx, account.ID, startTime); err == nil && stats != nil {
 				cost := stats.StandardCost
@@ -444,7 +392,7 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 			}
 		}
 
-		if account.IsAnthropicOAuthOrSetupToken() && h.sessionLimitCache != nil && account.GetMaxSessions() > 0 {
+		if h.sessionLimitCache != nil && account.GetMaxSessions() > 0 {
 			idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
 			idleTimeouts := map[int64]time.Duration{account.ID: idleTimeout}
 			if sessions, err := h.sessionLimitCache.GetActiveSessionCountBatch(ctx, []int64{account.ID}, idleTimeouts); err == nil {
@@ -455,25 +403,12 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 
 		if h.rpmCache != nil && account.GetBaseRPM() > 0 {
-			rpmAccountID := account.ID
-			if account.IsOpenAIOAuth() {
-				rpmAccountID = account.RPMAccountID()
-			}
-			if rpm, err := h.rpmCache.GetRPM(ctx, rpmAccountID); err == nil {
+			if rpm, err := h.rpmCache.GetRPM(ctx, account.ID); err == nil {
 				item.CurrentRPM = &rpm
-				if account.IsOpenAIOAuth() && rpm >= account.GetBaseRPM() {
-					item.RPMPaused = true
-					resetAt := time.Now().Truncate(time.Minute).Add(time.Minute).Unix()
-					item.RPMResetAt = &resetAt
-				}
 			}
 		}
 	}
 
-	// Analytics enrichment is separate from the scheduler account domain.
-	if err := h.enrichUpstreamChannelBindings(ctx, []AccountWithConcurrency{item}); err != nil {
-		slog.Warn("upstream_channel_readback_failed")
-	}
 	h.enrichShadowParents(ctx, []AccountWithConcurrency{item})
 
 	return item
@@ -539,7 +474,7 @@ func (h *AccountHandler) fetchOpenAIAccountLoadMap(ctx context.Context, openAIAc
 		seen[account.ID] = struct{}{}
 		loadReq = append(loadReq, service.AccountWithConcurrency{
 			ID:             account.ID,
-			MaxConcurrency: account.Concurrency,
+			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
 	}
 	if batchLoad, err := h.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); err != nil {
@@ -743,15 +678,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	var accounts []service.Account
-	var total int64
-	var err error
-	var concurrencyCounts map[int64]int
-	if strings.EqualFold(strings.TrimSpace(sortBy), "current_concurrency") {
-		accounts, total, concurrencyCounts, err = h.listAccountsByCurrentConcurrency(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortOrder)
-	} else {
-		accounts, total, err = h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
-	}
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -781,6 +708,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		accountIDs[i] = acc.ID
 	}
 
+	concurrencyCounts := make(map[int64]int)
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
@@ -800,33 +728,29 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
-	if concurrencyCounts == nil && h.concurrencyService != nil {
+	if h.concurrencyService != nil {
 		if cc, ccErr := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); ccErr == nil && cc != nil {
 			concurrencyCounts = cc
 		}
 	}
 
-	// 识别需要查询窗口费用、会话数和 RPM 的账号；窗口/会话仅属于 Anthropic，RPM 也支持 OpenAI OAuth
+	// 识别需要查询窗口费用、会话数和 RPM 的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
 	windowCostAccountIDs := make([]int64, 0)
 	sessionLimitAccountIDs := make([]int64, 0)
 	rpmAccountIDs := make([]int64, 0)
 	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 	for i := range accounts {
 		acc := &accounts[i]
-		if acc.SupportsRPMLimit() {
-			if acc.IsAnthropicOAuthOrSetupToken() && acc.GetWindowCostLimit() > 0 {
+		if acc.IsAnthropicOAuthOrSetupToken() {
+			if acc.GetWindowCostLimit() > 0 {
 				windowCostAccountIDs = append(windowCostAccountIDs, acc.ID)
 			}
-			if acc.IsAnthropicOAuthOrSetupToken() && acc.GetMaxSessions() > 0 {
+			if acc.GetMaxSessions() > 0 {
 				sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
 				sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 			}
 			if acc.GetBaseRPM() > 0 {
-				rpmAccountID := acc.ID
-				if acc.IsOpenAIOAuth() {
-					rpmAccountID = acc.RPMAccountID()
-				}
-				rpmAccountIDs = append(rpmAccountIDs, rpmAccountID)
+				rpmAccountIDs = append(rpmAccountIDs, acc.ID)
 			}
 		}
 	}
@@ -879,20 +803,19 @@ func (h *AccountHandler) List(c *gin.Context) {
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
-		accountResponse := dto.AccountForObserver(c.Request.Context(), h.accountResponseFromService(acc))
+		accountResponse := h.accountResponseFromService(acc)
 		if lite {
-			accountResponse = dto.AccountForObserver(c.Request.Context(), h.accountListResponseFromService(acc))
+			accountResponse = h.accountListResponseFromService(acc)
 			if h.isSimpleMode() {
 				accountResponse.GroupIDs = filterSimpleModeGroupIDs(accountResponse.GroupIDs, simpleModeCompositeServiceGroupIDs(acc))
 			}
 		}
 		item := AccountWithConcurrency{
-			Account:                 accountResponse,
-			ModerationScopeEligible: service.ModerationUpstreamAccountEligible(acc),
-			simpleMode:              h.isSimpleMode(),
-			CurrentConcurrency:      concurrencyCounts[acc.ID],
-			SchedulerScore:          schedulerScores[acc.ID],
-			SchedulerScores:         schedulerGroupScores[acc.ID],
+			Account:            accountResponse,
+			simpleMode:         h.isSimpleMode(),
+			CurrentConcurrency: concurrencyCounts[acc.ID],
+			SchedulerScore:     schedulerScores[acc.ID],
+			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}
 
 		// 添加窗口费用（仅当启用时）
@@ -911,27 +834,14 @@ func (h *AccountHandler) List(c *gin.Context) {
 
 		// 添加 RPM 计数（仅当启用时）
 		if rpmCounts != nil {
-			rpmAccountID := acc.ID
-			if acc.IsOpenAIOAuth() {
-				rpmAccountID = acc.RPMAccountID()
-			}
-			if rpm, ok := rpmCounts[rpmAccountID]; ok {
+			if rpm, ok := rpmCounts[acc.ID]; ok {
 				item.CurrentRPM = &rpm
-				if acc.IsOpenAIOAuth() && acc.GetBaseRPM() > 0 && rpm >= acc.GetBaseRPM() {
-					item.RPMPaused = true
-					resetAt := time.Now().Truncate(time.Minute).Add(time.Minute).Unix()
-					item.RPMResetAt = &resetAt
-				}
 			}
 		}
 
 		result[i] = item
 	}
 
-	if err := h.enrichUpstreamChannelBindings(c.Request.Context(), result); err != nil {
-		response.InternalError(c, "Upstream channel readback failed")
-		return
-	}
 	h.enrichShadowParents(c.Request.Context(), result)
 
 	if lite {
@@ -939,16 +849,13 @@ func (h *AccountHandler) List(c *gin.Context) {
 		for i := range result {
 			item := result[i]
 			compact[i] = AccountListItemWithConcurrency{
-				AccountListItem:         dto.AccountListItemFromAccount(item.Account),
-				ModerationScopeEligible: item.ModerationScopeEligible,
-				CurrentConcurrency:      item.CurrentConcurrency,
-				SchedulerScore:          item.SchedulerScore,
-				SchedulerScores:         item.SchedulerScores,
-				CurrentWindowCost:       item.CurrentWindowCost,
-				ActiveSessions:          item.ActiveSessions,
-				CurrentRPM:              item.CurrentRPM,
-				RPMPaused:               item.RPMPaused,
-				RPMResetAt:              item.RPMResetAt,
+				AccountListItem:    dto.AccountListItemFromAccount(item.Account),
+				CurrentConcurrency: item.CurrentConcurrency,
+				SchedulerScore:     item.SchedulerScore,
+				SchedulerScores:    item.SchedulerScores,
+				CurrentWindowCost:  item.CurrentWindowCost,
+				ActiveSessions:     item.ActiveSessions,
+				CurrentRPM:         item.CurrentRPM,
 			}
 		}
 		etag := buildAccountsListETag(compact, total, page, pageSize, platform, accountType, status, search, true)
@@ -1118,36 +1025,12 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	providerImport := req.ProviderID != 0 || req.ProviderKeyID != ""
-	if providerImport {
-		if _, observer := service.ObserverGroupIDs(c.Request.Context()); observer || adminaccess.FromContext(c.Request.Context()) != nil {
-			response.Forbidden(c, "Provider imports require an unrestricted administrator")
-			return
-		}
-		manual, _ := req.Credentials["api_key"].(string)
-		if req.ProviderID < 1 || !validProviderKeyID(req.ProviderKeyID) || req.Type != service.AccountTypeAPIKey || strings.TrimSpace(manual) != "" {
-			response.BadRequest(c, "Choose a provider key without a manual credential")
-			return
-		}
-	}
-	if _, observer := service.ObserverGroupIDs(c.Request.Context()); observer && req.UpstreamChannelID > 0 {
-		response.ErrorFrom(c, service.ErrObserverScope)
-		return
-	}
-	if req.UpstreamChannelID < 0 || (req.UpstreamChannelID > 0 && !req.ConfirmUpstreamChannel) {
-		response.ErrorFrom(c, service.ErrUpstreamChannelValidation)
-		return
-	}
 	if err := service.ValidateOpenAILongContextBillingExtra(req.Platform, req.Extra); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
-		return
-	}
-	if req.GroupRateMultiplier != nil && *req.GroupRateMultiplier < 0 {
-		response.BadRequest(c, "group_rate_multiplier must be >= 0")
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -1165,32 +1048,6 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	var createdAccount *service.Account
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		if providerImport {
-			if h.providerCatalog == nil {
-				return nil, infraerrors.ServiceUnavailable("PROVIDER_UNAVAILABLE", "Provider catalog unavailable")
-			}
-			credentials, binding, e := h.providerCatalog.resolveMatureProviderKey(ctx, req.ProviderID, req.ProviderKeyID, req.Platform)
-			if e != nil {
-				return nil, providerKeyError(e)
-			}
-			if req.Credentials == nil {
-				req.Credentials = map[string]any{}
-			}
-			for k, v := range credentials {
-				req.Credentials[k] = v
-			}
-			if req.Extra == nil {
-				req.Extra = map[string]any{}
-			}
-			req.Extra[providerKeyBindingExtraKey] = binding
-			// Import is metadata-only; activation must not initiate an implicit
-			// generation or account capability probe.
-			probe := false
-			req.ProbeEnabled = &probe
-		}
-		if req.UpstreamChannelID > 0 {
-			ctx = service.WithInitialUpstreamChannel(ctx, req.UpstreamChannelID)
-		}
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 			Name:                  req.Name,
 			Notes:                 req.Notes,
@@ -1202,12 +1059,12 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			Concurrency:           req.Concurrency,
 			Priority:              req.Priority,
 			RateMultiplier:        req.RateMultiplier,
-			GroupRateMultiplier:   req.GroupRateMultiplier,
 			LoadFactor:            req.LoadFactor,
 			GroupIDs:              req.GroupIDs,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
 			ProbeEnabled:          req.ProbeEnabled,
+			GroupSyncEnabled:      req.GroupSyncEnabled,
 			SkipMixedChannelCheck: skipCheck,
 		})
 		if execErr != nil {
@@ -1244,10 +1101,8 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	}
 	// OpenAI APIKey 账号创建后异步探测上游 /v1/responses 能力。
 	// 探测失败不影响账号创建响应。
-	if !providerImport {
-		h.scheduleOpenAIResponsesProbe(createdAccount)
-		h.scheduleGrokImportProbe(createdAccount)
-	}
+	h.scheduleOpenAIResponsesProbe(createdAccount)
+	h.scheduleGrokImportProbe(createdAccount)
 	response.Success(c, result.Data)
 }
 
@@ -1316,10 +1171,6 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 	}
-	if req.GroupRateMultiplier != nil && *req.GroupRateMultiplier < 0 {
-		response.BadRequest(c, "group_rate_multiplier must be >= 0")
-		return
-	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
@@ -1340,14 +1191,13 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
 		Priority:              req.Priority,    // 指针类型，nil 表示未提供
 		RateMultiplier:        req.RateMultiplier,
-		GroupRateMultiplier:   req.GroupRateMultiplier,
 		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
 		GroupIDs:              req.GroupIDs,
-		GroupAllowedModels:    req.GroupAllowedModels,
 		ExpiresAt:             req.ExpiresAt,
 		AutoPauseOnExpired:    req.AutoPauseOnExpired,
 		ProbeEnabled:          req.ProbeEnabled,
+		GroupSyncEnabled:      req.GroupSyncEnabled,
 		RateSyncEnabled:       req.RateSyncEnabled,
 		SkipMixedChannelCheck: skipCheck,
 	})
@@ -1430,14 +1280,6 @@ type TestAccountRequest struct {
 	AudioDataURL string `json:"audio_data_url"`
 }
 
-type PelicanTestRequest struct {
-	PromptMode      string                   `json:"prompt_mode"`
-	PelicanQuestion *service.PelicanQuestion `json:"pelican_question"`
-	ModelID         string                   `json:"model_id"`
-	Prompt          string                   `json:"prompt"`
-	ReasoningEffort string                   `json:"reasoning_effort"`
-}
-
 type SyncFromCRSRequest struct {
 	BaseURL            string   `json:"base_url" binding:"required"`
 	Username           string   `json:"username" binding:"required"`
@@ -1455,7 +1297,6 @@ type PreviewFromCRSRequest struct {
 // Test handles testing account connectivity with SSE streaming
 // POST /api/v1/admin/accounts/:id/test
 func (h *AccountHandler) Test(c *gin.Context) {
-	c.Request = c.Request.WithContext(service.WithAccountTestTimingStart(c.Request.Context(), time.Now()))
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid account ID")
@@ -1482,74 +1323,6 @@ func (h *AccountHandler) Test(c *gin.Context) {
 			_ = c.Error(err)
 		}
 	}
-}
-
-// PreparePelicanQuestion allocates a comparison round without contacting an upstream.
-func (h *AccountHandler) PreparePelicanQuestion(c *gin.Context) {
-	cfg, err := service.NewPelicanQuestion()
-	if err != nil {
-		response.InternalError(c, "Unable to prepare pelican question")
-		return
-	}
-	response.Success(c, cfg)
-}
-
-// PelicanTest handles the dedicated Pelican HTML-generation test stream.
-// POST /api/v1/admin/accounts/:id/pelican-test
-func (h *AccountHandler) PelicanTest(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-
-	var req PelicanTestRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-	if req.PromptMode == service.PelicanPromptModeRandom {
-		cfg, err := service.ResolveManualPelicanQuestion(req.PelicanQuestion)
-		if err != nil {
-			response.BadRequest(c, err.Error())
-			return
-		}
-		req.Prompt = cfg.ActualPrompt
-	} else if req.PromptMode != "" && req.PromptMode != "custom" {
-		response.BadRequest(c, "Invalid pelican prompt mode")
-		return
-	}
-	if err := h.accountTestService.TestPelicanAccountConnection(c, accountID, req.ModelID, req.Prompt, req.ReasoningEffort); err != nil {
-		return
-	}
-}
-
-type StateProbeRequest struct {
-	ModelID string `json:"model_id"`
-}
-
-// StateProbe runs the two-shot Codex turn-state probe (degraded / healthy).
-// POST /api/v1/admin/accounts/:id/state-probe
-func (h *AccountHandler) StateProbe(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-
-	var req StateProbeRequest
-	if c.Request.ContentLength != 0 {
-		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, "Invalid request: "+err.Error())
-			return
-		}
-	}
-	result, err := h.accountTestService.ProbeOpenAICodexState(c.Request.Context(), accountID, req.ModelID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, result)
 }
 
 // RecoverState handles unified recovery of recoverable account runtime state.
@@ -1965,7 +1738,7 @@ func (h *AccountHandler) GetStats(c *gin.Context) {
 
 	stats, err := h.accountUsageService.GetAccountUsageStats(c.Request.Context(), accountID, startTime, endTime)
 	if err != nil {
-		response.ErrorFrom(c, err)
+		scopedOpenAIError(c, err)
 		return
 	}
 
@@ -2379,7 +2152,6 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Concurrency:           item.Concurrency,
 				Priority:              item.Priority,
 				RateMultiplier:        item.RateMultiplier,
-				GroupRateMultiplier:   item.GroupRateMultiplier,
 				GroupIDs:              item.GroupIDs,
 				ExpiresAt:             item.ExpiresAt,
 				AutoPauseOnExpired:    item.AutoPauseOnExpired,
@@ -2554,10 +2326,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 	}
-	if req.GroupRateMultiplier != nil && *req.GroupRateMultiplier < 0 {
-		response.BadRequest(c, "group_rate_multiplier must be >= 0")
-		return
-	}
 	if len(req.AccountIDs) == 0 && req.Filters == nil {
 		response.BadRequest(c, "account_ids or filters is required")
 		return
@@ -2577,7 +2345,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.Concurrency != nil ||
 		req.Priority != nil ||
 		req.RateMultiplier != nil ||
-		req.GroupRateMultiplier != nil ||
 		req.LoadFactor != nil ||
 		req.Status != "" ||
 		req.Schedulable != nil ||
@@ -2591,7 +2358,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
-	result, err := h.adminService.BulkUpdateAccounts(accountManualSchedulingContext(c, req.Schedulable != nil), &service.BulkUpdateAccountsInput{
+	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
 		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
 		Name:                  req.Name,
@@ -2599,7 +2366,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		Concurrency:           req.Concurrency,
 		Priority:              req.Priority,
 		RateMultiplier:        req.RateMultiplier,
-		GroupRateMultiplier:   req.GroupRateMultiplier,
 		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
 		Schedulable:           req.Schedulable,
@@ -2905,7 +2671,7 @@ func (h *AccountHandler) ClearTempUnschedulable(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Temp unschedulable cleared successfully"})
 }
 
-// GetTodayStats handles getting account today statistics plus lifetime totals.
+// GetTodayStats handles getting account today statistics
 // GET /api/v1/admin/accounts/:id/today-stats
 func (h *AccountHandler) GetTodayStats(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -2933,7 +2699,7 @@ type BatchUsageRequest struct {
 	Force      bool    `json:"force"`
 }
 
-// GetBatchTodayStats 批量获取多个账号的今日统计及累计 Token/费用。
+// GetBatchTodayStats 批量获取多个账号的今日统计。
 // POST /api/v1/admin/accounts/today-stats/batch
 func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
 	var req BatchTodayStatsRequest
@@ -3029,33 +2795,13 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 		return
 	}
 
-	account, err := h.adminService.SetAccountSchedulable(accountManualSchedulingContext(c, true), accountID, req.Schedulable)
+	account, err := h.adminService.SetAccountSchedulable(c.Request.Context(), accountID, req.Schedulable)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
-}
-
-// GetModelReasoning returns account-specific reasoning choices for a test model.
-func (h *AccountHandler) GetModelReasoning(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-	modelID := strings.TrimSpace(c.Query("model_id"))
-	if modelID == "" {
-		response.BadRequest(c, "Model ID is required")
-		return
-	}
-	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
-	if err != nil {
-		response.NotFound(c, "Account not found")
-		return
-	}
-	response.Success(c, h.accountTestService.GetAccountTestReasoning(c.Request.Context(), account, modelID))
 }
 
 // GetAvailableModels handles getting available models for an account
@@ -3085,16 +2831,6 @@ func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service
 			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil {
 				response.Success(c, models)
 				return
-			} else if infraerrors.Reason(fetchErr) == "OPENAI_CODEX_MODELS_CREDENTIALS_INVALID" {
-				response.ErrorFrom(c, fetchErr)
-				return
-			} else if account.IsExcelBPSEnabled() {
-				if service.IsExcelAuthorizationError(fetchErr) {
-					response.ErrorFrom(c, fetchErr)
-					return
-				}
-				response.Error(c, http.StatusBadGateway, "Excel BPS model discovery is unavailable")
-				return
 			}
 		}
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
@@ -3111,16 +2847,11 @@ func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service
 
 		// Return mapped models
 		var models []openai.Model
-		if account.IsOpenAIModelMappingAliases() {
-			models = append(models, openai.DefaultModels...)
-		}
 		for requestedModel := range mapping {
 			var found bool
 			for _, dm := range openai.DefaultModels {
 				if dm.ID == requestedModel {
-					if !account.IsOpenAIModelMappingAliases() {
-						models = append(models, dm)
-					}
+					models = append(models, dm)
 					found = true
 					break
 				}
@@ -3330,19 +3061,6 @@ func antigravityAccountTestModels(rawMapping any) []antigravity.ClaudeModel {
 // SyncUpstreamModels handles syncing live supported models from an account's upstream.
 // POST /api/v1/admin/accounts/:id/models/sync-upstream
 func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
-	var options service.UpstreamModelSyncOptions
-	if err := c.ShouldBindJSON(&options); err != nil && !errors.Is(err, io.EOF) {
-		response.BadRequest(c, "Invalid upstream model sync options")
-		return
-	}
-	if options.Automatic && !options.Apply {
-		response.BadRequest(c, "Automatic model sync requires apply=true")
-		return
-	}
-	if _, observer := service.ObserverGroupIDs(c.Request.Context()); observer && options.Apply {
-		response.ErrorFrom(c, service.ErrObserverScope)
-		return
-	}
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid account ID")
@@ -3360,7 +3078,7 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		return
 	}
 
-	catalog, err := h.accountTestService.SyncUpstreamModelCatalogWithOptions(c.Request.Context(), account, options)
+	catalog, err := h.accountTestService.SyncUpstreamModelCatalog(c.Request.Context(), account)
 	if err != nil {
 		var syncErr *service.UpstreamModelSyncError
 		if errors.As(err, &syncErr) {
@@ -3370,7 +3088,7 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 			case service.UpstreamModelSyncErrorInternal:
 				response.InternalError(c, syncErr.SafeMessage())
 			default:
-				slog.Warn("sync_upstream_models_failed", "account_id", accountID, "kind", syncErr.Kind, "upstream_status", syncErr.StatusCode)
+				slog.Warn("sync_upstream_models_failed", "account_id", accountID, "kind", syncErr.Kind)
 				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
 			}
 			return
@@ -3397,7 +3115,6 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 		Type         string            `json:"type" binding:"required"`
 		BaseURL      string            `json:"base_url"`
 		APIKey       string            `json:"api_key" binding:"required"`
-		ProxyID      *int64            `json:"proxy_id" binding:"omitempty,gte=0"`
 		ModelMapping map[string]string `json:"model_mapping"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -3424,22 +3141,6 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 		return
 	}
 
-	// Preview uses the draft connection without creating or updating an account.
-	// Resolve the selected proxy just as the saved-account path loads it.
-	if req.ProxyID != nil && *req.ProxyID > 0 {
-		if _, observer := service.ObserverGroupIDs(c.Request.Context()); observer {
-			response.ErrorFrom(c, service.ErrObserverScope)
-			return
-		}
-		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
-		if err != nil || proxy == nil {
-			response.BadRequest(c, "Selected proxy is unavailable")
-			return
-		}
-		tempAccount.ProxyID = req.ProxyID
-		tempAccount.Proxy = proxy
-	}
-
 	catalog, err := h.accountTestService.SyncUpstreamModelCatalog(c.Request.Context(), tempAccount)
 	if err != nil {
 		var syncErr *service.UpstreamModelSyncError
@@ -3450,7 +3151,7 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 			case service.UpstreamModelSyncErrorInternal:
 				response.InternalError(c, syncErr.SafeMessage())
 			default:
-				slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform, "kind", syncErr.Kind, "upstream_status", syncErr.StatusCode)
+				slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform, "kind", syncErr.Kind)
 				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
 			}
 			return
@@ -3693,9 +3394,4 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
-}
-
-// GetOpenAIRequestTimezones returns the supported account request timezone catalog.
-func (h *AccountHandler) GetOpenAIRequestTimezones(c *gin.Context) {
-	response.Success(c, gin.H{"default": service.DefaultOpenAIRequestTimezone, "timezones": service.OpenAIRequestTimezoneOptions()})
 }

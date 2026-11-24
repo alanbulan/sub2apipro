@@ -96,20 +96,6 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 		return CodexClientRestrictionDetectionResult{Enabled: true, Matched: true, Reason: CodexClientRestrictionReasonForceCodexCLI}
 	}
 
-	return detectCodexClient(c, policy, body, account.IsCodexCLIOnlyAppServerAllowed())
-}
-
-// DetectCodexGroupClient checks the original caller independently of the selected
-// upstream account. ForceCodexCLI only controls upstream compatibility and must
-// not bypass an employee group's admission policy.
-func DetectCodexGroupClient(c *gin.Context, group *Group, policy CodexRestrictionPolicy, body []byte) CodexClientRestrictionDetectionResult {
-	if group == nil || !group.CodexCLIOnly {
-		return CodexClientRestrictionDetectionResult{Reason: CodexClientRestrictionReasonDisabled}
-	}
-	return detectCodexClient(c, policy, body, false)
-}
-
-func detectCodexClient(c *gin.Context, policy CodexRestrictionPolicy, body []byte, allowAppServer bool) CodexClientRestrictionDetectionResult {
 	userAgent := ""
 	originator := ""
 	var header http.Header
@@ -138,7 +124,7 @@ func detectCodexClient(c *gin.Context, policy CodexRestrictionPolicy, body []byt
 		if entry, ok := openai.MatchClientEntry(userAgent, originator, policy.Whitelist); ok {
 			reason = CodexClientRestrictionReasonMatchedWhitelistClient
 			skipFingerprint = entry.SkipEngineFingerprint
-		} else if policy.AllowAppServerClients || allowAppServer {
+		} else if policy.AllowAppServerClients || account.IsCodexCLIOnlyAppServerAllowed() {
 			reason = CodexClientRestrictionReasonMatchedAppServerClient
 		}
 	}

@@ -11,8 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
 const (
@@ -22,9 +20,8 @@ const (
 )
 
 type Question struct {
-	Type         string            `json:"type"`
-	Instructions string            `json:"instructions"`
-	Criteria     map[string]string `json:"criteria,omitempty"`
+	Type         string `json:"type"`
+	Instructions string `json:"instructions"`
 }
 
 type Request struct {
@@ -50,39 +47,8 @@ type SystemOneResponse struct {
 	Usage Usage
 }
 
-// SystemOneURL accepts a server root, API base or full System One endpoint.
-// Host allowlists, private-network access and HTTP policy remain the caller's
-// responsibility; this only validates URL syntax and normalizes the API path.
-func SystemOneURL(baseURL string) (string, error) {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
-	}
-	normalized, err := urlvalidator.ValidateURLFormat(baseURL, true)
-	if err != nil {
-		return "", errors.New("typesafe invalid endpoint")
-	}
-	u, err := url.Parse(normalized)
-	if err != nil || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-		return "", errors.New("typesafe invalid endpoint")
-	}
-	base := strings.TrimRight(u.String(), "/")
-	path := strings.ToLower(strings.TrimRight(u.EscapedPath(), "/"))
-	switch {
-	case strings.HasSuffix(path, SystemOnePath):
-		base = base[:len(base)-len(SystemOnePath)]
-	case strings.HasSuffix(path, "/v1"):
-		base = base[:len(base)-len("/v1")]
-	}
-	endpoint, err := url.JoinPath(base, SystemOnePath)
-	if err != nil {
-		return "", errors.New("typesafe invalid endpoint")
-	}
-	return endpoint, nil
-}
-
 func NewSystemOneRequest(ctx context.Context, baseURL, key string, body []byte) (*http.Request, error) {
-	endpoint, err := SystemOneURL(baseURL)
+	endpoint, err := url.JoinPath(strings.TrimRight(baseURL, "/"), SystemOnePath)
 	if err != nil {
 		return nil, errors.New("typesafe invalid endpoint")
 	}

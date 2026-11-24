@@ -43,7 +43,6 @@ func scopedAdminUsageLogResponse(record *service.UsageLog) gin.H {
 		"total_cost":                   usage.TotalCost,
 		"actual_cost":                  usage.ActualCost,
 		"rate_multiplier":              usage.RateMultiplier,
-		"customer_cost_details":        usage.CustomerCostDetails,
 		"long_context_billing_applied": usage.LongContextBillingApplied,
 		"billing_type":                 usage.BillingType,
 		"request_type":                 usage.RequestType,
@@ -52,8 +51,6 @@ func scopedAdminUsageLogResponse(record *service.UsageLog) gin.H {
 		"native_compaction_v2":         usage.NativeCompactionV2,
 		"duration_ms":                  usage.DurationMs,
 		"first_token_ms":               usage.FirstTokenMs,
-		"queue_wait_ms":                usage.QueueWaitMs,
-		"queue_timing":                 usage.QueueTiming,
 		"image_count":                  usage.ImageCount,
 		"image_size":                   usage.ImageSize,
 		"image_input_size":             usage.ImageInputSize,
@@ -85,7 +82,7 @@ func scopedAdminUsageLogResponse(record *service.UsageLog) gin.H {
 }
 
 func adminUsageLogResponses(c *gin.Context, records []service.UsageLog) any {
-	if adminaccess.FromContext(c.Request.Context()) != nil {
+	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
 		out := make([]gin.H, 0, len(records))
 		for i := range records {
 			out = append(out, scopedAdminUsageLogResponse(&records[i]))

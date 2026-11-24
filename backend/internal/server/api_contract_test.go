@@ -59,7 +59,6 @@ func TestAPIContracts(t *testing.T) {
 					"rpm_limit": 0,
 					"status": "active",
 					"allowed_groups": null,
-					"observer_group_ids": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
 					"balance_notify_enabled": false,
@@ -71,7 +70,6 @@ func TestAPIContracts(t *testing.T) {
 					"oidc_bound": false,
 					"wechat_bound": false,
 					"dingtalk_bound": false,
-					"feishu_bound": false,
 					"identities": {
 						"email": {
 							"provider": "email",
@@ -116,14 +114,6 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/dingtalk/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
-						},
-						"feishu": {
-							"provider": "feishu",
-							"bound": false,
-							"bound_count": 0,
-							"can_bind": true,
-							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/feishu/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						}
 					},
 					"identity_bindings": {
@@ -170,14 +160,6 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/dingtalk/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
-						},
-						"feishu": {
-							"provider": "feishu",
-							"bound": false,
-							"bound_count": 0,
-							"can_bind": true,
-							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/feishu/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						}
 					},
 					"auth_bindings": {
@@ -224,14 +206,6 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/dingtalk/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
-						},
-						"feishu": {
-							"provider": "feishu",
-							"bound": false,
-							"bound_count": 0,
-							"can_bind": true,
-							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/feishu/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						}
 					},
 					"run_mode": "standard"
@@ -255,19 +229,13 @@ func TestAPIContracts(t *testing.T) {
 					"user_id": 1,
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
-					"model_mapping": null,
-					"reasoning_effort": "",
-					"allow_long_context": true,
-					"context_token_limit": 0,
 					"group_id": null,
-					"group_ids": [],
 					"status": "active",
 					"ip_whitelist": null,
 					"ip_blacklist": null,
 					"last_used_at": null,
 					"last_used_ip": null,
 					"current_concurrency": 0,
-					"concurrency_limit":   0,
 					"quota": 0,
 					"quota_used": 0,
 					"rate_limit_5h": 0,
@@ -290,14 +258,13 @@ func TestAPIContracts(t *testing.T) {
 			setup: func(t *testing.T, deps *contractDeps) {
 				t.Helper()
 				deps.apiKeyRepo.MustSeed(&service.APIKey{
-					ID:               100,
-					UserID:           1,
-					Key:              "sk_custom_1234567890",
-					Name:             "Key One",
-					Status:           service.StatusActive,
-					CreatedAt:        deps.now,
-					UpdatedAt:        deps.now,
-					AllowLongContext: true,
+					ID:        100,
+					UserID:    1,
+					Key:       "sk_custom_1234567890",
+					Name:      "Key One",
+					Status:    service.StatusActive,
+					CreatedAt: deps.now,
+					UpdatedAt: deps.now,
 				})
 			},
 			method:     http.MethodGet,
@@ -313,19 +280,13 @@ func TestAPIContracts(t *testing.T) {
 							"user_id": 1,
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
-							"model_mapping": null,
-							"reasoning_effort": "",
-							"allow_long_context": true,
-							"context_token_limit": 0,
 							"group_id": null,
-							"group_ids": [],
 							"status": "active",
 							"ip_whitelist": null,
 							"ip_blacklist": null,
 							"last_used_at": null,
 							"last_used_ip": null,
 							"current_concurrency": 0,
-							"concurrency_limit":   0,
 							"quota": 0,
 							"quota_used": 0,
 							"rate_limit_5h": 0,
@@ -655,8 +616,6 @@ func TestAPIContracts(t *testing.T) {
 							"stream": true,
 							"duration_ms": 100,
 							"first_token_ms": 50,
-							"queue_wait_ms": null,
-							"queue_timing": null,
 							"image_count": 0,
 							"image_size": null,
 							"image_input_size": null,
@@ -759,11 +718,8 @@ func TestAPIContracts(t *testing.T) {
 				"message": "success",
 				"data": {
 					"registration_enabled": true,
-					"login_rate_limit_enabled": true,
-					"registration_ip_limit_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
-					"registration_email_alias_block_enabled": true,
 					"registration_email_domain_quota_enabled": false,
 					"promo_code_enabled": true,
 					"password_reset_enabled": false,
@@ -910,7 +866,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"mistral":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"qwen":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -926,28 +882,6 @@ func TestAPIContracts(t *testing.T) {
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
-					"excel_bps_enabled": true,
-					"excel_bps_image_mode": "native",
-					"excel_bps_image_base_url": "",
- "excel_bps_image_max_image_mib": 20,
- "excel_bps_image_max_images": 20,
- "excel_bps_image_max_total_mib": 32,
- "excel_bps_image_storage_mib": 1024,
- "excel_bps_image_storage_entries": 512,
- "excel_bps_image_ttl_minutes": 30,
-
-					"excel_bps_image_body_limit_mib": 64,
-					"excel_bps_image_budget_mib": 1024,
-					"excel_bps_image_max_requests": 128,
-					"excel_bps_image_max_images": 20,
- "smart_ops_hidden_menu_items": ["/admin/lottery","/admin/qqbot/overview","/admin/channel-operations","/admin/controlled-experiments","/admin/account-ops","/admin/token-guard","/admin/group-cache-tests","/admin/request-captures","/admin/harvest-flow"],
- "request_capture_enabled": false,
- "request_capture_quota_mib": 1024,
- "request_capture_retention_days": 7,
-					"excel_bps_image_relay_enabled": true,
-                    "excel_bps_image_limit_policy": "off",
-                    "excel_bps_image_warning_remaining": 8,
-                    "excel_bps_image_compact_reserve": 3,
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
 					"fallback_model_antigravity": "gemini-2.5-pro",
 					"fallback_model_gemini": "gemini-2.5-pro",
@@ -959,9 +893,6 @@ func TestAPIContracts(t *testing.T) {
 					"hide_ccs_import_button": false,
 					"grok_default_text_model": "grok-4.6",
 					"grok_default_base_url_mode": "cli",
-					"grok_video_source_url_enabled": false,
-					"openai_400_omit_encrypted_history_enabled": false,
-					"openai_409_omit_encrypted_history_enabled": false,
 					"grok_cross_client_model_map_enabled": true,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
@@ -969,16 +900,6 @@ func TestAPIContracts(t *testing.T) {
 						"table_page_size_options": [10, 20, 50, 100],
 					"min_claude_code_version": "",
 					"max_claude_code_version": "",
-					"openai_request_timezone_enabled": true,
-					"openai_request_timezone_auto": true,
-					"openai_codex_ticket_enabled": false,
-					"openai_codex_ticket_fail_closed": false,
-					"openai_codex_ticket_candy_observation": false,
-					"openai_codex_ticket_strategy": "standby",
-                    "openai_codex_ticket_harvest_scope": {"mode":"all","group_ids":[],"account_policy":"schedulable_only"},
-					"openai_codex_ticket_harvest_proxy_url": "",
-					"openai_codex_ticket_harvest_proxy_configured": false,
-					"openai_codex_ticket_models": ["gpt-6-astra", "gpt-5.6-sol"],
 					"min_codex_version": "",
 					"max_codex_version": "",
 					"codex_cli_only_blacklist": "",
@@ -1083,27 +1004,15 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_hide_user_ranking": false,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
-					"pelican_showcase_enabled": false,
-					"pelican_showcase_config": {"max_items": 20, "auto_cleanup": true, "retention_days": 7},
 					"subscription_enabled": true,
 					"model_plaza_enabled": false,
 					"model_plaza_require_auth": false,
 					"model_plaza_description": "",
 					"plugin_management_enabled": false,
-					"support_ticket_enabled": false,
-					"support_ticket_config": {
-						"categories": ["账户与充值", "API 使用问题", "模型与渠道", "建议与反馈", "其他"],
-						"max_open_per_user": 5,
-						"notice": ""
-					},
-					"prism_browser_enabled": false,
-					"prism_browser_base_url": "http://127.0.0.1:8319/v1",
-					"prism_browser_api_key_configured": false,
 					"risk_control_enabled": false,
 					"cyber_policy_user_allowlist": "",
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
-					"cyber_session_identity_strict_enabled": false,
 					"affiliate_enabled": false,
 					"wechat_connect_enabled": false,
 					"wechat_connect_app_id": "",
@@ -1121,11 +1030,7 @@ func TestAPIContracts(t *testing.T) {
 					"wechat_connect_redirect_url": "",
 					"wechat_connect_frontend_redirect_url": "/auth/wechat/callback",
 					"wechat_connect_scopes": "snsapi_login",
-					"allow_user_view_error_requests": false,
-					"usage_show_long_context_badge": true,
-					"usage_show_cache_rate": true,
-					"usage_show_cache_rate_to_users": false,
-					"usage_show_upstream_response_model_to_users": false
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -1171,11 +1076,8 @@ func TestAPIContracts(t *testing.T) {
 				"message": "success",
 				"data": {
 					"registration_enabled": true,
-					"login_rate_limit_enabled": true,
-					"registration_ip_limit_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
-					"registration_email_alias_block_enabled": true,
 					"registration_email_domain_quota_enabled": false,
 					"promo_code_enabled": true,
 					"password_reset_enabled": false,
@@ -1273,9 +1175,9 @@ func TestAPIContracts(t *testing.T) {
 					"google_oauth_client_secret_configured": false,
 					"google_oauth_redirect_url": "",
 					"google_oauth_frontend_redirect_url": "/auth/oauth/callback",
-					"site_name": "API Gateway",
+					"site_name": "Sub2API",
 					"site_logo": "",
-					"site_subtitle": "API Gateway Platform",
+					"site_subtitle": "Subscription to API Conversion Platform",
 					"api_base_url": "",
 					"api_key_acl_trust_forwarded_ip": false,
 					"forwarded_client_ip_headers": [],
@@ -1285,15 +1187,12 @@ func TestAPIContracts(t *testing.T) {
 					"hide_ccs_import_button": false,
 					"grok_default_text_model": "grok-4.6",
 					"grok_default_base_url_mode": "cli",
-					"grok_video_source_url_enabled": false,
-					"openai_400_omit_encrypted_history_enabled": false,
-					"openai_409_omit_encrypted_history_enabled": false,
 					"grok_cross_client_model_map_enabled": true,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"mistral":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"qwen":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1313,28 +1212,6 @@ func TestAPIContracts(t *testing.T) {
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
-					"excel_bps_enabled": true,
-					"excel_bps_image_mode": "native",
-					"excel_bps_image_base_url": "",
- "excel_bps_image_max_image_mib": 20,
- "excel_bps_image_max_images": 20,
- "excel_bps_image_max_total_mib": 32,
- "excel_bps_image_storage_mib": 1024,
- "excel_bps_image_storage_entries": 512,
- "excel_bps_image_ttl_minutes": 30,
-
-					"excel_bps_image_body_limit_mib": 64,
-					"excel_bps_image_budget_mib": 1024,
-					"excel_bps_image_max_requests": 128,
-					"excel_bps_image_max_images": 20,
- "smart_ops_hidden_menu_items": ["/admin/lottery","/admin/qqbot/overview","/admin/channel-operations","/admin/controlled-experiments","/admin/account-ops","/admin/token-guard","/admin/group-cache-tests","/admin/request-captures","/admin/harvest-flow"],
- "request_capture_enabled": false,
- "request_capture_quota_mib": 1024,
- "request_capture_retention_days": 7,
-					"excel_bps_image_relay_enabled": true,
-                    "excel_bps_image_limit_policy": "off",
-                    "excel_bps_image_warning_remaining": 8,
-                    "excel_bps_image_compact_reserve": 3,
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
 					"fallback_model_openai": "gpt-4o",
 					"fallback_model_gemini": "gemini-2.5-pro",
@@ -1359,16 +1236,6 @@ func TestAPIContracts(t *testing.T) {
 					"rewrite_message_cache_control": false,
 					"enable_client_dateline_normalization": true,
 					"antigravity_user_agent_version": "",
-					"openai_request_timezone_enabled": true,
-					"openai_request_timezone_auto": true,
-					"openai_codex_ticket_enabled": false,
-					"openai_codex_ticket_fail_closed": false,
-					"openai_codex_ticket_candy_observation": false,
-					"openai_codex_ticket_strategy": "standby",
-                    "openai_codex_ticket_harvest_scope": {"mode":"all","group_ids":[],"account_policy":"schedulable_only"},
-					"openai_codex_ticket_harvest_proxy_url": "",
-					"openai_codex_ticket_harvest_proxy_configured": false,
-					"openai_codex_ticket_models": ["gpt-6-astra", "gpt-5.6-sol"],
 					"min_codex_version": "",
 					"max_codex_version": "",
 					"codex_cli_only_blacklist": "",
@@ -1459,27 +1326,15 @@ func TestAPIContracts(t *testing.T) {
 					"channel_monitor_hide_user_ranking": false,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
-					"pelican_showcase_enabled": false,
-					"pelican_showcase_config": {"max_items": 20, "auto_cleanup": true, "retention_days": 7},
 					"subscription_enabled": true,
 					"model_plaza_enabled": false,
 					"model_plaza_require_auth": false,
 					"model_plaza_description": "",
 					"plugin_management_enabled": false,
-					"support_ticket_enabled": false,
-					"support_ticket_config": {
-						"categories": ["账户与充值", "API 使用问题", "模型与渠道", "建议与反馈", "其他"],
-						"max_open_per_user": 5,
-						"notice": ""
-					},
-					"prism_browser_enabled": false,
-					"prism_browser_base_url": "http://127.0.0.1:8319/v1",
-					"prism_browser_api_key_configured": false,
 					"risk_control_enabled": false,
 					"cyber_policy_user_allowlist": "",
 					"cyber_session_block_enabled": false,
 					"cyber_session_block_ttl_seconds": 3600,
-					"cyber_session_identity_strict_enabled": false,
 					"affiliate_enabled": false,
 					"wechat_connect_enabled": true,
 					"wechat_connect_app_id": "wx-open-config",
@@ -1533,11 +1388,7 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_dingtalk_grant_on_signup": false,
 					"auth_source_default_dingtalk_grant_on_first_bind": false,
 					"force_email_on_third_party_signup": false,
-					"allow_user_view_error_requests": false,
-					"usage_show_long_context_badge": true,
-					"usage_show_cache_rate": true,
-					"usage_show_cache_rate_to_users": false,
-					"usage_show_upstream_response_model_to_users": false
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -1646,7 +1497,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(nil, userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(nil, userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
@@ -2057,9 +1908,7 @@ func (s *stubAccountRepo) Update(ctx context.Context, account *service.Account) 
 func (s *stubAccountRepo) UpdateWithAccountBillingSettings(
 	ctx context.Context,
 	account *service.Account,
-	probeEnabled *bool,
-	rateSyncEnabled *bool,
-	rateMultiplier *float64,
+	settings service.AccountBillingSettingsUpdate,
 ) error {
 	return errors.New("not implemented")
 }
@@ -2121,10 +1970,6 @@ func (s *stubAccountRepo) AutoPauseExpiredAccounts(ctx context.Context, now time
 }
 
 func (s *stubAccountRepo) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
-	return errors.New("not implemented")
-}
-
-func (s *stubAccountRepo) SetGroupAllowedModels(ctx context.Context, accountID int64, allowed map[int64][]string) error {
 	return errors.New("not implemented")
 }
 
@@ -2197,6 +2042,10 @@ func (s *stubAccountRepo) ClearAntigravityQuotaScopes(ctx context.Context, id in
 }
 
 func (s *stubAccountRepo) ClearModelRateLimits(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) ClearModelRateLimit(ctx context.Context, id int64, scope string) error {
 	return errors.New("not implemented")
 }
 

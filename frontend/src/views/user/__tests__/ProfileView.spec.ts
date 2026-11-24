@@ -15,7 +15,6 @@ const {
   }
 }))
 
-vi.mock('@/components/user/profile/ProfileQQBotCard.vue', () => ({ default: { template: '<section />' } }))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => authState
 }))
@@ -78,7 +77,6 @@ describe('ProfileView', () => {
     const wrapper = mount(ProfileView, {
       global: {
         stubs: {
-          SecurityRecords: { template: '<div data-testid="profile-security-records" />' },
           AppLayout: { template: '<div><slot /></div>' },
           StatCard: { template: '<div class="stat-card" />' },
           ProfileInfoCard: { template: '<div data-testid="profile-info-card" />' },
@@ -93,7 +91,6 @@ describe('ProfileView', () => {
     await flushPromises()
 
     expect(wrapper.findAll('.stat-card')).toHaveLength(0)
-    expect(wrapper.find('[data-testid="profile-security-records"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="profile-shell"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-info-card')
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-password-form')

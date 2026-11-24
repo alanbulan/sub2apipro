@@ -127,10 +127,6 @@ func (s *accountRepoStub) BindGroups(ctx context.Context, accountID int64, group
 	panic("unexpected BindGroups call")
 }
 
-func (s *accountRepoStub) SetGroupAllowedModels(ctx context.Context, accountID int64, allowed map[int64][]string) error {
-	panic("unexpected SetGroupAllowedModels call")
-}
-
 func (s *accountRepoStub) ListSchedulable(ctx context.Context) ([]Account, error) {
 	panic("unexpected ListSchedulable call")
 }
@@ -197,6 +193,10 @@ func (s *accountRepoStub) ClearAntigravityQuotaScopes(ctx context.Context, id in
 
 func (s *accountRepoStub) ClearModelRateLimits(ctx context.Context, id int64) error {
 	panic("unexpected ClearModelRateLimits call")
+}
+
+func (s *accountRepoStub) ClearModelRateLimit(ctx context.Context, id int64, scope string) error {
+	panic("unexpected ClearModelRateLimit call")
 }
 
 func (s *accountRepoStub) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {

@@ -15,7 +15,6 @@ import (
 func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *testing.T) {
 	repo := newFakeBatchImageRepository()
 	job := testSettlingBatchImageJob("imgbatch_settle")
-	job.Provider = BatchImageProviderVertex
 	job.SuccessCount = 3
 	job.FailCount = 2
 	job.ItemCount = 5
@@ -39,7 +38,6 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	require.NotEmpty(t, batchImageDerefString(repo.jobs[job.BatchID].ManifestHash))
 	require.NotNil(t, repo.jobs[job.BatchID].SettledAt)
 	require.Equal(t, "batch-settlement-session", batchImageDerefString(usageLogs.lastLog.SessionID))
-	require.Equal(t, PlatformGemini, usageLogs.lastLog.Platform)
 	require.Len(t, billing.captures, 1)
 	require.Equal(t, int64(321), billing.captures[0].APIKeyID)
 	require.Equal(t, job.UserID, billing.captures[0].UserID)
@@ -343,11 +341,13 @@ func TestBatchImageSettlementService_InvalidCountsExhaustsAndReleases(t *testing
 	require.Equal(t, requestHash, billing.releases[0].RequestPayloadHash)
 }
 
-func TestReleaseBatchImageBalanceHold_ConflictRequiresMatchingReceipt(t *testing.T) {
+func TestReleaseBatchImageBalanceHold_TreatsFingerprintConflictAsReleased(t *testing.T) {
 	job := testSettlingBatchImageJob("imgbatch_release_conflict")
+	// 历史版本用 manifestHash 释放过一次：同一 request id 再以 RequestHash
+	// 释放会命中指纹冲突。资金已归还，必须视为幂等成功而非毒消息。
 	billing := &fakeBatchImageBillingRepo{releaseErr: ErrUsageBillingRequestConflict}
 	err := releaseBatchImageBalanceHold(context.Background(), billing, job, "request-hash")
-	require.ErrorIs(t, err, ErrUsageBillingRequestConflict)
+	require.NoError(t, err)
 	require.Len(t, billing.releases, 1)
 }
 

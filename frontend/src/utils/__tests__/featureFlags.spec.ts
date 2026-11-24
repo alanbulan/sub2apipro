@@ -41,12 +41,6 @@ describe('FeatureFlags.subscription', () => {
 })
 
 describe('resolveFeatureFlag', () => {
-  it('keeps lottery hidden until explicitly enabled', () => {
-    expect(resolveFeatureFlag(undefined, FeatureFlags.lottery)).toBe(false)
-    expect(resolveFeatureFlag({}, FeatureFlags.lottery)).toBe(false)
-    expect(resolveFeatureFlag({ lottery_enabled: false }, FeatureFlags.lottery)).toBe(false)
-    expect(resolveFeatureFlag({ lottery_enabled: true }, FeatureFlags.lottery)).toBe(true)
-  })
   beforeEach(() => {
     setActivePinia(createPinia())
   })
@@ -67,5 +61,21 @@ describe('resolveFeatureFlag', () => {
   it('backs isFeatureFlagEnabled with the same resolution', () => {
     useAppStore().cachedPublicSettings = { subscription_enabled: false } as PublicSettings
     expect(isFeatureFlagEnabled(FeatureFlags.subscription)).toBe(false)
+  })
+})
+
+describe('FeatureFlags.mcp', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    delete (window as any).__APP_CONFIG__
+  })
+
+  it('stays hidden unless the deployment explicitly enables MCP', () => {
+    expect(FeatureFlags.mcp.key).toBe('mcp_enabled')
+    expect(FeatureFlags.mcp.mode).toBe('opt-in')
+    expect(isFeatureFlagEnabled(FeatureFlags.mcp)).toBe(false)
+    expect(resolveFeatureFlag({} as PublicSettings, FeatureFlags.mcp)).toBe(false)
+    expect(resolveFeatureFlag({ mcp_enabled: false } as PublicSettings, FeatureFlags.mcp)).toBe(false)
+    expect(resolveFeatureFlag({ mcp_enabled: true } as PublicSettings, FeatureFlags.mcp)).toBe(true)
   })
 })

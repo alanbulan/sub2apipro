@@ -110,9 +110,6 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	upstreamStart := time.Now()
 	var resp *http.Response
 	for attempt := 0; ; attempt++ {
-		if err := s.checkAPIKeyLongContextBeforeSend(ctx, c, patchedBody, upstreamModel); err != nil {
-			return nil, err
-		}
 		upstreamReq, buildErr := buildGrokResponsesRequest(upstreamCtx, c, account, patchedBody, token, cacheIdentity, s.cfg, s.settingService)
 		if buildErr != nil {
 			return nil, buildErr
@@ -182,7 +179,6 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
 			Kind:               kind,
 			Message:            upstreamMsg,
-			Detail:             s.opsUpstreamErrorDetail(respBody),
 		})
 		errCtx := withGrokTeamRateLimitModel(ctx, upstreamModel)
 		s.handleGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody)
@@ -193,7 +189,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
-			return nil, (&UpstreamFailoverError{
+			return nil, &UpstreamFailoverError{
 				StatusCode:               resp.StatusCode,
 				ResponseBody:             respBody,
 				ResponseHeaders:          resp.Header.Clone(),
@@ -202,7 +198,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 				SameAccountRetryDelay:    retryDelay,
 				SameAccountRetryDeadline: retryDeadline,
 				SameAccountRetryMax:      retryMax,
-			}).WithGrokForbiddenPolicy(account)
+			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
 	}
@@ -213,7 +209,6 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
-	var clientDisconnected bool
 	responseID := ""
 	searchCount := 0
 	imageCount := 0
@@ -223,15 +218,14 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 			maxLineSize = s.cfg.Gateway.MaxLineSize
 		}
-		resp.Body = newGrokResponsesBillingPingFilterBody(resp.Body, account, maxLineSize)
+		resp.Body = newGrokResponsesBillingPingFilterBody(resp.Body, account, maxLineSize, s.cfg)
 		if hasGrokResponsesClientToolMapping(clientToolMapping) {
-			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize)
+			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize, s.cfg)
 		}
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 		if err != nil {
 			return nil, err
 		}
-		clientDisconnected = streamResult.clientDisconnect
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
 		responseID = strings.TrimSpace(streamResult.responseID)
@@ -261,15 +255,14 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		Usage:                         *usage,
 		Model:                         originalModel,
 		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 		ReasoningEffort:               reasoningEffort,
 		Stream:                        reqStream,
 		OpenAIWSMode:                  false,
 		ResponseHeaders:               resp.Header.Clone(),
 		Duration:                      time.Since(startTime),
-		ClientDisconnect:              clientDisconnected,
 		FirstTokenMs:                  firstTokenMs,
-		UpstreamResponseModel:         observedUpstreamResponseModel(c),
-		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 	}
 	// Propagate search/image counters from the shared Responses handler — without
 	// this, stream/JSON counting runs but search_price_per_1k / image bills never apply.
@@ -1441,12 +1434,11 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 			UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
 			Kind:               kind,
 			Message:            upstreamMsg,
-			Detail:             s.opsUpstreamErrorDetail(respBody),
 		})
 		s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
-			return "", OpenAIUsage{}, (&UpstreamFailoverError{
+			return "", OpenAIUsage{}, &UpstreamFailoverError{
 				StatusCode:               resp.StatusCode,
 				ResponseBody:             respBody,
 				ResponseHeaders:          resp.Header.Clone(),
@@ -1455,7 +1447,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 				SameAccountRetryDelay:    retryDelay,
 				SameAccountRetryDeadline: retryDeadline,
 				SameAccountRetryMax:      retryMax,
-			}).WithGrokForbiddenPolicy(account)
+			}
 		}
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
 	}
@@ -1606,7 +1598,7 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 	}
 	// 账号级请求头覆写最后应用，使配置值优先于上面的内置默认头；
 	// 打到官方 CLI 网关时身份头仍由共享传输层最终强制。
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	return req, nil
 }
 
@@ -1628,15 +1620,10 @@ func applyGrokCLIHeaders(headers http.Header) {
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot) {
-	s.updateGrokUsageSnapshotWithOptions(ctx, account, snapshot, grokUsageSnapshotOptions{installRateLimit: true, installSchedulingExtras: true})
+	s.updateGrokUsageSnapshotWithRateLimit(ctx, account, snapshot, true)
 }
 
-type grokUsageSnapshotOptions struct {
-	installRateLimit        bool
-	installSchedulingExtras bool
-}
-
-func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithOptions(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot, options grokUsageSnapshotOptions) {
+func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithRateLimit(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot, installRateLimit bool) {
 	if s == nil || account == nil || account.ID <= 0 || snapshot == nil {
 		return
 	}
@@ -1661,10 +1648,8 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithOptions(ctx context.Co
 	// Also derive the scheduling-threshold extras (grok_sched_*) the evaluator
 	// reads in grokThresholdCandidates. Without this writer the admin-configured
 	// Grok auto-pause threshold could never fire (the read side was dead config).
-	if options.installSchedulingExtras {
-		for k, v := range buildGrokSchedulerExtraUpdates(snapshot) {
-			updates[k] = v
-		}
+	for k, v := range buildGrokSchedulerExtraUpdates(snapshot) {
+		updates[k] = v
 	}
 	stateCtx := ctx
 	if hasActiveLimit {
@@ -1686,7 +1671,7 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithOptions(ctx context.Co
 	// API keys retain the snapshot for observability but leave account health to
 	// the upstream pool. Other accounts install the immediate runtime and durable
 	// rate-limit state when the observed window is exhausted.
-	if options.installRateLimit && hasActiveLimit && !account.IsPoolMode() {
+	if installRateLimit && hasActiveLimit && !account.IsPoolMode() {
 		s.rateLimitGrok(stateCtx, account, resetAt)
 	} else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
@@ -2039,16 +2024,7 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	// Capacity 429 is model pressure, not account quota exhaustion. Keep the
 	// snapshot for observability but do not install account-level rate limiting;
 	// the failover decision below applies a bounded model-scoped block instead.
-	installSnapshotRateLimit := decision.Class != GrokFailureModelCapacity
-	if isGrokExplicitModelFreeUsage(decision) || account.SkipGrokForbiddenPause() && isGrokUnknownForbidden(statusCode, responseBody) {
-		// A model-only quota and an opted-out unknown 403 must not install an
-		// account-wide snapshot limit before their dedicated handlers run.
-		installSnapshotRateLimit = false
-	}
-	s.updateGrokUsageSnapshotWithOptions(ctx, account, snapshot, grokUsageSnapshotOptions{
-		installRateLimit:        installSnapshotRateLimit,
-		installSchedulingExtras: installSnapshotRateLimit,
-	})
+	s.updateGrokUsageSnapshotWithRateLimit(ctx, account, snapshot, decision.Class != GrokFailureModelCapacity)
 
 	// Body-first free-usage / empty / billing / capacity must run before the
 	// status switch so non-429 free-usage bodies still cool the account.
@@ -2096,11 +2072,6 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			s.rateLimitGrok(ctx, account, grokSpendingLimitResetAt(account, time.Now()))
 			return
 		}
-		// Administrator rules and recognized account-state markers already
-		// returned above. The opt-out applies only to the remaining unknown 403.
-		if account.SkipGrokForbiddenPause() && isGrokUnknownForbidden(statusCode, responseBody) {
-			return
-		}
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs rate-limit state for non-pool accounts.
@@ -2131,12 +2102,6 @@ func isGrokSpendingLimitError(responseBody []byte) bool {
 	)))
 	return strings.Contains(message, "spending limit") ||
 		strings.Contains(message, "run out of credits")
-}
-
-func isGrokExplicitModelFreeUsage(decision GrokUpstreamFailureDecision) bool {
-	return decision.Class == GrokFailureFreeUsage &&
-		decision.Model != "" &&
-		isGrokModelSpecificFreeUsage(strings.ToLower(decision.Reason), decision.Model)
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {

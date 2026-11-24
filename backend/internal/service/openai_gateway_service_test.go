@@ -59,15 +59,6 @@ func (r *snapshotUpdateAccountRepo) UpdateExtra(ctx context.Context, id int64, u
 	return nil
 }
 
-func (r stubOpenAIAccountRepo) GetOpenAITurnAdmission(ctx context.Context, id int64) (*Account, *Account, error) {
-	account, err := r.GetByID(ctx, id)
-	var parent *Account
-	if err == nil && account != nil && account.IsShadow() {
-		parent, err = r.GetByID(ctx, *account.ParentAccountID)
-	}
-	return account, parent, err
-}
-
 func (r stubOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
 	for i := range r.accounts {
 		if r.accounts[i].ID == id {
@@ -771,7 +762,7 @@ func (c *stubGatewayCache) GetSessionAccountID(ctx context.Context, groupID int6
 	if id, ok := c.sessionBindings[sessionHash]; ok {
 		return id, nil
 	}
-	return 0, ErrStickySessionNotFound
+	return 0, errors.New("not found")
 }
 
 func (c *stubGatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
@@ -1264,7 +1255,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyWaitPlan(t *testing.T) {
 	}
 }
 
-func TestOpenAISelectAccountWithLoadAwareness_StickyCapacitySpilloverRebindsReplacement(t *testing.T) {
+func TestOpenAISelectAccountWithLoadAwareness_StickyCapacitySpilloverKeepsBinding(t *testing.T) {
 	sessionHash := "sticky-spillover"
 	groupID := int64(1)
 	repo := stubOpenAIAccountRepo{
@@ -1299,21 +1290,9 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyCapacitySpilloverRebindsRepl
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	require.Equal(t, int64(2), selection.Account.ID, "capacity spillover should use the available peer")
+	require.Equal(t, int64(2), selection.Account.ID, "capacity spillover should use the other account for this request")
 	require.True(t, selection.Acquired)
-	require.Equal(t, int64(2), cache.sessionBindings["openai:"+sessionHash], "successful spillover should migrate the durable sticky binding")
-	if selection.ReleaseFunc != nil {
-		selection.ReleaseFunc()
-	}
-
-	concurrencyCache.acquireResults[1] = true
-	concurrencyCache.waitCounts[1] = 0
-	concurrencyCache.loadMap[1].LoadRate = 0
-	selection, err = svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, sessionHash, "gpt-4", nil)
-	require.NoError(t, err)
-	require.NotNil(t, selection)
-	require.Equal(t, int64(2), selection.Account.ID, "original account recovery must not undo a completed migration")
-	require.True(t, selection.stickySessionHit)
+	require.Equal(t, int64(1), cache.sessionBindings["openai:"+sessionHash], "capacity spillover must not migrate the durable sticky binding")
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
@@ -1726,14 +1705,6 @@ func TestOpenAIStreamingReadErrorAfterOutputUsesResponsesErrorSchema(t *testing.
 			require.NotContains(t, body, "stream ID")
 			require.NotContains(t, body, "response.completed")
 			require.NotContains(t, body, "[DONE]")
-			if tc.code == OpenAIUpstreamHTTP2StreamErrorCode {
-				require.Equal(t, 1, strings.Count(body, "event: response.failed\n"))
-				require.Contains(t, body, "INTERNAL_ERROR")
-				require.Contains(t, body, "Do not automatically retry")
-				require.NotContains(t, body, "event: error\n")
-				require.True(t, IsResponseCommitted(c))
-				return
-			}
 			require.Equal(t, 1, strings.Count(body, "event: error\n"))
 			require.True(t, IsResponseCommitted(c), "the handler must not append another failure")
 			var events []gjson.Result

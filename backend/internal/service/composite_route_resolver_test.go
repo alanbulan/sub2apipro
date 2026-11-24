@@ -12,6 +12,85 @@ type compositeRouteRepoStub struct {
 	routes []CompositeModelRoute
 }
 
+func TestCompositeRouteResolverCodexFilteringMatchesProductionPriority(t *testing.T) {
+	for _, scenario := range []struct {
+		name   string
+		routes []CompositeModelRoute
+		want   []string
+	}{
+		{
+			name: "endpoint beats priority",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointAny, TargetPlatform: PlatformOpenAI, Priority: 1},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointResponses, TargetPlatform: PlatformTypeSafe, Priority: 100},
+			},
+			want: []string{"unrouted"},
+		},
+		{
+			name: "Responses OpenAI overrides any TypeSafe",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointAny, TargetPlatform: PlatformTypeSafe, Priority: 1},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointResponses, TargetPlatform: PlatformOpenAI, Priority: 100},
+			},
+			want: []string{"alias", "unrouted"},
+		},
+		{
+			name: "longer prefix beats priority",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "a", MatchType: CompositeRouteMatchPrefix, TargetPlatform: PlatformOpenAI, Priority: 1},
+				{ID: 2, PublicModel: "ali", MatchType: CompositeRouteMatchPrefix, TargetPlatform: PlatformTypeSafe, Priority: 100},
+			},
+			want: []string{"unrouted"},
+		},
+		{
+			name: "exact beats endpoint prefix",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchPrefix, Endpoint: CompositeRouteEndpointResponses, TargetPlatform: PlatformTypeSafe},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, Endpoint: CompositeRouteEndpointAny, TargetPlatform: PlatformOpenAI},
+			},
+			want: []string{"alias", "unrouted"},
+		},
+		{
+			name: "lower priority wins",
+			routes: []CompositeModelRoute{
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformTypeSafe, Priority: 100},
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformOpenAI, Priority: 1},
+			},
+			want: []string{"alias", "unrouted"},
+		},
+		{
+			name: "lower ID breaks tie",
+			routes: []CompositeModelRoute{
+				{ID: 2, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformOpenAI},
+				{ID: 1, PublicModel: "alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformTypeSafe},
+			},
+			want: []string{"unrouted"},
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			for index := range scenario.routes {
+				scenario.routes[index].Enabled = true
+				scenario.routes[index].GroupID = 7
+			}
+			resolver := NewCompositeRouteResolver(compositeRouteRepoStub{routes: scenario.routes})
+			models, err := resolver.FilterCodexModels(context.Background(), 7, []string{"alias", "unrouted"})
+			require.NoError(t, err)
+			require.Equal(t, scenario.want, models)
+			decision, err := resolver.Resolve(context.Background(), 7, "alias", CompositeRouteEndpointResponses)
+			require.NoError(t, err)
+			require.True(t, decision.Matched)
+			require.Equal(t, decision.TargetPlatform != PlatformTypeSafe, len(models) == 2)
+			exactModels, err := resolver.ListExactPublicModels(context.Background(), 7, CompositeRouteEndpointResponses, false)
+			require.NoError(t, err)
+			if decision.TargetPlatform == PlatformTypeSafe {
+				require.Empty(t, exactModels)
+			} else {
+				require.Contains(t, exactModels, "alias")
+			}
+		})
+	}
+}
+
 func (s compositeRouteRepoStub) ListByGroup(ctx context.Context, groupID int64, includeDisabled bool) ([]CompositeModelRoute, error) {
 	routes := make([]CompositeModelRoute, 0, len(s.routes))
 	for _, route := range s.routes {
@@ -399,20 +478,5 @@ func TestCompositeRouteResolverExplicitRoutesCoverBucketTwoProviders(t *testing.
 			require.Equal(t, tt.wantPlatform, decision.TargetPlatform)
 			require.Equal(t, tt.wantUpstream, decision.UpstreamModel)
 		})
-	}
-}
-
-func TestCompositeExactRouteCatalogKeepsTypeSafeOutOfLLMCatalogs(t *testing.T) {
-	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{routes: []CompositeModelRoute{
-		{GroupID: 7, PublicModel: "jev-alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformTypeSafe, Endpoint: CompositeRouteEndpointAny, Enabled: true},
-		{GroupID: 7, PublicModel: "chat-alias", MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformOpenAI, Endpoint: CompositeRouteEndpointAny, Enabled: true},
-	}})
-	all, err := resolver.ListExactPublicModels(context.Background(), 7, "")
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"jev-alias", "chat-alias"}, all)
-	for _, endpoint := range []string{CompositeRouteEndpointResponses, CompositeRouteEndpointMessages, CompositeRouteEndpointChatCompletions, CompositeRouteEndpointGemini} {
-		models, err := resolver.ListExactPublicModels(context.Background(), 7, endpoint)
-		require.NoError(t, err)
-		require.Equal(t, []string{"chat-alias"}, models, endpoint)
 	}
 }

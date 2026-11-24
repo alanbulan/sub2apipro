@@ -60,39 +60,12 @@ afterEach(() => {
   unmountWrapper?.()
   unmountWrapper = undefined
   document.body.innerHTML = ''
-  Reflect.deleteProperty(document, 'fullscreenElement')
   setViewportWidth(originalInnerWidth)
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
 describe('Select dropdown viewport constraints', () => {
-  it('automatically keeps modal dropdowns inside the current fullscreen element', async () => {
-    const target = document.createElement('section')
-    document.body.appendChild(target)
-    Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: target })
-    await openSelect()
-    expect(target.querySelector('[role="listbox"]')).not.toBeNull()
-  })
-  it('renders into an explicit container so dropdowns remain visible in fullscreen', async () => {
-    const target = document.createElement('section')
-    document.body.appendChild(target)
-    const wrapper = mount(Select, {
-      props: {
-        modelValue: null,
-        options: [{ value: 'example', label: 'Example' }],
-        teleportTo: target,
-      },
-    })
-    unmountWrapper = () => wrapper.unmount()
-    await wrapper.get('button').trigger('click')
-    await nextTick()
-    expect(target.querySelector('[role="listbox"]')).not.toBeNull()
-    target.querySelector<HTMLElement>('[role="option"]')!.click()
-    await nextTick()
-    expect(wrapper.emitted('update:modelValue')).toEqual([['example']])
-  })
-
   it('preserves the existing 200px minimum width when space is available', async () => {
     setViewportWidth(1024)
     mockTriggerRect(20, 80)
@@ -242,51 +215,5 @@ describe('Select remote search', () => {
     const dropdown = await openDropdown()
     const labels = [...dropdown.querySelectorAll('.select-option-label')].map((el) => el.textContent)
     expect(labels).toEqual(['Alpha account'])
-  })
-})
-
-describe('Select multiple mode', () => {
-  it('toggles options without closing the dropdown', async () => {
-    const wrapper = mount(Select, {
-      props: {
-        modelValue: [1],
-        multiple: true,
-        options: [
-          { value: 1, label: 'Group one' },
-          { value: 2, label: 'Group two' },
-        ],
-      },
-    })
-    unmountWrapper = () => wrapper.unmount()
-
-    await wrapper.get('button').trigger('click')
-    await nextTick()
-    const options = document.querySelectorAll<HTMLElement>('.select-option')
-    await options[1].click()
-    await nextTick()
-
-    expect(wrapper.emitted('update:modelValue')).toEqual([[[1, 2]]])
-    expect(wrapper.get('button').attributes('aria-expanded')).toBe('true')
-    await wrapper.setProps({ modelValue: [1, 2] })
-    expect(wrapper.get('button').text()).toContain('common.selectedCount')
-  })
-
-  it('clears all values in multiple mode', async () => {
-    const wrapper = mount(Select, {
-      props: {
-        modelValue: [1, 2],
-        multiple: true,
-        clearable: true,
-        options: [
-          { value: 1, label: 'Group one' },
-          { value: 2, label: 'Group two' },
-        ],
-      },
-    })
-    unmountWrapper = () => wrapper.unmount()
-
-    await wrapper.get('.select-clear').trigger('click')
-
-    expect(wrapper.emitted('update:modelValue')).toEqual([[[]]])
   })
 })

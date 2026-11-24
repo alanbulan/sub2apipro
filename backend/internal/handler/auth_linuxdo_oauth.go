@@ -406,8 +406,7 @@ func (h *AuthHandler) findLinuxDoCompatEmailUser(ctx context.Context, email stri
 		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.FeishuConnectSyntheticEmailDomain) {
+		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain) {
 		return nil, nil
 	}
 
@@ -860,13 +859,10 @@ func redirectWithFragment(c *gin.Context, frontendCallback string, fragment url.
 		c.Redirect(http.StatusFound, linuxDoOAuthDefaultRedirectTo)
 		return
 	}
-	// Values.Encode already escapes the fragment parameters. URL.Fragment expects
-	// decoded text and would escape percent signs again (e.g. %3B becomes %253B).
-	u.Fragment = ""
-	u.RawFragment = ""
+	u.Fragment = fragment.Encode()
 	c.Header("Cache-Control", "no-store")
 	c.Header("Pragma", "no-cache")
-	c.Redirect(http.StatusFound, u.String()+"#"+fragment.Encode())
+	c.Redirect(http.StatusFound, u.String())
 }
 
 func firstNonEmpty(values ...string) string {

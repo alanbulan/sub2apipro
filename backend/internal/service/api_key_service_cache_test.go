@@ -621,15 +621,8 @@ func TestAPIKeyService_GetByKeyRejectsNonUTF8BeforeLookup(t *testing.T) {
 		return nil, nil
 	}}
 	svc := NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
-	for name, lookup := range map[string]func(context.Context, string) (*APIKey, error){
-		"cached":   svc.GetByKey,
-		"uncached": svc.GetByKeyUncached,
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := lookup(context.Background(), "sk-\xff\xfe")
-			require.ErrorIs(t, err, ErrAPIKeyNotFound)
-		})
-	}
+	_, err := svc.GetByKey(context.Background(), "sk-\xff\xfe")
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 }
 
 func TestAPIKeyService_AuthLookupBulkheadRejectsExcessMisses(t *testing.T) {

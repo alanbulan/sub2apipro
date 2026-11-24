@@ -96,7 +96,7 @@ func (h *PasskeyHandler) BeginLogin(c *gin.Context) {
 	response.Success(c, passkeyOptionsResponse{SessionToken: token, Options: assertion})
 }
 
-// FinishLogin validates a passkey assertion and creates a normal API Gateway token
+// FinishLogin validates a passkey assertion and creates a normal Sub2API token
 // session. User verification is mandatory, so a successful passkey assertion
 // already supplies phishing-resistant multi-factor authentication and does not
 // enter the separate TOTP challenge flow.
@@ -232,10 +232,10 @@ func (h *PasskeyHandler) ensureBackendModeAllowsUser(ctx context.Context, user *
 	if err := ensureLoginUserActive(user); err != nil {
 		return err
 	}
-	if h.settingSvc == nil || !h.settingSvc.IsBackendModeEnabled(ctx) || user.IsAdmin() || user.IsObserver() {
+	if h.settingSvc == nil || !h.settingSvc.IsBackendModeEnabled(ctx) || user.IsAdmin() {
 		return nil
 	}
-	return infraerrors.Forbidden("BACKEND_MODE_ADMIN_ONLY", "Backend mode is active. Only admin or observer login is allowed.")
+	return infraerrors.Forbidden("BACKEND_MODE_ADMIN_ONLY", "Backend mode is active. Only admin login is allowed.")
 }
 
 func bindPasskeyFinishRequest(c *gin.Context) (*passkeyFinishRequest, bool) {

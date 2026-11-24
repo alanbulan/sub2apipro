@@ -262,7 +262,7 @@ func TestForwardGrokResponsesOAuthRestoresClientToolsNonStreaming(t *testing.T) 
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("api_key", &APIKey{ID: 7102, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 7102})
 
 	account := grokProtocolOAuthAccount(7102)
 	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
@@ -429,7 +429,7 @@ func TestGrokResponsesClientToolStreamBodyFlushesFrameBeforeEOF(t *testing.T) {
 	sourceReader, sourceWriter := io.Pipe()
 	body := newGrokResponsesClientToolStreamBody(sourceReader, apicompat.ResponsesClientToolMapping{
 		CustomTools: map[string]bool{"apply_patch": true},
-	}, defaultMaxLineSize)
+	}, defaultMaxLineSize, nil)
 	defer func() { _ = body.Close() }()
 	defer func() { _ = sourceWriter.Close() }()
 

@@ -2,7 +2,6 @@ package repository
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -521,7 +520,7 @@ func TestApplyGrokCLIProxyHeaders(t *testing.T) {
 		"1.0.047",
 		"1.0.47-alpha..1",
 		"1.1",
-		"1",
+		"2",
 		"1.0.47+build.1",
 	} {
 		t.Run("rejects invalid semver "+version, func(t *testing.T) {
@@ -537,7 +536,7 @@ func TestApplyGrokCLIProxyHeaders(t *testing.T) {
 	}
 
 	t.Run("leaves direct xAI API requests unchanged", func(t *testing.T) {
-		t.Setenv("XAI_GROK_CLI_VERSION", "1.0.46")
+		t.Setenv("XAI_GROK_CLI_VERSION", "1.0.47")
 		req, err := http.NewRequest(http.MethodPost, "https://api.x.ai/v1/responses", nil)
 		require.NoError(t, err)
 		req.Header.Set("User-Agent", "direct-api-client/1.0")
@@ -697,82 +696,6 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
 	require.False(s.T(), transport.ForceAttemptHTTP2, "OpenAI HTTP/2 disabled should not force H2")
 	require.NotNil(s.T(), transport.TLSNextProto, "HTTP/1 mode should disable automatic H2 negotiation")
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH1, entry.protocolMode)
-}
-
-func (s *HTTPUpstreamSuite) TestOpenAIHarvestProfileDisablesKeepAlives() {
-	svc := s.newService()
-	entry, err := svc.getClientEntry("socks5h://user:pass@harvest.example:31", 41, 5, service.HTTPUpstreamProfileOpenAIHarvest, false, false)
-	require.NoError(s.T(), err)
-	require.Equal(s.T(), upstreamProtocolModeOpenAIH1NoReuse, entry.protocolMode)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
-	require.True(s.T(), transport.DisableKeepAlives)
-	require.False(s.T(), transport.ForceAttemptHTTP2)
-	require.Equal(s.T(), 0, transport.MaxIdleConns)
-}
-
-func upstreamResponseHeaderTimeout(t *testing.T, entry *upstreamClientEntry) time.Duration {
-	t.Helper()
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(t, ok, "expected *http.Transport")
-	return transport.ResponseHeaderTimeout
-}
-
-func (s *HTTPUpstreamSuite) TestResponseHeaderTimeoutOverrideUsesSeparateClient() {
-	s.cfg.Gateway = config.GatewayConfig{
-		OpenAIResponseHeaderTimeout: 60,
-		OpenAIHTTP2:                 config.GatewayOpenAIHTTP2Config{Enabled: true},
-	}
-	svc := s.newService()
-	profile := service.HTTPUpstreamProfileOpenAI
-	normal, err := svc.getClientEntry("", 1, 1, profile, false, false)
-	require.NoError(s.T(), err)
-	relaxed, err := svc.getClientEntryWithHeaderTimeout("", 1, 1, profile, false, false, 150*time.Second)
-	require.NoError(s.T(), err)
-	require.NotSame(s.T(), normal, relaxed)
-	require.Equal(s.T(), 60*time.Second, upstreamResponseHeaderTimeout(s.T(), normal))
-	require.Equal(s.T(), 150*time.Second, upstreamResponseHeaderTimeout(s.T(), relaxed))
-
-	normalAgain, err := svc.getClientEntry("", 1, 1, profile, false, false)
-	require.NoError(s.T(), err)
-	require.Same(s.T(), normal, normalAgain, "relaxed requests must not evict the normal client")
-	relaxedAgain, err := svc.getClientEntryWithHeaderTimeout("", 1, 1, profile, false, false, 150*time.Second)
-	require.NoError(s.T(), err)
-	require.Same(s.T(), relaxed, relaxedAgain)
-
-	shorter, err := svc.getClientEntryWithHeaderTimeout("", 1, 1, profile, false, false, 30*time.Second)
-	require.NoError(s.T(), err)
-	require.Same(s.T(), normal, shorter, "an override must never shorten the timeout")
-}
-
-func (s *HTTPUpstreamSuite) TestResponseHeaderTimeoutOverrideKeepsDisabledTimeout() {
-	s.cfg.Gateway = config.GatewayConfig{OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{Enabled: true}}
-	svc := s.newService()
-	entry, err := svc.getClientEntryWithHeaderTimeout("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false, 150*time.Second)
-	require.NoError(s.T(), err)
-	require.Zero(s.T(), upstreamResponseHeaderTimeout(s.T(), entry))
-}
-
-func (s *HTTPUpstreamSuite) TestRequestResponseHeaderTimeoutReachesClientSelection() {
-	s.cfg.Gateway = config.GatewayConfig{
-		OpenAIResponseHeaderTimeout: 60,
-		OpenAIHTTP2:                 config.GatewayOpenAIHTTP2Config{Enabled: true},
-	}
-	svc := s.newService()
-	req := httptest.NewRequest(http.MethodPost, "https://image.example.test/v1/images/generations", nil)
-	req = req.WithContext(service.WithHTTPUpstreamResponseHeaderTimeout(req.Context(), 150*time.Second))
-	entry, err := svc.acquireRequestClient(req, "", 1, 1, service.HTTPUpstreamProfileOpenAI)
-	require.NoError(s.T(), err)
-	defer atomic.AddInt64(&entry.inFlight, -1)
-	require.Equal(s.T(), 150*time.Second, upstreamResponseHeaderTimeout(s.T(), entry))
-
-	fingerprint := &tlsfingerprint.Profile{Name: "test"}
-	tlsEntry, err := svc.acquireRequestClientWithTLS(req, "", 1, 1, fingerprint, service.HTTPUpstreamProfileOpenAI)
-	require.NoError(s.T(), err)
-	defer atomic.AddInt64(&tlsEntry.inFlight, -1)
-	normalTLS, err := svc.getClientEntryWithTLS("", 1, 1, fingerprint, service.HTTPUpstreamProfileOpenAI, false, false)
-	require.NoError(s.T(), err)
-	require.NotSame(s.T(), tlsEntry, normalTLS)
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIHeaderTimeoutChangeRebuildsClient() {
@@ -1121,33 +1044,4 @@ func TestHTTPUpstreamPublicHostsOnlyValidatesEveryRedirectHop(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, client.CheckRedirect(publicHop, via))
 	require.Error(t, client.CheckRedirect(publicHop, make([]*http.Request, 10)), "redirect chain stays capped")
-}
-
-type fakeOpenAIResponseHeaderTimeoutProvider struct {
-	seconds int
-	enabled bool
-}
-
-func (f fakeOpenAIResponseHeaderTimeoutProvider) GetOpenAIResponseHeaderTimeoutCached(context.Context) (int, bool) {
-	return f.seconds, f.enabled
-}
-
-func TestApplyProfilePoolSettingsUsesRuntimeOpenAIResponseHeaderTimeout(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Gateway.OpenAIResponseHeaderTimeout = 20
-
-	svc, ok := newHTTPUpstream(cfg, fakeOpenAIResponseHeaderTimeoutProvider{seconds: 30, enabled: true}).(*httpUpstreamService)
-	require.True(t, ok)
-	settings := svc.applyProfilePoolSettings(poolSettings{}, service.HTTPUpstreamProfileOpenAI)
-	require.Equal(t, 30*time.Second, settings.responseHeaderTimeout)
-
-	svc, ok = newHTTPUpstream(cfg, fakeOpenAIResponseHeaderTimeoutProvider{seconds: 30, enabled: false}).(*httpUpstreamService)
-	require.True(t, ok)
-	settings = svc.applyProfilePoolSettings(poolSettings{}, service.HTTPUpstreamProfileOpenAI)
-	require.Zero(t, settings.responseHeaderTimeout)
-
-	svc, ok = newHTTPUpstream(cfg, nil).(*httpUpstreamService)
-	require.True(t, ok)
-	settings = svc.applyProfilePoolSettings(poolSettings{}, service.HTTPUpstreamProfileOpenAI)
-	require.Equal(t, 20*time.Second, settings.responseHeaderTimeout)
 }

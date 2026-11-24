@@ -628,7 +628,7 @@ func TestForwardGrokResponsesCodexAdditionalToolsUsesMixedCacheIntent(t *testing
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set(grokClientToolCacheOptInHeader, "prefer-cache")
-	c.Set("api_key", &APIKey{ID: 4501, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 4501})
 
 	account := healthyGrokOAuthGatewayTestAccount(4501, "access-token")
 	account.Credentials["subscription_tier"] = "free"
@@ -741,7 +741,7 @@ func TestForwardGrokResponsesClaudeDesktopClientToolsUseCacheRoute(t *testing.T)
 		c.Request.Header.Set("X-App", "cli")
 		c.Request.Header.Set("anthropic-client-platform", "desktop_app")
 		c.Request.Header.Set("X-Claude-Code-Session-Id", "claude-desktop-session")
-		c.Set("api_key", &APIKey{ID: 4504, AllowLongContext: true})
+		c.Set("api_key", &APIKey{ID: 4504})
 		return c
 	}
 
@@ -1158,13 +1158,15 @@ func TestPrepareGrokImageEditNormalizesOfficialImageObjects(t *testing.T) {
 	}
 }
 
-func TestPrepareGrokImageEditRejectsMoreThanThreeSources(t *testing.T) {
-	body := []byte(`{"images":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png","https://example.com/4.png"]}`)
+func TestPrepareGrokImageEditRejectsMoreThanFiveSources(t *testing.T) {
+	body := []byte(`{"images":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png","https://example.com/4.png","https://example.com/5.png","https://example.com/6.png"]}`)
 
 	out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
 	require.Error(t, err)
 	require.Nil(t, out)
-	require.Contains(t, err.Error(), "maximum of 3 source images")
+	var validationErr *GrokMediaInputValidationError
+	require.ErrorAs(t, err, &validationErr)
+	require.Contains(t, err.Error(), "maximum of 5 source images")
 }
 
 func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
@@ -1345,83 +1347,6 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			require.Equal(t, tt.wantRequestModel, result.Model)
 			require.Equal(t, tt.wantRequestModel, result.BillingModel)
 			require.Equal(t, tt.wantUpstream, result.UpstreamModel)
-		})
-	}
-}
-
-func TestForwardGrokMediaInheritsBuiltInMediaMappingForChatOnlyAccounts(t *testing.T) {
-	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
-	gin.SetMode(gin.TestMode)
-
-	tests := []struct {
-		name         string
-		endpoint     GrokMediaEndpoint
-		path         string
-		body         string
-		responseBody string
-		wantUpstream string
-	}{
-		{
-			name:         "image generation",
-			endpoint:     GrokMediaEndpointImagesGenerations,
-			path:         "/v1/images/generations",
-			body:         `{"model":"grok-imagine","prompt":"draw a cat"}`,
-			responseBody: `{"data":[{"url":"https://images.test/chat-only.png"}]}`,
-			wantUpstream: xai.DefaultImagineImageQualityModel,
-		},
-		{
-			name:         "image edit",
-			endpoint:     GrokMediaEndpointImagesEdits,
-			path:         "/v1/images/edits",
-			body:         `{"model":"grok-imagine-edit","prompt":"edit","image":{"image_url":{"url":"https://example.com/input.png"}}}`,
-			responseBody: `{"data":[{"url":"https://images.test/chat-only-edit.png"}]}`,
-			wantUpstream: xai.DefaultImagineImageQualityModel,
-		},
-		{
-			name:         "video generation",
-			endpoint:     GrokMediaEndpointVideosGenerations,
-			path:         "/v1/videos/generations",
-			body:         `{"model":"grok-imagine-video-1.5-preview","prompt":"waves"}`,
-			responseBody: `{"request_id":"chat-only-video"}`,
-			wantUpstream: xai.DefaultImagineVideo15Model,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(recorder)
-			c.Request = httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
-			c.Request.Header.Set("Content-Type", "application/json")
-
-			account := &Account{
-				ID:          67,
-				Name:        "grok-chat-only",
-				Platform:    PlatformGrok,
-				Type:        AccountTypeAPIKey,
-				Concurrency: 1,
-				Credentials: map[string]any{
-					"api_key":  "api-key",
-					"base_url": "https://xai.test/v1",
-					"model_mapping": map[string]any{
-						"grok-4.3": "grok-4.3",
-					},
-				},
-				Extra: map[string]any{GrokMediaEligibleExtraKey: true},
-			}
-			upstream := &httpUpstreamRecorder{resp: &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(tt.responseBody)),
-			}}
-			svc := &OpenAIGatewayService{httpUpstream: upstream}
-
-			_, err := svc.ForwardGrokMedia(
-				context.Background(), c, account, tt.endpoint, "", []byte(tt.body), "application/json",
-			)
-
-			require.NoError(t, err)
-			require.Equal(t, tt.wantUpstream, gjson.GetBytes(upstream.lastBody, "model").String())
 		})
 	}
 }
@@ -2008,7 +1933,7 @@ func TestForwardAsChatCompletionsForGrokStopFallsBackToXAIChatCompletions(t *tes
 	c, _ := gin.CreateTestContext(recorder)
 	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":false,"stop":"done","prompt_cache_key":"raw-client-cache-key"}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
-	c.Set("api_key", &APIKey{ID: 5101, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5101})
 
 	account := healthyGrokOAuthGatewayTestAccount(51, "access-token")
 	repo := &grokQuotaAccountRepo{
@@ -2060,7 +1985,7 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
-	c.Set("api_key", &APIKey{ID: 5201, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5201})
 
 	account := healthyGrokOAuthGatewayTestAccount(52, "access-token")
 	repo := &grokQuotaAccountRepo{
@@ -2262,7 +2187,7 @@ func TestForwardGrokResponsesUsesMetadataSessionForCacheIdentityWithoutForwardin
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-		c.Set("api_key", &APIKey{ID: 5401, AllowLongContext: true})
+		c.Set("api_key", &APIKey{ID: 5401})
 		return c
 	}
 
@@ -2296,7 +2221,7 @@ func TestForwardGrokResponsesRetriesInvalidEncryptedContentOnce(t *testing.T) {
 		"stream":false
 	}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-	c.Set("api_key", &APIKey{ID: 4535, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 4535})
 
 	account := &Account{
 		ID:          4535,
@@ -2754,7 +2679,7 @@ func TestForwardGrokResponsesNonStreamingUsesCacheIdentityAndCachedUsage(t *test
 	body := []byte(`{"model":"grok","input":"hi","stream":false,"tools":[{"type":"namespace","name":"client_tools"}],"tool_choice":{"type":"namespace","name":"client_tools"}}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("api_key", &APIKey{ID: 5202, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5202})
 
 	account := healthyGrokOAuthGatewayTestAccount(56, "access-token")
 	observedResetAt := time.Now().Add(-time.Second).UTC().Truncate(time.Second)
@@ -2810,7 +2735,7 @@ func TestForwardGrokResponsesFailoverKeepsCacheIdentityAcrossAccounts(t *testing
 	c, _ := gin.CreateTestContext(recorder)
 	body := []byte(`{"model":"grok","input":[{"role":"user","content":"stable prefix"}],"stream":false}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-	c.Set("api_key", &APIKey{ID: 5203, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5203})
 
 	newAccount := func(id int64, token string) *Account {
 		account := healthyGrokOAuthGatewayTestAccount(id, token)
@@ -2870,7 +2795,7 @@ func TestForwardAsChatCompletionsForGrokStreamingStopFallsBackToRawXAIChatComple
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set(grokConversationIDHeader, "native-client-conversation")
-	c.Set("api_key", &APIKey{ID: 5301, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5301})
 
 	account := healthyGrokOAuthGatewayTestAccount(53, "access-token")
 	repo := &grokQuotaAccountRepo{
@@ -2930,7 +2855,7 @@ func TestForwardAsChatCompletionsForGrokComposerBridgesImageInput(t *testing.T) 
 	body := []byte(`{"model":"grok-composer-2.5-fast","messages":[{"role":"system","content":"You are concise."},{"role":"user","content":[{"type":"text","text":"What is shown?"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QUJD"}}]}],"metadata":{"large_id":9007199254740993},"stream":false}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set("api_key", &APIKey{ID: 5501, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5501})
 
 	account := healthyGrokOAuthGatewayTestAccount(55, "access-token")
 	repo := &grokQuotaAccountRepo{
@@ -2992,7 +2917,7 @@ func TestForwardAsAnthropicForGrokUsesXAIResponses(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	body := []byte(`{"model":"grok","max_tokens":32,"stream":false,"messages":[{"role":"user","content":"hi"}]}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
-	c.Set("api_key", &APIKey{ID: 5401, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5401})
 	c.Request.Header.Set("OpenAI-Beta", "grok-experimental")
 	c.Request.Header.Set("originator", "opencode")
 
@@ -3049,7 +2974,7 @@ func TestForwardAsAnthropicForGrokFunctionToolUsesCacheCapableMixedRoute(t *test
 		"tool_choice":{"type":"auto"}
 	}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
-	c.Set("api_key", &APIKey{ID: 5403, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5403})
 
 	account := healthyGrokOAuthGatewayTestAccount(58, "access-token")
 	account.Extra = map[string]any{grokBillingExtraKey: map[string]any{
@@ -3115,7 +3040,7 @@ func TestForwardAsAnthropicForGrokStreamingPreservesCacheUsage(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	body := []byte(`{"model":"grok","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
-	c.Set("api_key", &APIKey{ID: 5402, AllowLongContext: true})
+	c.Set("api_key", &APIKey{ID: 5402})
 
 	account := healthyGrokOAuthGatewayTestAccount(57, "access-token")
 	repo := &grokQuotaAccountRepo{
@@ -3692,21 +3617,12 @@ func TestOpenAIWSHTTPBridgeGrok429PersistsRateLimit(t *testing.T) {
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
-type bridgeErrorAdmissionRepo struct {
-	*grokQuotaAccountRepo
-	account *Account
-}
-
-func (r *bridgeErrorAdmissionRepo) GetOpenAITurnAdmission(context.Context, int64) (*Account, *Account, error) {
-	return r.account, nil, nil
-}
-
 func TestOpenAIWSHTTPBridgeSSEErrorSideEffectsRunOncePerPlatform(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	for _, platform := range []string{PlatformOpenAI, PlatformGrok} {
 		t.Run(platform, func(t *testing.T) {
-			repo := &bridgeErrorAdmissionRepo{grokQuotaAccountRepo: &grokQuotaAccountRepo{}}
+			repo := &grokQuotaAccountRepo{}
 			cfg := &config.Config{}
 			upstream := &httpUpstreamRecorder{resp: &http.Response{
 				StatusCode: http.StatusOK,
@@ -3723,8 +3639,7 @@ func TestOpenAIWSHTTPBridgeSSEErrorSideEffectsRunOncePerPlatform(t *testing.T) {
 			if platform == PlatformOpenAI {
 				svc.rateLimitService = NewRateLimitService(repo, nil, cfg, nil, nil)
 			}
-			account := &Account{ID: 70, Platform: platform, Type: AccountTypeOAuth, Concurrency: 1, Status: StatusActive, Schedulable: true}
-			repo.account = account
+			account := &Account{ID: 70, Platform: platform, Type: AccountTypeOAuth, Concurrency: 1}
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
 			c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)

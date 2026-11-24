@@ -1,27 +1,21 @@
 package service
 
-import (
-	"context"
-	"time"
-)
+import "context"
 
 // HTTPUpstreamProfile marks HTTP upstream requests that need provider-specific
 // transport policy.
 type HTTPUpstreamProfile string
 
 const (
-	HTTPUpstreamProfileDefault       HTTPUpstreamProfile = ""
-	HTTPUpstreamProfileOpenAI        HTTPUpstreamProfile = "openai"
-	HTTPUpstreamProfileOpenAIHarvest HTTPUpstreamProfile = "openai_harvest"
-	HTTPUpstreamProfileGrok          HTTPUpstreamProfile = "grok"
-	HTTPUpstreamProfileLongStream    HTTPUpstreamProfile = "long_stream"
-	HTTPUpstreamProfileExcelBPS      HTTPUpstreamProfile = "excel_bps"
+	HTTPUpstreamProfileDefault    HTTPUpstreamProfile = ""
+	HTTPUpstreamProfileOpenAI     HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileGrok       HTTPUpstreamProfile = "grok"
+	HTTPUpstreamProfileLongStream HTTPUpstreamProfile = "long_stream"
 )
 
 type httpUpstreamProfileContextKey struct{}
 type httpUpstreamDisableRedirectsContextKey struct{}
 type httpUpstreamPublicHostsOnlyContextKey struct{}
-type httpUpstreamResponseHeaderTimeoutContextKey struct{}
 
 // WithHTTPUpstreamProfile injects an upstream transport profile into ctx.
 func WithHTTPUpstreamProfile(ctx context.Context, profile HTTPUpstreamProfile) context.Context {
@@ -44,32 +38,11 @@ func HTTPUpstreamProfileFromContext(ctx context.Context) HTTPUpstreamProfile {
 		return HTTPUpstreamProfileDefault
 	}
 	switch profile {
-	case HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileOpenAIHarvest, HTTPUpstreamProfileGrok, HTTPUpstreamProfileLongStream, HTTPUpstreamProfileExcelBPS:
+	case HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileGrok, HTTPUpstreamProfileLongStream:
 		return profile
 	default:
 		return HTTPUpstreamProfileDefault
 	}
-}
-
-// WithHTTPUpstreamResponseHeaderTimeout asks for a longer response-header wait
-// than the transport profile. It never shortens or enables a timeout.
-func WithHTTPUpstreamResponseHeaderTimeout(ctx context.Context, timeout time.Duration) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if timeout <= 0 {
-		return ctx
-	}
-	return context.WithValue(ctx, httpUpstreamResponseHeaderTimeoutContextKey{}, timeout)
-}
-
-// HTTPUpstreamResponseHeaderTimeoutFromContext returns the requested wait, or zero.
-func HTTPUpstreamResponseHeaderTimeoutFromContext(ctx context.Context) time.Duration {
-	if ctx == nil {
-		return 0
-	}
-	timeout, _ := ctx.Value(httpUpstreamResponseHeaderTimeoutContextKey{}).(time.Duration)
-	return timeout
 }
 
 // WithHTTPUpstreamRedirectsDisabled prevents credential-bearing probes from

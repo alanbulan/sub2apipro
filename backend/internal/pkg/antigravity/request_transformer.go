@@ -295,27 +295,28 @@ func filterOpenCodePrompt(text string) string {
 	return ""
 }
 
-// stripClaudeAttribution removes the leading Claude Code attribution metadata line
-// from Antigravity system text. This is prompt metadata, not an HTTP header; it
-// can trigger RESOURCE_EXHAUSTED on the Google upstream. Keep this scoped to the
-// Antigravity transformer: native Anthropic OAuth may require the attribution.
-// claudeIdentityOpeners 是部分 Anthropic 客户端放在系统块开头的 Claude Agent SDK 身份语句。
-// 仅移除 x-anthropic-billing-header 行还不够：如果系统文本仍以这些语句开头，
-// Google 上游仍会返回 429 RESOURCE_EXHAUSTED。
-//
 // The patterns are anchored at the start of a system block on purpose, so user
-// instructions that merely mention Claude or Anthropic are left untouched.
-var claudeIdentityOpeners = []*regexp.Regexp{
+// instructions that merely mention Claude, GPT or their vendors are left untouched.
+var systemIdentityOpeners = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are a Claude agent, built on Anthropic'?s Claude Agent SDK\.?`),
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Claude Code, Anthropic'?s official CLI for Claude\.?`),
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Codex,? (?:a coding agent |an agent )?based on GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)*\.?`),
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)* running in the Codex CLI\.?`),
 }
 
-// neutralizeClaudeIdentity rewrites a leading vendor identity sentence into a
-// vendor-neutral one. It keeps the rest of the block, including any user
-// instructions that follow.
-func neutralizeClaudeIdentity(text string) string {
-	for _, re := range claudeIdentityOpeners {
+// NeutralizeSystemIdentity removes leading client attribution and rewrites a
+// leading vendor identity sentence, preserving the rest of the system block.
+// Only Antigravity forwarding should use this; native Anthropic may require attribution.
+func NeutralizeSystemIdentity(text string) string {
+	text = stripClaudeAttribution(text)
+	for _, re := range systemIdentityOpeners {
 		if loc := re.FindStringIndex(text); loc != nil {
+			if strings.HasPrefix(text[loc[1]:], ",") {
+				return "You are an AI agent" + text[loc[1]:]
+			}
+			if loc[1] < len(text) && !strings.ContainsAny(text[loc[1]:loc[1]+1], " \t\r\n") {
+				continue
+			}
 			return "You are an AI agent." + text[loc[1]:]
 		}
 	}
@@ -350,7 +351,7 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 		// 尝试解析为字符串
 		var sysStr string
 		if err := json.Unmarshal(system, &sysStr); err == nil {
-			sysStr = neutralizeClaudeIdentity(stripClaudeAttribution(sysStr))
+			sysStr = NeutralizeSystemIdentity(sysStr)
 			if strings.TrimSpace(sysStr) != "" {
 				if strings.Contains(sysStr, "You are Antigravity") {
 					userHasAntigravityIdentity = true
@@ -366,7 +367,7 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 			var sysBlocks []SystemBlock
 			if err := json.Unmarshal(system, &sysBlocks); err == nil {
 				for _, block := range sysBlocks {
-					block.Text = neutralizeClaudeIdentity(stripClaudeAttribution(block.Text))
+					block.Text = NeutralizeSystemIdentity(block.Text)
 					if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
 						if strings.Contains(block.Text, "You are Antigravity") {
 							userHasAntigravityIdentity = true
@@ -591,11 +592,10 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 				for _, part := range media {
 					response.Parts = append(response.Parts, GeminiFunctionResponsePart{InlineData: part.InlineData})
 				}
-			}
-			parts = append(parts, GeminiPart{FunctionResponse: response})
-			if !multimodalToolResults {
+			} else {
 				toolMediaParts = append(toolMediaParts, media...)
 			}
+			parts = append(parts, GeminiPart{FunctionResponse: response})
 		}
 	}
 
@@ -696,6 +696,45 @@ func isAntigravityOpusHighTierModel(model string) bool {
 		strings.HasPrefix(lower, "claude-opus-4-8")
 }
 
+// carbonThinkingConfig preserves the upstream default when no effort is specified.
+// https://aistudio.google.com/docs/whats-new-gemini-4-carbon
+func carbonThinkingConfig(req *ClaudeRequest, bareModel bool) *GeminiThinkingConfig {
+	cfg := &GeminiThinkingConfig{}
+	if req.Thinking != nil {
+		cfg.IncludeThoughts = req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive"
+	}
+	if bareModel {
+		if req.OutputConfig != nil {
+			switch strings.ToLower(strings.TrimSpace(req.OutputConfig.Effort)) {
+			case "none", "minimal", "low":
+				cfg.ThinkingLevel = "low"
+			case "medium":
+				cfg.ThinkingLevel = "medium"
+			case "high", "xhigh", "max":
+				cfg.ThinkingLevel = "high"
+			}
+		}
+		if req.Thinking != nil {
+			if req.Thinking.Type == "disabled" {
+				cfg.ThinkingLevel = "low"
+			} else if cfg.ThinkingLevel == "" && req.Thinking.Type == "enabled" && req.Thinking.BudgetTokens > 0 {
+				switch {
+				case req.Thinking.BudgetTokens <= 1024:
+					cfg.ThinkingLevel = "low"
+				case req.Thinking.BudgetTokens <= 8192:
+					cfg.ThinkingLevel = "medium"
+				default:
+					cfg.ThinkingLevel = "high"
+				}
+			}
+		}
+	}
+	if !cfg.IncludeThoughts && cfg.ThinkingLevel == "" {
+		return nil
+	}
+	return cfg
+}
+
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 	maxLimit := maxOutputTokensLimit(req.Model)
 	config := &GeminiGenerationConfig{
@@ -712,8 +751,16 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 		config.MaxOutputTokens = req.MaxTokens
 	}
 
+	// Carbon accepts thinking levels rather than token budgets. Tiered IDs, when
+	// supplied by the account catalog, already select the level upstream.
+	carbonModel := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(req.Model)), "models/")
+	isCarbon := carbonModel == "gemini-4-carbon" || carbonModel == "gemini-4-carbon-low" || carbonModel == "gemini-4-carbon-medium" || carbonModel == "gemini-4-carbon-high"
+	if isCarbon {
+		config.ThinkingConfig = carbonThinkingConfig(req, carbonModel == "gemini-4-carbon")
+	}
+
 	// Thinking 配置
-	if req.Thinking != nil && (req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive") {
+	if !isCarbon && req.Thinking != nil && (req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive") {
 		config.ThinkingConfig = &GeminiThinkingConfig{
 			IncludeThoughts: true,
 		}

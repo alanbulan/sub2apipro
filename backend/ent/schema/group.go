@@ -216,19 +216,6 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			Comment("无效请求兜底使用的分组 ID"),
 
-		// 仅限制员工 API 入口，后台账号测试与质量判题沿用内部调用链。
-		field.Bool("block_subagents").
-			Default(false).
-			Comment("是否拒绝员工 API 入口中带子代理标识的请求"),
-		field.Bool("codex_cli_only").
-			Default(false).
-			Comment("是否仅允许 Codex 客户端调用本分组"),
-
-		// 仅允许流式请求 (added by migration 246)
-		field.Bool("stream_only").
-			Default(false).
-			Comment("是否仅允许流式请求：开启后非流式的对话生成请求在网关入口直接拒绝"),
-
 		// 模型路由配置 (added by migration 040)
 		field.JSON("model_routing", map[string][]int64{}).
 			Optional().
@@ -266,12 +253,12 @@ func (Group) Fields() []ent.Field {
 		field.Bool("force_openai_fast").
 			Default(false).
 			Comment("是否强制此 OpenAI/Composite 分组请求使用 service_tier=priority"),
+		field.Bool("force_openai_ultrafast").
+			Default(false).
+			Comment("是否对支持 Ultrafast 的模型强制使用 service_tier=ultrafast（优先于 force_openai_fast）"),
 		field.Bool("free_openai_fast").
 			Default(false).
 			Comment("是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费"),
-		field.Bool("free_openai_ultrafast").
-			Default(false).
-			Comment("是否让此 OpenAI/Composite 分组的 UltraFast 请求按 Standard 价格向用户计费"),
 		field.Bool("require_oauth_only").
 			Default(false).
 			Comment("仅允许非 apikey 类型账号关联到此分组"),

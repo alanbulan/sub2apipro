@@ -3,7 +3,6 @@
     :user="user"
     :linuxdo-enabled="linuxdoEnabled"
     :dingtalk-enabled="dingtalkEnabled"
-    :feishu-enabled="feishuEnabled"
     :oidc-enabled="oidcEnabled"
     :oidc-provider-name="oidcProviderName"
     :wechat-enabled="wechatEnabled"
@@ -21,7 +20,6 @@ withDefaults(
     user: User | null
     linuxdoEnabled?: boolean
     dingtalkEnabled?: boolean
-    feishuEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
@@ -31,7 +29,6 @@ withDefaults(
   {
     linuxdoEnabled: false,
     dingtalkEnabled: false,
-    feishuEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,

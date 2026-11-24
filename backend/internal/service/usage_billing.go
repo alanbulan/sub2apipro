@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -43,14 +42,6 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
-	// QuotedActualCost preserves the original quote before the existing eight-place
-	// monetary rounding. It does not replace TotalCost or account-cost accounting.
-	QuotedActualCost *float64
-	// Platform usage belongs to this same deduplicated request, not a Redis
-	// snapshot. UsageAt is frozen at observation so retries cannot move windows.
-	PlatformQuotaPlatform string
-	PlatformQuotaCost     float64
-	PlatformUsageAt       time.Time
 
 	// AccountQuotaHasDailyLimit / AccountQuotaHasWeeklyLimit 记录构造命令时账号是否设置了日/周上限，
 	// 只用于选择账号配额累加语句，不参与幂等指纹；实际累加哪些维度以数据库中的账号配置为准。
@@ -100,7 +91,6 @@ func (c *UsageBillingCommand) quantizeMonetaryFields() {
 	c.APIKeyQuotaCost = QuantizeUsageBillingAmount(c.APIKeyQuotaCost)
 	c.APIKeyRateLimitCost = QuantizeUsageBillingAmount(c.APIKeyRateLimitCost)
 	c.AccountQuotaCost = QuantizeUsageBillingAmount(c.AccountQuotaCost)
-	c.PlatformQuotaCost = QuantizeUsageBillingAmount(c.PlatformQuotaCost)
 }
 
 // QuantizeUsageBillingAmount 把金额舍入到 UsageBillingMonetaryScale 位小数，
@@ -179,9 +169,7 @@ type AccountQuotaState struct {
 
 type UsageBillingApplyResult struct {
 	Applied              bool
-	AutoCreditIssued     bool // balance delta includes a receivable; invalidate rather than replay a debit
 	APIKeyQuotaExhausted bool
-	PlatformQuotaApplied bool               // durable SQL effect; do not replay legacy cache/DB increments
 	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
 	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded
 	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
@@ -197,7 +185,6 @@ type BatchImageBalanceHoldCommand struct {
 	BatchID            string
 	HoldAmount         float64
 	ActualAmount       float64
-	MonetaryVersion    int // >=2 requires an individually owned durable hold
 }
 
 func (c *BatchImageBalanceHoldCommand) Normalize() {
@@ -241,4 +228,18 @@ type UsageBillingRepository interface {
 	ReserveBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
 	CaptureBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
 	ReleaseBatchImageBalance(ctx context.Context, cmd *BatchImageBalanceHoldCommand) (*BatchImageBalanceHoldResult, error)
+}
+
+// UsageBillingBatchOutcome 是合并结算中单条命令的结果：Err 非空时 Result 为 nil。
+type UsageBillingBatchOutcome struct {
+	Result *UsageBillingApplyResult
+	Err    error
+}
+
+// UsageBillingBatchRepository 在 UsageBillingRepository 之上支持把同一用户的多条命令合并到一个事务内结算。
+type UsageBillingBatchRepository interface {
+	UsageBillingRepository
+	// ApplyBatch 在一个事务内结算同一用户的多条命令，各条结果与按 cmds 顺序逐条调用 Apply 一致，
+	// 返回值与 cmds 一一对应。返回 error 时没有任何命令生效；提交请求发出后连接中断时提交结果未知，与 Apply 相同。
+	ApplyBatch(ctx context.Context, cmds []*UsageBillingCommand) ([]UsageBillingBatchOutcome, error)
 }

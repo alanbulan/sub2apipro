@@ -3,24 +3,17 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/serverless"
 	"log"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/iprisk"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/Wei-Shaw/sub2api/internal/setup"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
@@ -30,7 +23,6 @@ import (
 
 // ProviderSet 提供服务器层的依赖
 var ProviderSet = wire.NewSet(
-	ProvideLifecycle,
 	ProvideRouter,
 	ProvideHTTPServer,
 )
@@ -51,7 +43,6 @@ func ProvideRouter(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	redisClient *redis.Client,
-	lifecycle *Lifecycle,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -97,90 +88,30 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	manager, err := serverless.New(serverless.Runtime{
-		ID: cfg.Runtime.ServerlessID, Endpoint: cfg.Runtime.ServerlessEndpoint,
-		Region: cfg.Runtime.ServerlessRegion, Secret: cfg.Runtime.ServerlessSecret,
-		Gateway: cfg.Runtime.Role == config.RuntimeRoleGateway, Version: settingService.ServerlessVersion(),
-		ResponseHeaderTimeout: time.Duration(cfg.Runtime.ServerlessResponseHeaderTimeout) * time.Second,
-	}, redisClient, settingService.ServerlessStore())
-	if err != nil {
-		panic(err)
-	}
-	settingService.Serverless = manager
-	settingService.IPRisk = iprisk.New(settingService.IPRiskStore(), redisClient, serverless.NewGeoJSResolver(redisClient), strings.EqualFold(os.Getenv("IP_RISK_DISABLED"), "true"))
-	settingService.IPRisk.Start()
-	if cfg.Runtime.Role != config.RuntimeRoleGateway && handlers.Admin != nil && handlers.Admin.Setting != nil {
-		handlers.Admin.Setting.SetKeyRiskAPIKeys(apiKeyService)
-		stop, err := handlers.Admin.Setting.StartKeyRisk(cfg.Database.DSN())
-		if err != nil {
-			slog.Warn("key risk initialization failed")
-		} else {
-			lifecycle.onDrain = append(lifecycle.onDrain, stop)
-		}
-	}
-	if handlers.Admin != nil && handlers.Admin.Setting != nil {
-		if handlers.Admin.PromptAudit != nil {
-			handlers.Admin.Setting.ConfigureIPAudit(handlers.Admin.AuditLog, handlers.Admin.PromptAudit.IPAuditPenaltySummary, handlers.Admin.PromptAudit.ReleaseIPAuditPenalty)
-		}
-	}
-	lifecycle.onDrain = append(lifecycle.onDrain, settingService.IPRisk.Stop)
-	manager.Start(func(ctx context.Context) error {
-		if lifecycle.isDraining() {
-			return fmt.Errorf("draining")
-		}
-		return lifecycle.checkWithinBudget(ctx)
-	})
-	lifecycle.onDrain = append(lifecycle.onDrain, manager.Stop)
-	r.Use(manager.Ingress())
-	if handlers.Admin != nil && handlers.Admin.Usage != nil {
-		stop, err := handlers.Admin.Usage.ConfigureTrafficDelivery(func() string {
-			return filepath.Join(setup.GetDataDir(), "user-traffic-pending")
-		})
-		if err != nil {
-			log.Printf("Traffic statistics disabled: %v", err)
-		} else {
-			lifecycle.onDrain = append(lifecycle.onDrain, stop)
-		}
-	}
-	r.GET("/internal/serverless/probe", manager.ProbeHandler)
 	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
 }
 
 func configureTrustedProxies(r *gin.Engine, cfg config.ServerConfig) {
-	proxies := cfg.EffectiveTrustedProxies()
-	if err := r.SetTrustedProxies(proxies); err != nil {
-		log.Printf("Failed to set trusted proxies: %v", err)
-		_ = r.SetTrustedProxies(nil)
-		warnAuthProxyMisconfiguration(r)
-		return
-	}
-	if len(proxies) == 0 && cfg.Mode == "release" {
-		log.Printf("Warning: server.trusted_proxies is explicitly empty; auth IP guards use direct peer addresses, shared proxies will share signup quotas and login bans")
-	}
-	if !cfg.TrustedProxiesConfigured && len(cfg.TrustedProxies) == 0 && cfg.Mode == "release" {
-		log.Printf("server.trusted_proxies is not configured; trusting only local proxies at 127.0.0.1 and ::1; Docker bridges and remote proxies require explicit configuration")
-	}
-	if len(proxies) == 0 || !cfg.TrustedProxiesConfigured {
-		warnAuthProxyMisconfiguration(r)
-	}
-}
-
-func warnAuthProxyMisconfiguration(r *gin.Engine) {
-	var once sync.Once
-	r.Use(func(c *gin.Context) {
-		if c.GetHeader("X-Forwarded-For") != "" || c.GetHeader("X-Real-IP") != "" || c.GetHeader("CF-Connecting-IP") != "" {
-			if c.ClientIP() == c.RemoteIP() {
-				once.Do(func() {
-					slog.Warn("Forwarded client IP headers did not resolve beyond the TCP peer; auth IP guards may share signup quotas and login bans across users; verify server.trusted_proxies and proxy header rewriting before enabling public signup")
-				})
-			}
+	if cfg.TrustedProxiesConfigured {
+		if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+			log.Printf("Failed to set trusted proxies: %v", err)
+			_ = r.SetTrustedProxies(nil)
 		}
-		c.Next()
-	})
+		if len(cfg.TrustedProxies) == 0 && cfg.Mode == "release" {
+			log.Printf("Warning: server.trusted_proxies is explicitly empty; forwarded client IP trust is disabled")
+		}
+	} else {
+		if err := r.SetTrustedProxies(nil); err != nil {
+			log.Printf("Failed to disable trusted proxies: %v", err)
+		}
+		if cfg.Mode == "release" {
+			log.Printf("Warning: server.trusted_proxies is not configured; disabling the forwarded-IP compatibility switch will use direct peer addresses only")
+		}
+	}
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器
-func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, lifecycle *Lifecycle) *http.Server {
+func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
 	httpHandler := http.Handler(router)
 	server := &http.Server{
 		Addr:           cfg.Server.Address(),
@@ -191,7 +122,7 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, lifecycle *Lifecy
 		// IdleTimeout: 空闲连接超时时间，释放不活跃的连接资源
 		IdleTimeout: time.Duration(cfg.Server.IdleTimeout) * time.Second,
 		// 注意：不设置 WriteTimeout，因为流式响应可能持续十几分钟
-		// 不设置 ReadTimeout，因为大请求体可能需要较长时间读取
+		// 请求体使用逐次读取的 idle deadline，不设置覆盖整个大请求上传的 ReadTimeout。
 	}
 
 	globalMaxSize := cfg.Server.MaxRequestBodySize
@@ -229,7 +160,8 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, lifecycle *Lifecy
 		}
 	}
 
-	server.Handler = lifecycle.Wrap(httpHandler)
+	httpHandler = pkghttputil.WithBodyReadTimeout(httpHandler, time.Duration(cfg.Gateway.RequestBodyReadTimeoutSeconds)*time.Second)
+	server.Handler = pkghttputil.WithWriteTimeout(httpHandler, time.Duration(cfg.Gateway.DownstreamWriteTimeoutSeconds)*time.Second)
 	return server
 }
 

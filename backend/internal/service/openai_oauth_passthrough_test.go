@@ -841,7 +841,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 	require.Contains(t, rec.Body.String(), `"id":"cmp_123"`)
 }
 
-func TestOpenAIGatewayService_OAuthPassthrough_CanceledBeforeAdmissionDoesNotSend(t *testing.T) {
+func TestOpenAIGatewayService_OAuthPassthrough_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -881,9 +881,10 @@ func TestOpenAIGatewayService_OAuthPassthrough_CanceledBeforeAdmissionDoesNotSen
 	}
 
 	result, err := svc.Forward(reqCtx, c, account, originalBody)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Nil(t, result)
-	require.Nil(t, upstream.lastReq, "canceled before admission must not start billable work")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.NoError(t, upstream.lastReq.Context().Err())
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsGetsDefault(t *testing.T) {
@@ -1085,7 +1086,7 @@ func TestOpenAIGatewayService_OAuthLegacy_GroupForceStillHonorsGlobalFilter(t *t
 	require.Nil(t, result.ServiceTier)
 }
 
-func TestOpenAIGatewayService_OAuthLegacy_CanceledBeforeAdmissionDoesNotSend(t *testing.T) {
+func TestOpenAIGatewayService_OAuthLegacy_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -1125,9 +1126,10 @@ func TestOpenAIGatewayService_OAuthLegacy_CanceledBeforeAdmissionDoesNotSend(t *
 	}
 
 	result, err := svc.Forward(reqCtx, c, account, originalBody)
-	require.ErrorIs(t, err, context.Canceled)
-	require.Nil(t, result)
-	require.Nil(t, upstream.lastReq, "canceled before admission must not start billable work")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.NoError(t, upstream.lastReq.Context().Err())
 }
 
 func TestOpenAIGatewayService_OAuthLegacy_CompositeCodexUAUsesCodexOriginator(t *testing.T) {
@@ -1635,10 +1637,10 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 				return fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d}}`, resetAt)
 			}(),
 			expectFailover: true,
-			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, start time.Time) {
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Len(t, repo.rateLimitCalls, 1)
 				require.Empty(t, repo.overloadCalls)
-				requireOpenAIWSQuotaCooldown(t, AccountTypeAPIKey, repo.rateLimitCalls[0], start, time.Now(), time.Time{})
+				require.True(t, time.Until(repo.rateLimitCalls[0]) > 24*time.Hour)
 			},
 		},
 		{
@@ -1817,8 +1819,7 @@ func TestOpenAIGatewayService_APIKeyPassthrough_ContextWindow502DoesNotFailover(
 	var failoverErr *UpstreamFailoverError
 	require.False(t, errors.As(err, &failoverErr), "context-window errors are deterministic request failures")
 	require.True(t, c.Writer.Written())
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-	require.Contains(t, rec.Body.String(), "context_length_exceeded")
+	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Contains(t, rec.Body.String(), "exceeds the context window")
 	require.True(t, body.closed)
 }
@@ -2584,10 +2585,7 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEnd
 	require.False(t, gjson.GetBytes(upstream.lastBody, "instructions").Exists())
 	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer sk-api-key", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, CodexCanonicalUserAgent(), upstream.lastReq.Header.Get("User-Agent"))
-	require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("originator"))
-	require.Equal(t, CodexCanonicalClientVersion(), upstream.lastReq.Header.Get("version"))
-	require.Equal(t, "curl/8.0", c.GetHeader("User-Agent"))
+	require.Equal(t, "curl/8.0", upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "remote_compaction_v2", upstream.lastReq.Header.Get("x-codex-beta-features"))
 	require.Equal(t, "window-passthrough", upstream.lastReq.Header.Get("X-Codex-Window-ID"))
 	require.Equal(t, "installation-passthrough", upstream.lastReq.Header.Get("X-Codex-Installation-ID"))
@@ -2770,4 +2768,112 @@ func TestOpenAIGatewayService_OAuthPassthrough_AllowTimeoutHeadersWhenConfigured
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, "120000", upstream.lastReq.Header.Get("x-stainless-timeout"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Test"))
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_GroupForceOpenAIUltrafastOverridesClientTier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
+	body := []byte(`{"model":"gpt-6.1-sol","stream":true,"instructions":"test","input":"hi","service_tier":"priority"}`)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID: 123, Name: "oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:       map[string]any{"openai_passthrough": true}, Status: StatusActive, Schedulable: true,
+		RateMultiplier: f64p(1),
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIUltrafast: true,
+	})
+
+	result, err := svc.Forward(ctx, c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, OpenAIFastTierUltrafast, gjson.GetBytes(upstream.lastBody, "service_tier").String())
+	require.NotNil(t, result.ServiceTier)
+	require.Equal(t, OpenAIFastTierUltrafast, *result.ServiceTier)
+}
+
+func TestOpenAIGatewayService_OAuthLegacy_GroupForceOpenAIUltrafast(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := &Account{
+		ID: 123, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:       map[string]any{"openai_passthrough": false, "openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeOff},
+		Status:      StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIUltrafast: true,
+	})
+	forward := func(t *testing.T, settings *OpenAIFastPolicySettings, inputBody []byte) (*OpenAIForwardResult, *httpUpstreamRecorder, error) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+		c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+		upstream := &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_group_ultrafast_legacy"}},
+			Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+		}}
+		svc := newOpenAIGatewayServiceWithSettings(t, settings)
+		svc.cfg = &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}}
+		svc.httpUpstream = upstream
+		result, err := svc.Forward(ctx, c, account, inputBody)
+		return result, upstream, err
+	}
+
+	t.Run("injects missing tier", func(t *testing.T) {
+		result, upstream, err := forward(t, DefaultOpenAIFastPolicySettings(),
+			[]byte(`{"model":"gpt-6.1-sol","stream":false,"input":[{"type":"text","text":"hi"}]}`))
+		require.NoError(t, err)
+		require.Equal(t, OpenAIFastTierUltrafast, gjson.GetBytes(upstream.lastBody, "service_tier").String())
+		require.NotNil(t, result.ServiceTier)
+		require.Equal(t, OpenAIFastTierUltrafast, *result.ServiceTier)
+	})
+
+	t.Run("overrides client priority", func(t *testing.T) {
+		result, upstream, err := forward(t, DefaultOpenAIFastPolicySettings(),
+			[]byte(`{"model":"gpt-6.1-sol","stream":false,"service_tier":"fast","input":[{"type":"text","text":"hi"}]}`))
+		require.NoError(t, err)
+		require.Equal(t, OpenAIFastTierUltrafast, gjson.GetBytes(upstream.lastBody, "service_tier").String())
+		require.NotNil(t, result.ServiceTier)
+		require.Equal(t, OpenAIFastTierUltrafast, *result.ServiceTier)
+	})
+
+	t.Run("global ultrafast filter remains authoritative", func(t *testing.T) {
+		result, upstream, err := forward(t, &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierUltrafast, Action: BetaPolicyActionFilter, Scope: BetaPolicyScopeAll,
+		}}}, []byte(`{"model":"gpt-6.1-sol","stream":false,"input":[{"type":"text","text":"hi"}]}`))
+		require.NoError(t, err)
+		require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+		require.Nil(t, result.ServiceTier)
+	})
+
+	t.Run("global force_priority downgrades the forced ultrafast", func(t *testing.T) {
+		result, upstream, err := forward(t, &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierUltrafast, Action: OpenAIFastPolicyActionForcePriority, Scope: BetaPolicyScopeAll,
+		}}}, []byte(`{"model":"gpt-6.1-sol","stream":false,"input":[{"type":"text","text":"hi"}]}`))
+		require.NoError(t, err)
+		require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(upstream.lastBody, "service_tier").String())
+		require.NotNil(t, result.ServiceTier)
+		require.Equal(t, OpenAIFastTierPriority, *result.ServiceTier)
+	})
+
+	t.Run("global ultrafast block rejects with 403", func(t *testing.T) {
+		_, upstream, err := forward(t, &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierUltrafast, Action: BetaPolicyActionBlock, Scope: BetaPolicyScopeAll,
+		}}}, []byte(`{"model":"gpt-6.1-sol","stream":false,"input":[{"type":"text","text":"hi"}]}`))
+		var blocked *OpenAIFastBlockedError
+		require.ErrorAs(t, err, &blocked)
+		require.Nil(t, upstream.lastReq)
+	})
 }

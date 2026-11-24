@@ -386,7 +386,7 @@ func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) 
 	req.Host = "api.example.com"
 	req.AddCookie(encodedCookie(wechatPaymentOAuthStateName, "state-123"))
 	req.AddCookie(encodedCookie(wechatPaymentOAuthRedirect, "/purchase?from=wechat"))
-	req.AddCookie(encodedCookie(wechatPaymentOAuthContextName, `{"payment_type":"wxpay","amount":"12.5","order_type":"subscription","plan_id":7,"renewal_mode":"restart"}`))
+	req.AddCookie(encodedCookie(wechatPaymentOAuthContextName, `{"payment_type":"wxpay","amount":"12.5","order_type":"subscription","plan_id":7}`))
 	req.AddCookie(encodedCookie(wechatPaymentOAuthScope, "snsapi_base"))
 	c.Request = req
 
@@ -396,7 +396,7 @@ func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) 
 	location := recorder.Header().Get("Location")
 	parsed, err := url.Parse(location)
 	require.NoError(t, err)
-	fragment, err := url.ParseQuery(parsed.EscapedFragment())
+	fragment, err := url.ParseQuery(parsed.Fragment)
 	require.NoError(t, err)
 	require.Equal(t, "/purchase?from=wechat", fragment.Get("redirect"))
 	require.NotEmpty(t, fragment.Get("wechat_resume_token"))
@@ -413,7 +413,6 @@ func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) 
 	require.Equal(t, "12.5", claims.Amount)
 	require.Equal(t, payment.OrderTypeSubscription, claims.OrderType)
 	require.EqualValues(t, 7, claims.PlanID)
-	require.Equal(t, string(service.SubscriptionRenewalModeRestart), claims.RenewalMode)
 	require.Equal(t, "/purchase?from=wechat", claims.RedirectTo)
 }
 
@@ -459,7 +458,7 @@ func TestWeChatPaymentOAuthCallbackUsesExplicitPaymentResumeSigningKeyWhenMixedK
 	location := recorder.Header().Get("Location")
 	parsed, err := url.Parse(location)
 	require.NoError(t, err)
-	fragment, err := url.ParseQuery(parsed.EscapedFragment())
+	fragment, err := url.ParseQuery(parsed.Fragment)
 	require.NoError(t, err)
 
 	token := fragment.Get("wechat_resume_token")

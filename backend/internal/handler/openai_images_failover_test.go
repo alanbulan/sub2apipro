@@ -27,11 +27,6 @@ type openAIImagesFailoverAccountRepo struct {
 	accounts []service.Account
 }
 
-func (r openAIImagesFailoverAccountRepo) GetOpenAITurnAdmission(ctx context.Context, id int64) (*service.Account, *service.Account, error) {
-	a, err := r.GetByID(ctx, id)
-	return a, nil, err
-}
-
 func (r openAIImagesFailoverAccountRepo) GetByID(_ context.Context, id int64) (*service.Account, error) {
 	for i := range r.accounts {
 		if r.accounts[i].ID == id {
@@ -62,24 +57,6 @@ func (r openAIImagesFailoverAccountRepo) accountsForPlatform(platform string) []
 		}
 	}
 	return out
-}
-
-func (r openAIImagesFailoverAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]service.Account, error) {
-	var out []service.Account
-	for _, platform := range platforms {
-		for _, account := range r.accountsForPlatform(platform) {
-			matches := groupID == nil && (includeGrouped || len(account.GroupIDs) == 0)
-			if groupID != nil {
-				for _, id := range account.GroupIDs {
-					matches = matches || id == *groupID
-				}
-			}
-			if matches {
-				out = append(out, account)
-			}
-		}
-	}
-	return out, nil
 }
 
 type openAIImagesFailoverHTTPUpstream struct {
@@ -142,7 +119,6 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	gatewayService := service.NewOpenAIGatewayService(
 		accountRepo,
-		nil,
 		nil,
 		nil,
 		nil,

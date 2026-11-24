@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
@@ -13,9 +12,7 @@ import (
 // account in the group for the given platform (e.g. PlatformOpenAI,
 // PlatformGrok). The platform scopes the candidate pool so distinct
 // OpenAI-compatible platforms do not cross-contaminate diagnosis results.
-// The query bypasses scheduler snapshots and all expiring observations, including
-// upstream model rejections. They still block scheduling until expiry, but do
-// not establish that the group's configuration cannot serve the model.
+// The query bypasses scheduler snapshots and ignores transient runtime state.
 //
 // Safe to call on the error path: returns {true,true} on any internal
 // failure or when the inputs preclude meaningful diagnosis (empty model,
@@ -56,17 +53,20 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
 
-	diag := ModelAvailabilityDiagnosis{Complete: true}
-	now := time.Now()
+	diag := ModelAvailabilityDiagnosis{}
 	for i := range accounts {
 		diag.HasAccountsInPool = true
 		if isRetiredOpenAISubscriptionModel(&accounts[i], resolveOpenAIAccountUpstreamModelForRequest(&accounts[i], requestedModel, false)) {
 			diag.HasRetiredSubscriptionModel = true
 		}
-		// Only configured support can justify a downstream model_not_found.
-		// Keep old negative-cache records in the scheduler, not this verdict:
-		// otherwise another relay starts a new 30-minute cache near our expiry.
-		diag.recordAccount(&accounts[i], accounts[i].IsModelSupportedInGroup(groupID, requestedModel), now)
+		// Mirrors the per-candidate filter used during account selection
+		// (openai_account_scheduler.isAccountRequestCompatible): empty
+		// model_mapping accepts everything; otherwise the explicit / wildcard
+		// mapping must match.
+		if accounts[i].IsModelSupported(requestedModel) {
+			diag.HasModelSupport = true
+			return diag
+		}
 	}
 	return diag
 }

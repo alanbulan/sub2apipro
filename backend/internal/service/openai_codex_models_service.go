@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -187,9 +188,9 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 		return nil
 	}
 
-	visible, catalog, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
+	visible, accounts, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
 	if err != nil {
-		return fmt.Errorf("load group configured Codex capabilities: %w", err)
+		return fmt.Errorf("load group configured Codex models: %w", err)
 	}
 	var configuredModels []string
 	if !group.CodexModelsManifestConfig.Enabled {
@@ -211,12 +212,7 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 		}
 		changed = true
 	}
-	body, restricted, err := restrictExcelBPSCodexModelsManifest(body, catalog, group)
-	if err != nil {
-		return fmt.Errorf("restrict group BPS capabilities: %w", err)
-	}
-	changed = changed || restricted
-	filtered, retired, err := filterRetiredOpenAIPublicModelsBody(body, catalog, true)
+	filtered, retired, err := filterRetiredOpenAIPublicModelsBody(body, accounts, true)
 	if err != nil {
 		return fmt.Errorf("filter retired Codex models: %w", err)
 	}
@@ -263,7 +259,6 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformDeepseek,
 			PlatformMiniMax,
 			PlatformOpenCodeGo,
-			PlatformMistral, PlatformQwen,
 		},
 		false,
 	)
@@ -273,38 +268,24 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 	return visible, groupAccounts, nil
 }
 
-func openAIConfiguredCodexModelIDs(accounts []Account, groupID *int64) []string {
+func openAIConfiguredCodexModelIDs(accounts []Account) []string {
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
-	add := func(modelID string) {
-		modelID = strings.TrimSpace(modelID)
-		if modelID == "" || strings.Contains(modelID, "*") {
-			return
-		}
-		if _, exists := seen[modelID]; exists {
-			return
-		}
-		seen[modelID] = struct{}{}
-		models = append(models, modelID)
-	}
 	for i := range accounts {
 		account := &accounts[i]
 		if account.Platform != PlatformOpenAI {
 			continue
 		}
-		mapping := account.GetModelMapping()
-		for modelID := range mapping {
-			// 账号在本分组里被限制了可用模型时，只公布允许的那部分。
-			if !account.IsModelAllowedInGroup(groupID, modelID) {
+		for modelID := range account.GetModelMapping() {
+			modelID = strings.TrimSpace(modelID)
+			if modelID == "" || strings.Contains(modelID, "*") {
 				continue
 			}
-			add(modelID)
-		}
-		// 没有映射、但在本分组里被限制了模型的账号，按限制清单公布。
-		if len(mapping) == 0 {
-			for _, modelID := range groupAllowedConcreteModels(account, groupID) {
-				add(modelID)
+			if _, exists := seen[modelID]; exists {
+				continue
 			}
+			seen[modelID] = struct{}{}
+			models = append(models, modelID)
 		}
 	}
 	sort.Strings(models)
@@ -312,11 +293,7 @@ func openAIConfiguredCodexModelIDs(accounts []Account, groupID *int64) []string 
 }
 
 func openAIConfiguredCodexModelIDsForGroup(accounts []Account, group *Group) []string {
-	var groupID *int64
-	if group != nil {
-		groupID = &group.ID
-	}
-	models := supplementUnmappedOpenAIModels(accounts, groupID, openAIConfiguredCodexModelIDs(accounts, groupID))
+	models := supplementUnmappedOpenAIModels(accounts, openAIConfiguredCodexModelIDs(accounts))
 	if group == nil || !group.ModelAllowlistEnabled() {
 		return filterRetiredOpenAIModelIDs(accounts, models)
 	}
@@ -332,7 +309,7 @@ func openAIConfiguredCodexModelIDsForGroup(accounts []Account, group *Group) []s
 		}
 		for i := range accounts {
 			account := &accounts[i]
-			if account.Platform != PlatformOpenAI || !account.IsModelAllowedInGroup(groupID, selectedModel) {
+			if account.Platform != PlatformOpenAI {
 				continue
 			}
 			mappedModel, matched := account.ResolveMappedModel(selectedModel)
@@ -352,7 +329,7 @@ func openAIConfiguredCodexModelIDsForGroup(accounts []Account, group *Group) []s
 
 const (
 	configuredCodexModelPriority       = 50
-	configuredCodexCustomDescription   = "Custom model routed through the platform."
+	configuredCodexCustomDescription   = "Custom model routed through Sub2API."
 	configuredCodexFallbackContext     = 272_000
 	configuredCodexDeepSeekV4Context   = 1_000_000
 	configuredCodexGrokContext         = 500_000
@@ -443,6 +420,7 @@ type configuredCodexModelDescriptor struct {
 
 type codexModelMetadataOverride struct {
 	UpstreamModelMetadata
+	audioInput              bool
 	reasoningConflict       bool
 	inputModalitiesConflict bool
 }
@@ -479,7 +457,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	if isDeepSeekCodexModel(modelID) {
 		defaultReasoningLevel := "high"
 		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
-		descriptor.Description = "DeepSeek coding and reasoning model routed through the platform."
+		descriptor.Description = "DeepSeek coding and reasoning model routed through Sub2API."
 		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
 		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{
 			{Effort: "low", Description: "Fast responses with lighter reasoning"},
@@ -493,7 +471,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 
 	if isGrokCodexModel(modelID) {
 		descriptor.DisplayName = grokCodexDisplayName(modelID)
-		descriptor.Description = "Grok coding and reasoning model routed through the platform."
+		descriptor.Description = "Grok coding and reasoning model routed through Sub2API."
 		descriptor.SupportsParallelToolCalls = true
 		descriptor.ContextWindow = grokCodexContextWindow(modelID)
 		descriptor.MaxContextWindow = descriptor.ContextWindow
@@ -510,7 +488,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 			descriptor.MaxContextWindow = 1_000_000
 		}
 		descriptor.DisplayName = claudeCodexDisplayName(modelID)
-		descriptor.Description = "Claude coding and reasoning model routed through the platform."
+		descriptor.Description = "Claude coding and reasoning model routed through Sub2API."
 		descriptor.SupportsParallelToolCalls = true
 		if levels := configuredCodexClaudeReasoningLevels(modelID); len(levels) > 0 {
 			defaultReasoningLevel := claudeCodexDefaultReasoningLevel(levels)
@@ -524,12 +502,12 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 
 	if isOpenAICodexGPTModel(modelID) {
 		descriptor.DisplayName = openaiCodexDisplayName(modelID)
-		descriptor.Description = "OpenAI GPT coding model routed through the platform."
+		descriptor.Description = "OpenAI GPT coding model routed through Sub2API."
 		descriptor.SupportsParallelToolCalls = true
 		descriptor.ServiceTiers = configuredCodexServiceTiersForModel(modelID)
 		if isOpenAICodexReasoningGPTModel(modelID) {
 			defaultReasoningLevel := "medium"
-			if getNormalizedCodexModel(modelID) == "gpt-5.6-sol" || openai.IsGPT61SolModelSpelling(modelID) || normalizeOpenAIGPT62Model(modelID) == "gpt-6.2-sol" {
+			if getNormalizedCodexModel(modelID) == "gpt-5.6-sol" || openai.IsGPT61SolModelSpelling(modelID) {
 				defaultReasoningLevel = "low"
 			}
 			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
@@ -567,6 +545,31 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		// The October 12, 2026 Codex/Work default increased to 500k after
 		// the bundled official snapshot. Explicit upstream metadata still wins.
 		descriptor.ContextWindow = 500_000
+		// The two 6.2 descriptors now occupy the first two slots.
+		descriptor.Priority = 3
+	}
+	var metadata json.RawMessage
+	switch openai.GPT62ModelID(modelID) {
+	case "gpt-6.2-sol":
+		metadata = openai.CodexGPT62SolMetadata
+	case "gpt-6.2-astra":
+		metadata = openai.CodexGPT62AstraMetadata
+	}
+	if len(metadata) > 0 {
+		if err := json.Unmarshal(metadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		descriptor.officialMetadata = metadata
+	}
+	if openai.IsGPT61TerraModelSpelling(modelID) {
+		// The Codex descriptor differs from the API model page: Codex offers
+		// low through ultra with a 500k default window. API requests keep none.
+		if err := json.Unmarshal(openai.CodexGPT61TerraMetadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		descriptor.officialMetadata = openai.CodexGPT61TerraMetadata
 	}
 	return descriptor
 }
@@ -661,7 +664,7 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 		{Effort: "xhigh", Description: "Extra-high reasoning depth for difficult tasks"},
 	}
 	normalized := getNormalizedCodexModel(modelID)
-	if isOpenAIGPT56Model(modelID) || isOpenAIGPT6Model(modelID) || normalizeOpenAIGPT62Model(modelID) != "" {
+	if isOpenAIGPT56Model(modelID) || isOpenAIGPT6Model(modelID) {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "max",
 			Description: "Maximum reasoning depth for complex tasks",
@@ -672,9 +675,6 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 			Effort:      "ultra",
 			Description: "Maximum reasoning with automatic task delegation",
 		})
-	}
-	if openai.IsGPT61TerraModelSpelling(modelID) {
-		levels = append([]configuredCodexReasoningLevel{{Effort: "none", Description: "No reasoning"}}, levels...)
 	}
 	return levels
 }
@@ -730,7 +730,7 @@ func isOpenAICodexGPTModel(modelID string) bool {
 
 func isOpenAICodexReasoningGPTModel(modelID string) bool {
 	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
-	return isOpenAIGPT6Model(normalized) || normalizeOpenAIGPT62Model(normalized) != "" || strings.HasPrefix(normalized, "gpt-5")
+	return isOpenAIGPT6Model(normalized) || strings.HasPrefix(normalized, "gpt-5")
 }
 
 func isOpenAICodexImageInputModel(modelID string) bool {
@@ -776,24 +776,6 @@ func openaiCodexDisplayName(modelID string) string {
 			return model.DisplayName
 		}
 	}
-	// Legacy models may still be explicitly configured on API-key accounts.
-	switch normalized {
-	case "gpt-5.2":
-		return "GPT-5.2"
-	case "gpt-5.3-codex-spark":
-		return "GPT-5.3 Codex Spark"
-	case "gpt-5.5":
-		return "GPT-5.5"
-	case "gpt-5.4":
-		return "GPT-5.4"
-	case "gpt-5.4-mini":
-		return "GPT-5.4 Mini"
-	case "gpt-image-1":
-		return "GPT Image 1"
-	case "gpt-image-1.5":
-		return "GPT Image 1.5"
-	}
-
 	return modelID
 }
 
@@ -962,32 +944,20 @@ func buildCodexModelsManifestForAccounts(
 	}
 	imageInputModels := make(map[string]bool, len(modelIDs))
 	searchToolModels := make(map[string]bool, len(modelIDs))
-	var groupID *int64
-	if group != nil {
-		groupID = &group.ID
-	}
-	metadataModels := make(map[string]string, len(modelIDs))
+	metadataModels := codexCatalogMetadataModels(
+		effectivePlatform,
+		modelIDs,
+		accounts,
+		compositeRoutes,
+		compositeRoutesAvailable,
+	)
 	modelMetadata := make(map[string]codexModelMetadataOverride, len(modelIDs))
 	for _, modelID := range modelIDs {
 		modelID = strings.TrimSpace(modelID)
-		// 模型能力按本分组里允许服务该模型的账号汇总，被分组限制排除的账号不参与。
-		modelAccounts := accountsAllowedInGroupForModel(accounts, groupID, modelID)
-		if modelID != "" {
-			metadataModelID := resolveCodexCatalogMetadataModel(
-				effectivePlatform,
-				modelID,
-				modelAccounts,
-				compositeRoutes,
-				compositeRoutesAvailable,
-			)
-			if metadataModelID != "" && metadataModelID != modelID {
-				metadataModels[modelID] = metadataModelID
-			}
-		}
 		if groupCodexModelSupportsImageInput(
 			effectivePlatform,
 			modelID,
-			modelAccounts,
+			accounts,
 			compositeRoutes,
 			compositeRoutesAvailable,
 		) {
@@ -996,7 +966,7 @@ func buildCodexModelsManifestForAccounts(
 		if groupCodexModelSupportsSearchTool(
 			effectivePlatform,
 			modelID,
-			modelAccounts,
+			accounts,
 			compositeRoutes,
 			compositeRoutesAvailable,
 		) {
@@ -1005,7 +975,7 @@ func buildCodexModelsManifestForAccounts(
 		if metadata, ok := groupCodexModelMetadata(
 			effectivePlatform,
 			modelID,
-			modelAccounts,
+			accounts,
 			group,
 			compositeRoutes,
 			compositeRoutesAvailable,
@@ -1013,14 +983,7 @@ func buildCodexModelsManifestForAccounts(
 			modelMetadata[modelID] = metadata
 		}
 	}
-	body, err := buildCodexModelsManifest(modelIDs, imageInputModels, searchToolModels, metadataModels, modelMetadata)
-	if err != nil || effectivePlatform != PlatformOpenAI {
-		return body, err
-	}
-	// Conflicting aliases can intentionally omit synced metadata. Do not let
-	// the bundled Astra defaults reintroduce v2 for a possible BPS route.
-	body, _, err = restrictExcelBPSCodexModelsManifest(body, accounts, group)
-	return body, err
+	return buildCodexModelsManifest(modelIDs, imageInputModels, searchToolModels, metadataModels, modelMetadata)
 }
 
 func buildCodexModelsManifest(
@@ -1059,6 +1022,7 @@ func buildCodexModelsManifest(
 			// a stale official Astra snapshot cannot downgrade the catalog.
 			descriptor.InputModalities = []string{"text", "image"}
 		}
+		descriptor.InputModalities = codexAudioInputModalities(descriptor.InputModalities, modelMetadata[modelID].audioInput)
 		if metadataModelID != modelID {
 			descriptor.DisplayName = modelID
 			descriptor.Description = configuredCodexCustomDescription
@@ -1083,6 +1047,43 @@ func buildCodexModelsManifest(
 	return json.Marshal(struct {
 		Models []json.RawMessage `json:"models"`
 	}{Models: models})
+}
+
+func codexAudioInputModalities(modalities []string, supported bool) []string {
+	if !supported {
+		return slices.DeleteFunc(modalities, func(modality string) bool { return modality == "audio" })
+	}
+	if !slices.Contains(modalities, "audio") {
+		return append(modalities, "audio")
+	}
+	return modalities
+}
+
+func codexCatalogMetadataModels(
+	platform string,
+	modelIDs []string,
+	accounts []Account,
+	compositeRoutes []CompositeModelRoute,
+	compositeRoutesAvailable bool,
+) map[string]string {
+	metadataModels := make(map[string]string, len(modelIDs))
+	for _, modelID := range modelIDs {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			continue
+		}
+		metadataModelID := resolveCodexCatalogMetadataModel(
+			platform,
+			modelID,
+			accounts,
+			compositeRoutes,
+			compositeRoutesAvailable,
+		)
+		if metadataModelID != "" && metadataModelID != modelID {
+			metadataModels[modelID] = metadataModelID
+		}
+	}
+	return metadataModels
 }
 
 func resolveCodexCatalogMetadataModel(
@@ -1181,7 +1182,7 @@ func groupCodexModelSupportsImageInput(
 			return false
 		}
 	}
-	if platform != PlatformOpenAI && platform != PlatformGrok && platform != PlatformDeepseek && platform != PlatformOpenCodeGo && platform != PlatformMistral && platform != PlatformQwen {
+	if platform != PlatformOpenAI && platform != PlatformGrok && platform != PlatformDeepseek && platform != PlatformOpenCodeGo {
 		return false
 	}
 
@@ -1320,7 +1321,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		return false
 	}
 	switch account.Platform {
-	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo, PlatformMistral, PlatformQwen:
+	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo:
 		if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
 			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
 				// Official GPT-6 Astra metadata briefly shipped with a stale
@@ -1333,7 +1334,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 				return stringSliceContains(modalities, "image")
 			}
 		}
-		if account.Platform != PlatformMistral && strings.EqualFold(strings.TrimSpace(upstreamModel), "deepseek-v4-flash-vision-exp") {
+		if strings.EqualFold(strings.TrimSpace(upstreamModel), "deepseek-v4-flash-vision-exp") {
 			return account.Type == AccountTypeAPIKey
 		}
 		if account.Platform != PlatformOpenAI || !isOpenAICodexImageInputModel(upstreamModel) {
@@ -1731,14 +1732,6 @@ func (c *openAIModelsCache) set(key string, manifest *OpenAIModelsResponse, now 
 // passed through verbatim. Custom API key manifests receive only the narrowly
 // scoped compatibility adjustments required by custom-provider Codex clients.
 func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, account *Account, clientVersion, ifNoneMatch string) (*OpenAIModelsResponse, error) {
-	if account != nil && account.IsExcelBPSEnabled() {
-		return s.fetchExcelBPSCodexManifest(ctx, account, ifNoneMatch)
-	}
-	return s.fetchNativeCodexModelsManifest(ctx, account, clientVersion, ifNoneMatch)
-}
-
-func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Context, account *Account, clientVersion, ifNoneMatch string) (*OpenAIModelsResponse, error) {
-	useCache := !isFreshOpenAICredentialProbe(ctx)
 	if account == nil {
 		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_ACCOUNT_REQUIRED", "account is required")
 	}
@@ -1747,9 +1740,6 @@ func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Contex
 		return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_CREDENTIALS_FAILED", "resolve credential account: %v", err)
 	}
 
-	if credAccount.IsExcelOAuth() {
-		return nil, errExcelOAuthRouteUnavailable
-	}
 	clientVersion = strings.TrimSpace(clientVersion)
 	if clientVersion == "" {
 		clientVersion = CodexCanonicalClientVersion()
@@ -1793,7 +1783,8 @@ func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Contex
 	headers := make(http.Header)
 	if useAPIKeyUpstream {
 		headers.Set("Authorization", "Bearer "+authToken)
-		credAccount.ApplyHeaderOverrides(headers)
+		// 清单按请求头分桶缓存并跨用户共享：不携带用户身份。
+		credAccount.ApplyHeaderOverrides(withoutHeaderOverrideRequestScope(ctx), headers)
 	} else {
 		authHeaders, authErr := s.buildOpenAIAuthenticationHeaders(ctx, credAccount, authToken)
 		if authErr != nil {
@@ -1839,14 +1830,7 @@ func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Contex
 		accountConcurrency:  account.Concurrency,
 		useAPIKeyUpstream:   useAPIKeyUpstream,
 	}
-	if !useCache {
-		request.headers.Del("If-None-Match")
-		request.headers.Set("Cache-Control", "no-cache")
-	}
 	if useAPIKeyUpstream {
-		if !useCache {
-			return s.fetchCodexModelsManifestUpstream(ctx, request, "")
-		}
 		return s.fetchCachedOpenAIModels(ctx, request, s.fetchCodexModelsManifestUpstreamForRequest(request), ifNoneMatch)
 	}
 	// OAuth 账号同样经过账号级缓存；闭包保留 agent identity 任务恢复逻辑，
@@ -1874,12 +1858,6 @@ func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Contex
 		}
 		setOpenAIChatGPTAccountHeaders(request.headers, credAccount)
 		return s.fetchCodexModelsManifestUpstream(fetchCtx, request, ifNoneMatch)
-	}
-	if !useCache {
-		// Credential inspection must observe this request's upstream response.
-		// Neither cached success, stale fallback nor an independent background
-		// refresh can verify the current token or the current inspection lease.
-		return oauthFetch(ctx, "")
 	}
 	return s.fetchCachedOpenAIModels(ctx, request, oauthFetch, ifNoneMatch)
 }
@@ -1930,21 +1908,6 @@ func (s *OpenAIGatewayService) fetchCachedOpenAIModels(ctx context.Context, requ
 	if state == openAIModelsCacheFresh {
 		return openAIModelsResponseForClient(manifest, ifNoneMatch), nil
 	}
-	if HasAPIKeyAdmissionOwner(ctx) {
-		// A background singleflight has no request-capacity owner. Limited
-		// callers share completed cache entries, but own and join their refresh
-		// independently so cancellation cannot strand work or cancel a peer.
-		refreshCtx, cancel := context.WithTimeout(ctx, codexModelsManifestRequestTimeout)
-		defer cancel()
-		refreshed, err := s.fetchAndCacheOpenAIModels(refreshCtx, cacheKey, fetch)
-		if err != nil {
-			if refreshCtx.Err() == nil && state == openAIModelsCacheStale {
-				return openAIModelsResponseForClient(manifest, ifNoneMatch), nil
-			}
-			return nil, err
-		}
-		return openAIModelsResponseForClient(refreshed, ifNoneMatch), nil
-	}
 	resultCh := s.refreshCachedOpenAIModels(cacheKey, request, fetch)
 	if state == openAIModelsCacheStale {
 		return openAIModelsResponseForClient(manifest, ifNoneMatch), nil
@@ -1973,34 +1936,23 @@ func (s *OpenAIGatewayService) refreshCachedOpenAIModels(cacheKey string, reques
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), codexModelsManifestRequestTimeout)
 		defer cancel()
-		return s.fetchAndCacheOpenAIModels(ctx, cacheKey, fetch)
+		ifNoneMatch := ""
+		if cached != nil {
+			ifNoneMatch = cached.upstreamETag
+		}
+		manifest, err := fetch(ctx, ifNoneMatch)
+		if err != nil {
+			return nil, err
+		}
+		if manifest.NotModified && cached != nil {
+			s.openAIModelsCache.set(cacheKey, cached, time.Now())
+			return cached, nil
+		}
+		if !manifest.NotModified {
+			s.openAIModelsCache.set(cacheKey, manifest, time.Now())
+		}
+		return manifest, nil
 	})
-}
-
-func (s *OpenAIGatewayService) fetchAndCacheOpenAIModels(ctx context.Context, cacheKey string, fetch func(context.Context, string) (*OpenAIModelsResponse, error)) (*OpenAIModelsResponse, error) {
-	cached, _ := s.openAIModelsCache.get(cacheKey, time.Now())
-	ifNoneMatch := ""
-	if cached != nil {
-		ifNoneMatch = cached.upstreamETag
-	}
-	manifest, err := fetch(ctx, ifNoneMatch)
-	if err != nil {
-		return nil, err
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if manifest == nil {
-		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_REQUEST_FAILED", "invalid Codex models manifest result")
-	}
-	if manifest.NotModified && cached != nil {
-		s.openAIModelsCache.set(cacheKey, cached, time.Now())
-		return cached, nil
-	}
-	if !manifest.NotModified {
-		s.openAIModelsCache.set(cacheKey, manifest, time.Now())
-	}
-	return manifest, nil
 }
 
 func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstreamForRequest(request openAIModelsRequest) func(ctx context.Context, ifNoneMatch string) (*OpenAIModelsResponse, error) {
@@ -2047,7 +1999,7 @@ func (s *OpenAIGatewayService) fetchOpenAIModelsUpstream(ctx context.Context, re
 	}
 	if err != nil {
 		return nil, &codexModelsManifestUpstreamError{
-			err:       infraerrors.New(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "模型列表请求失败，请稍后重试"),
+			err:       infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest request failed: %v", err),
 			retryable: isRetryableCodexModelsManifestTransportError(err),
 		}
 	}
@@ -2059,26 +2011,12 @@ func (s *OpenAIGatewayService) fetchOpenAIModelsUpstream(ctx context.Context, re
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		body = s.redactAgentIdentitySensitiveBody(reqCtx, request.credentialAccount, body)
-		publicErr := infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: [redacted]", resp.StatusCode).WithMetadata(map[string]string{"upstream_status": fmt.Sprint(resp.StatusCode)})
-		if resp.StatusCode == http.StatusUnauthorized {
-			credentialState := "rejected"
-			var envelope struct {
-				Error struct {
-					Code string `json:"code"`
-				} `json:"error"`
-			}
-			if json.Unmarshal(body, &envelope) == nil {
-				switch envelope.Error.Code {
-				case "token_revoked", "token_invalidated":
-					credentialState = "revoked"
-				}
-			}
-			// Keep 502: this is the selected upstream credential, not the
-			// administrator's login. Never return provider text or arbitrary codes.
-			publicErr = infraerrors.New(http.StatusBadGateway, "OPENAI_CODEX_MODELS_CREDENTIALS_INVALID", "模型列表凭据已失效或被拒绝，请在账号管理中检查凭据并重新授权；此错误不表示封号或模型不支持").WithMetadata(map[string]string{"upstream_status": "401", "credential_state": credentialState})
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = resp.Status
 		}
 		return nil, &codexModelsManifestUpstreamError{
-			err:        publicErr,
+			err:        infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest upstream error %d: %s", resp.StatusCode, message),
 			statusCode: resp.StatusCode,
 			headers:    resp.Header.Clone(),
 			body:       body,
@@ -2090,7 +2028,7 @@ func (s *OpenAIGatewayService) fetchOpenAIModelsUpstream(ctx context.Context, re
 	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
 	if err != nil {
 		return nil, &codexModelsManifestUpstreamError{
-			err:       infraerrors.New(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "无法读取模型列表响应"),
+			err:       infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "read codex models manifest response: %v", err),
 			retryable: isRetryableCodexModelsManifestTransportError(err),
 		}
 	}
@@ -2185,6 +2123,9 @@ func CodexModelsManifestETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
+	"gpt-6.2-sol":   {},
+	"gpt-6.2-astra": {},
+	"gpt-6.1-terra": {},
 	"gpt-6.1-sol":   {},
 	"gpt-6-astra":   {},
 	"gpt-5.6-sol":   {},
@@ -2222,8 +2163,6 @@ func adjustAPIKeyCodexModelsManifest(body []byte, account *Account) ([]byte, err
 		}
 		if isOpenAIGPT6AstraModel(target) {
 			target = "gpt-6-astra"
-		} else if openai.IsGPT61SolModelSpelling(target) {
-			target = "gpt-6.1-sol"
 		}
 		if _, targeted := apiKeyCodexModelsWithoutResponsesLite[target]; !targeted {
 			continue
@@ -2302,13 +2241,21 @@ func convertOpenAIModelListToCodexManifestForAccount(body []byte, account *Accou
 		metadataModels[id] = capabilityModel
 		capabilities := accountCodexToolCapabilities(account, capabilityModel)
 		applyCodexToolCapabilities(capabilities, entry, true)
-		if account != nil && account.IsOpenAI() && shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
-			capabilities["multi_agent_version"] = json.RawMessage("null")
-			capabilities["multi_agent_reasoning_effort"] = json.RawMessage("null")
+		var modalities []string
+		_ = json.Unmarshal(entry["input_modalities"], &modalities)
+		if len(modalities) == 0 {
+			var declared modelsDevModalities
+			_ = json.Unmarshal(entry["modalities"], &declared)
+			modalities = declared.Input
 		}
-		modelMetadata[id] = codexModelMetadataOverride{UpstreamModelMetadata: UpstreamModelMetadata{
-			CodexToolCapabilities: capabilities,
-		}}
+		if len(modalities) == 0 && account != nil {
+			synced, _ := account.GetUpstreamModelMetadata(capabilityModel)
+			modalities = synced.InputModalities
+		}
+		modelMetadata[id] = codexModelMetadataOverride{
+			UpstreamModelMetadata: UpstreamModelMetadata{CodexToolCapabilities: capabilities},
+			audioInput:            accountCodexModelSupportsAudioInput(account, capabilityModel, normalizeCodexInputModalities(modalities)),
+		}
 	}
 	if len(modelIDs) == 0 {
 		return body
@@ -2533,6 +2480,8 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 		}
 
 		descriptor := newConfiguredCodexModelDescriptor(slug)
+		// A subscription descriptor alone cannot establish audio support for an API key.
+		descriptor.InputModalities = codexAudioInputModalities(descriptor.InputModalities, false)
 		descriptor.SupportsSearchTool = shouldForwardOpenAIResponsesViaRawChatCompletions(account)
 		if accountCodexModelSupportsImageInput(account, slug) {
 			descriptor.InputModalities = []string{"text", "image"}
@@ -2556,11 +2505,6 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 		}
 		capabilities := accountCodexToolCapabilities(account, capabilityModel)
 		modelChanged := applyCodexToolCapabilities(model, capabilities, false)
-		if account != nil && account.IsOpenAI() && shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
-			modelChanged = applyCodexToolCapabilities(model, map[string]json.RawMessage{
-				"multi_agent_version": json.RawMessage("null"), "multi_agent_reasoning_effort": json.RawMessage("null"),
-			}, true) || modelChanged
-		}
 		if completeDescriptor {
 			merged, err := mergeMissingCodexModelFields(model, defaults)
 			if err != nil {
@@ -2580,6 +2524,15 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 			imageDetailOriginal := json.RawMessage("true")
 			if !bytes.Equal(bytes.TrimSpace(model["supports_image_detail_original"]), imageDetailOriginal) {
 				model["supports_image_detail_original"] = imageDetailOriginal
+				modelChanged = true
+			}
+		} else if account != nil && resolveUpstreamProtocol(account, APIProtocolResponses, capabilityModel, nil) != APIProtocolResponses {
+			var modalities []string
+			if json.Unmarshal(model["input_modalities"], &modalities) == nil && slices.Contains(modalities, "audio") {
+				model["input_modalities"], err = json.Marshal(codexAudioInputModalities(modalities, false))
+				if err != nil {
+					return nil, fmt.Errorf("encode input modalities for model %q: %w", slug, err)
+				}
 				modelChanged = true
 			}
 		}

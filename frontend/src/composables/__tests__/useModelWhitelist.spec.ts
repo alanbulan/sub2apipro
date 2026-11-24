@@ -4,7 +4,7 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, reconcileUpstreamModelMapping, splitModelMappingObject } from '../useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
@@ -36,34 +36,30 @@ describe('useModelWhitelist', () => {
     }
   })
 
-  it('openai 模型列表移除旧型号并包含 GPT Image 2.6', () => {
+  it('openai 模型列表包含 GPT-5.4 官方快照', () => {
     const models = getModelsByPlatform('openai')
 
-    expect(models).not.toContain('gpt-5.4')
-    expect(models).not.toContain('gpt-5.4-mini')
-    expect(models).not.toContain('gpt-5.4-2026-03-05')
-    expect(models).not.toContain('gpt-5.5')
-    expect(models).not.toContain('gpt-5.2')
-    expect(models).not.toContain('gpt-5.3-codex-spark')
-    expect(models).not.toContain('gpt-image-1.5')
-    expect(models).toContain('gpt-image-2.6-flare')
-    expect(models).toContain('gpt-image-2.6-sunburst')
+    expect(models).toContain('gpt-5.4')
+    expect(models).toContain('gpt-5.4-mini')
+    expect(models).toContain('gpt-5.4-2026-03-05')
     expect(models).toContain('codex-auto-review')
     expect(models).toContain('gpt-5.6')
     expect(models).toContain('gpt-6')
     expect(models).toContain('gpt-6-astra')
-    expect(models).toContain('gpt-6.2-astra')
-    expect(models).toContain('gpt-6.2-astra-pro')
     expect(models).toContain('gpt-6.2-sol')
+    expect(models).toContain('gpt-6.2-astra')
     expect(models).toContain('gpt-6.1-sol')
     expect(models).toContain('gpt-6.1-terra')
     expect(models).toContain('gpt-6-sol')
     expect(models).toContain('gpt-6-luna')
+    expect(models).toContain('gpt-image-2.6-flare')
+    expect(models).toContain('gpt-image-2.6-sunburst')
   })
 
   it('openai 预设映射包含 GPT-6 别名和 Astra', () => {
     expect(getPresetMappingsByPlatform('openai')).toEqual(expect.arrayContaining([
-      ...['gpt-6.2-astra', 'gpt-6.2-astra-pro', 'gpt-6.2-sol'].map(model => expect.objectContaining({ from: model, to: model })),
+      expect.objectContaining({ label: 'GPT-6.2 Sol', from: 'gpt-6.2-sol', to: 'gpt-6.2-sol' }),
+      expect.objectContaining({ label: 'GPT-6.2 Astra', from: 'gpt-6.2-astra', to: 'gpt-6.2-astra' }),
       expect.objectContaining({ label: 'GPT-6.1 Sol', from: 'gpt-6.1-sol', to: 'gpt-6.1-sol' }),
       expect.objectContaining({ label: 'GPT-6.1 Terra', from: 'gpt-6.1-terra', to: 'gpt-6.1-terra' }),
       expect.objectContaining({ label: 'GPT-6', from: 'gpt-6', to: 'gpt-6' }),
@@ -214,6 +210,19 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gemini-3.1-pro')
   })
 
+  it('Gemini 4 Carbon exposes the official API model without invented aliases', () => {
+    const models = getModelsByPlatform('gemini')
+    expect(models).toContain('gemini-4-carbon')
+    expect(models).not.toContain('gemini-4-carbon-preview')
+    expect(getModelsByPlatform('antigravity')).toContain('gemini-4-carbon')
+    expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gemini-4-carbon', to: 'gemini-4-carbon' })
+    ]))
+    expect(buildModelMappingObject('whitelist', ['gemini-4-carbon'], [])).toEqual({
+      'gemini-4-carbon': 'gemini-4-carbon'
+    })
+  })
+
   it('Gemini 4 Argon 在 gemini 与 antigravity 平台使用对应真实模型 ID 与预设映射', () => {
     expect(getModelsByPlatform('gemini')).toContain('gemini-4-argon')
     const agModels = getModelsByPlatform('antigravity')
@@ -271,57 +280,6 @@ describe('useModelWhitelist', () => {
   it('combined mode retains a mapping when a whitelist entry has the same source', () => {
     expect(buildModelMappingObject('combined', ['gpt-latest'], [{ from: 'gpt-latest', to: 'deepseek-chat' }])).toEqual({
       'gpt-latest': 'deepseek-chat'
-    })
-  })
-
-  it('reconciles only concrete upstream models and preserves live alias targets', () => {
-    const existingMappings = [
-      { from: 'public-alias', to: 'target' },
-      { from: 'retired-alias', to: 'retired-target' },
-      { from: 'legacy-*', to: 'target' },
-      { from: 'tar*get', to: 'target' },
-      { from: 'wildcard-target', to: 'tar*' },
-      { from: 'target', to: 'target' },
-      { from: ' ', to: 'target' }
-    ]
-    const models = [' target ', 'target', '', ' ', '*', 'retired-*']
-    const before = structuredClone({ models, existingMappings })
-
-    const reconciled = reconcileUpstreamModelMapping(models, existingMappings)
-
-    expect(reconciled.allowedModels).toEqual(['target'])
-    expect(reconciled.modelMappings).toEqual([
-      { from: 'public-alias', to: 'target' },
-      { from: 'legacy-*', to: 'target' }
-    ])
-    expect({ models, existingMappings }).toEqual(before)
-  })
-
-  it('does not replace a live redirect with an upstream identity of the same name', () => {
-    const reconciled = reconcileUpstreamModelMapping(
-      ['public-model', 'target'],
-      [{ from: 'public-model', to: 'target' }]
-    )
-
-    expect(reconciled).toEqual({
-      allowedModels: ['target'],
-      modelMappings: [{ from: 'public-model', to: 'target' }]
-    })
-    expect(buildModelMappingObject('combined', reconciled.allowedModels, reconciled.modelMappings)).toEqual({
-      target: 'target',
-      'public-model': 'target'
-    })
-  })
-
-  it('drops alias chains when the immediate target is absent from the live catalog', () => {
-    const reconciled = reconcileUpstreamModelMapping(
-      ['target'],
-      [{ from: 'alias', to: 'target' }, { from: 'chained-alias', to: 'alias' }]
-    )
-
-    expect(reconciled).toEqual({
-      allowedModels: ['target'],
-      modelMappings: [{ from: 'alias', to: 'target' }]
     })
   })
 

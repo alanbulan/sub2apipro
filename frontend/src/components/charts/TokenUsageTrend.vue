@@ -1,12 +1,7 @@
 <template>
   <div class="card p-4">
-    <h3 class="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+    <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
       {{ t('admin.dashboard.tokenUsageTrend') }}
-      <NewFeatureBadge
-        v-if="showRate && noticeUserId != null"
-        :notice-id="NEW_FEATURE_NOTICES.usageTrendRate"
-        :user-id="noticeUserId"
-      />
     </h3>
     <div v-if="loading" class="flex h-48 items-center justify-center">
       <LoadingSpinner />
@@ -39,10 +34,7 @@ import {
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
-import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
-import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 import type { TrendDataPoint } from '@/types'
-import { formatUsageRate, usageTrendRates, type UsageTrendRateContext } from '@/utils/usageRate'
 
 ChartJS.register(
   CategoryScale,
@@ -57,21 +49,10 @@ ChartJS.register(
 
 const { t } = useI18n()
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   trendData: TrendDataPoint[]
   loading?: boolean
-  /** Add each bucket's average RPM/TPM to the tooltip, using rateContext. */
-  showRate?: boolean
-  /** The range and granularity trendData was loaded for. */
-  rateContext?: UsageTrendRateContext | null
-  /** Admin who owns the new-feature badge dismissal; omit to hide the badge. */
-  noticeUserId?: number | null
-}>(), {
-  loading: false,
-  showRate: false,
-  rateContext: null,
-  noticeUserId: null,
-})
+}>()
 
 const isDarkMode = computed(() => {
   return document.documentElement.classList.contains('dark')
@@ -174,10 +155,7 @@ const lineOptions = computed(() => ({
           const dataIndex = tooltipItems[0]?.dataIndex
           if (dataIndex !== undefined && props.trendData[dataIndex]) {
             const data = props.trendData[dataIndex]
-            const cost = `Actual: $${formatCost(data.actual_cost)} | Standard: $${formatCost(data.cost)}`
-            if (!props.showRate) return cost
-            const { rpm, tpm } = usageTrendRates(data, props.rateContext)
-            return [cost, `RPM: ${formatUsageRate(rpm)} | TPM: ${formatUsageRate(tpm)}`]
+            return `Actual: $${formatCost(data.actual_cost)} | Standard: $${formatCost(data.cost)}`
           }
           return ''
         }

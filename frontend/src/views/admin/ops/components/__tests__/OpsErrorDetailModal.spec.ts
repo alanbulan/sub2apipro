@@ -1,15 +1,13 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OpsErrorDetailModal from '../OpsErrorDetailModal.vue'
-import { observerUsageContext } from '@/components/admin/usage/observerUsageContext'
 
 const mocks = vi.hoisted(() => ({
+  copyToClipboard: vi.fn(),
   getRequestErrorDetail: vi.fn(),
-  own: vi.fn(),
   listRequestErrorUpstreamErrors: vi.fn()
 }))
 
-vi.mock('@/api/observerUsage', () => ({ observerUsageAPI: { getErrorDetail: mocks.own } }))
 vi.mock('@/api/admin/ops', () => ({
   opsAPI: {
     getRequestErrorDetail: mocks.getRequestErrorDetail,
@@ -20,6 +18,10 @@ vi.mock('@/api/admin/ops', () => ({
 
 vi.mock('@/stores', () => ({
   useAppStore: () => ({ showError: vi.fn() })
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({ copyToClipboard: mocks.copyToClipboard })
 }))
 
 vi.mock('vue-i18n', async (importOriginal) => {
@@ -78,57 +80,41 @@ describe('OpsErrorDetailModal', () => {
     expect(wrapper.text()).toContain('429')
     expect(wrapper.findAll('pre')).toHaveLength(2)
     expect(wrapper.text()).not.toContain('admin.ops.errorDetail.payloads.upstream_detail')
+    expect(wrapper.find('[data-testid="error-detail-reported-headers"]').exists()).toBe(false)
   })
-})
 
-it('loads only the owned observer error and never requests correlated admin details', async () => {
-  vi.clearAllMocks()
-  mocks.own.mockResolvedValue({ id: 42, status_code: 502, message: 'own error' })
-  const wrapper = shallowMount(OpsErrorDetailModal, {
-    props: { show: true, errorId: 42, errorType: 'request' },
-    global: { provide: { [observerUsageContext as symbol]: true } },
-  })
-  await flushPromises()
-  expect(mocks.own).toHaveBeenCalledWith(42)
-  expect(mocks.getRequestErrorDetail).not.toHaveBeenCalled()
-  expect(mocks.listRequestErrorUpstreamErrors).not.toHaveBeenCalled()
-  wrapper.unmount()
-})
+  it('shows the identity headers that were reported upstream and copies them', async () => {
+    mocks.getRequestErrorDetail.mockResolvedValue({
+      id: 2,
+      created_at: '2026-11-24T00:00:00Z',
+      phase: 'upstream',
+      error_owner: 'provider',
+      status_code: 502,
+      platform: 'openai',
+      request_id: 'rid-2',
+      upstream_errors: JSON.stringify([
+        {
+          account_id: 5,
+          account_name: 'relay-a',
+          upstream_status_code: 400,
+          reported_headers: { 'x-gateway-user-id': '7' }
+        }
+      ])
+    })
 
-it.each(['user', 'upstream'])('explains %s balance failures and preserves diagnostics', async source => {
-  vi.clearAllMocks()
-  mocks.listRequestErrorUpstreamErrors.mockResolvedValue({ items: [] })
-  mocks.getRequestErrorDetail.mockResolvedValue({
-    id: 1, status_code: 403, phase: 'request',
-    error_owner: source === 'user' ? 'client' : 'provider',
-    error_source: source === 'user' ? 'client_request' : 'upstream_http',
-    user_id: 7, account_id: source === 'upstream' ? 9 : null,
-    message: 'insufficient balance', error_body: '{"error":{"message":"insufficient balance"}}',
-  })
-  const wrapper = shallowMount(OpsErrorDetailModal, {
-    props: { show: true, errorId: 1, errorType: 'request' },
-    global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } },
-  })
-  await flushPromises()
-  expect(wrapper.get('[data-testid="balance-source"]').text()).toContain(`admin.ops.balanceError.${source}Hint`)
-  expect(wrapper.find('pre').text()).toContain('insufficient balance')
-  wrapper.unmount()
-})
+    const wrapper = shallowMount(OpsErrorDetailModal, {
+      props: { show: true, errorId: 2, errorType: 'request' },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } }
+    })
+    await flushPromises()
 
-it('labels HTTP 200 as wire status when the stream failed', async () => {
-  vi.clearAllMocks()
-  mocks.listRequestErrorUpstreamErrors.mockResolvedValue({ items: [] })
-  mocks.getRequestErrorDetail.mockResolvedValue({
-    id: 1, status_code: 200, phase: 'network', type: 'transport_error',
-    message: 'Upstream connection reset', upstream_status_code: null,
+    const section = wrapper.get('[data-testid="error-detail-reported-headers"]')
+    expect(section.text()).toContain('relay-a')
+    expect(section.text()).toContain('x-gateway-user-id')
+    await section.get('button').trigger('click')
+    expect(mocks.copyToClipboard).toHaveBeenCalledWith(
+      'x-gateway-user-id: 7',
+      'admin.ops.errorDetail.reportedHeaders.copied'
+    )
   })
-  const wrapper = shallowMount(OpsErrorDetailModal, {
-    props: { show: true, errorId: 1, errorType: 'request' },
-    global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } },
-  })
-  await flushPromises()
-  expect(wrapper.text()).toContain('usage.errors.detail.clientHttpStatus')
-  expect(wrapper.text()).toContain('usage.errors.detail.streamFailedAfterHeaders')
-  expect(wrapper.text()).toContain('200')
-  wrapper.unmount()
 })

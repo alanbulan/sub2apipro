@@ -18,9 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          # Scan the toolchain shipped in production; go.mod retains the
-          # compatibility baseline used by the separate regression jobs.
-          go-version: '1.27.4'
+          go-version-file: backend/go.mod
           check-latest: false
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
@@ -43,7 +41,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install dependencies

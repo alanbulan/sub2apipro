@@ -11,7 +11,10 @@ const openAIReasoningEffortValues = [
   "high",
   "xhigh",
   "max",
-  "ultra",
+] as const;
+const openAIReasoningEffortSourceValues = [
+  "none",
+  ...openAIReasoningEffortValues,
 ] as const;
 
 const anthropicReasoningEffortValues = [
@@ -58,7 +61,7 @@ export function reasoningEffortSourceOptionsForPlatform(
   platform: GroupPlatform,
 ) {
   return (supportsReasoningEffortPolicyPlatform(platform)
-    ? ["none", ...reasoningEffortValuesForPlatform(platform)]
+    ? openAIReasoningEffortSourceValues
     : []
   ).map((value) => ({ value, label: value }));
 }

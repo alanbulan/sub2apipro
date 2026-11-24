@@ -12,7 +12,6 @@
 
 import { useI18n } from 'vue-i18n'
 import type { CheckMode, MonitorStatus, Provider } from '@/api/admin/channelMonitor'
-import { monitorPlatformLabel } from '@/features/channel-monitor-v2/monitorFormat'
 import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
@@ -72,8 +71,7 @@ export function useChannelMonitorFormat() {
     if (PROVIDERS.includes(p as Provider)) {
       return t(`monitorCommon.providers.${p}`)
     }
-    const label = monitorPlatformLabel(p)
-    return label && label !== 'API' ? label : p || '-'
+    return p || '-'
   }
 
   function checkModeLabel(m: CheckMode | string): string {

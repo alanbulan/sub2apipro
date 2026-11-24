@@ -109,14 +109,33 @@ func writeOpenAICompactSSEFailure(c *gin.Context, statusCode int, errorBody []by
 // 不被识别，会退化为 "stream closed before response.completed" 盲重连）。
 // 同时标记流内错误，保证挂在 200 流上的失败仍进入 ops 错误看板。
 func writeOpenAICompactSSEFailureMessage(c *gin.Context, statusCode int, errType, message string) {
-	writeOpenAICompactSSEFailureMessageParam(c, statusCode, errType, message, "")
+	writeOpenAICompactSSEFailureEvent(c, statusCode, errType, errType, message)
 }
 
-func writeOpenAICompactSSEFailureMessageParam(c *gin.Context, statusCode int, errType, message, param string) {
+// writeOpenAICompactSSEFailureWithCode 同 writeOpenAICompactSSEFailureMessage，
+// 但 response.error.code 使用调用方给出的结构化错误码（如
+// invalid_encrypted_content），供客户端区分确定性请求失败；code 为空时回落
+// upstream_error。ops 侧的错误类型保持 upstream_error 不变。message 由调用方
+// 负责脱敏。
+//
+// 容量降载码（server_is_overloaded / slow_down）不得原样写进 response.failed：
+// Codex 把它们判为致命错误并直接终止会话，所有写 response.failed 的路径都改写为
+// 可重试的 openAICapacityShedRetryableClientCode（见该常量注释）。
+func writeOpenAICompactSSEFailureWithCode(c *gin.Context, statusCode int, code, message string) {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "":
+		code = "upstream_error"
+	case "server_is_overloaded", "slow_down":
+		code = openAICapacityShedRetryableClientCode
+	}
+	writeOpenAICompactSSEFailureEvent(c, statusCode, "upstream_error", code, message)
+}
+
+func writeOpenAICompactSSEFailureEvent(c *gin.Context, statusCode int, opsErrType, code, message string) {
 	if c == nil {
 		return
 	}
-	MarkOpsStreamError(c, errType, message, statusCode)
+	MarkOpsStreamError(c, opsErrType, message, statusCode)
 	payload, err := json.Marshal(map[string]any{
 		"type":            "response.failed",
 		"sequence_number": 0,
@@ -128,16 +147,10 @@ func writeOpenAICompactSSEFailureMessageParam(c *gin.Context, statusCode int, er
 			"created_at": time.Now().Unix(),
 			"status":     "failed",
 			"output":     []any{},
-			"error": func() map[string]any {
-				errorBody := map[string]any{
-					"code":    errType,
-					"message": message,
-				}
-				if param != "" {
-					errorBody["param"] = param
-				}
-				return errorBody
-			}(),
+			"error": map[string]any{
+				"code":    code,
+				"message": message,
+			},
 		},
 	})
 	if err != nil {
@@ -157,14 +170,6 @@ func writeOpenAICompactSSEFailureMessageParam(c *gin.Context, statusCode int, er
 // 解析失败，故此处做兜底修补。每帧还要带单调的 sequence_number：grok-build
 // 把它当必填，缺了整轮反序列化失败。
 func buildOpenAICompactSSEPayload(finalResponse []byte) ([]byte, bool) {
-	return buildOpenAICompactSSEPayloadWithLifecycle(finalResponse, false)
-}
-
-func buildDeepSeekCompactSSEPayload(finalResponse []byte) ([]byte, bool) {
-	return buildOpenAICompactSSEPayloadWithLifecycle(finalResponse, true)
-}
-
-func buildOpenAICompactSSEPayloadWithLifecycle(finalResponse []byte, lifecycle bool) ([]byte, bool) {
 	if len(finalResponse) == 0 || !gjson.ValidBytes(finalResponse) {
 		return nil, false
 	}
@@ -210,60 +215,9 @@ func buildOpenAICompactSSEPayloadWithLifecycle(finalResponse []byte, lifecycle b
 		_, _ = buf.WriteString("\n\n")
 		return true
 	}
-	if lifecycle {
-		// A Responses stream establishes the response before opening output
-		// items. Codex ignores output events that arrive without these lifecycle
-		// frames, which surfaces as "0 compaction output items".
-		progressResponse, err := sjson.SetBytes(response, "status", "in_progress")
-		if err != nil {
-			return nil, false
-		}
-		progressResponse, err = sjson.SetRawBytes(progressResponse, "output", []byte("[]"))
-		if err != nil {
-			return nil, false
-		}
-		created, err := sjson.SetRawBytes([]byte("{\"type\":\"response.created\"}"), "response", progressResponse)
-		if err != nil {
-			return nil, false
-		}
-		if !appendEvent("response.created", created) {
-			return nil, false
-		}
-		inProgress, err := sjson.SetRawBytes([]byte("{\"type\":\"response.in_progress\"}"), "response", progressResponse)
-		if err != nil {
-			return nil, false
-		}
-		if !appendEvent("response.in_progress", inProgress) {
-			return nil, false
-		}
-	}
 	for _, item := range gjson.GetBytes(response, "output").Array() {
 		if !item.IsObject() {
 			continue
-		}
-		if lifecycle {
-			// Codex tracks output items from the normal Responses lifecycle. A
-			// done-only compact item is ignored by the remote compaction parser,
-			// which then reports zero output items even though the terminal response
-			// contains the synthesized compaction object.
-			addedItem := []byte(item.Raw)
-			if status := gjson.GetBytes(addedItem, "status"); !status.Exists() || status.String() != "in_progress" {
-				if next, setErr := sjson.SetBytes(addedItem, "status", "in_progress"); setErr == nil {
-					addedItem = next
-				}
-			}
-			added, err := sjson.SetBytes([]byte(`{"type":"response.output_item.added"}`), "output_index", outputIndex)
-			if err != nil {
-				return nil, false
-			}
-			added, err = sjson.SetRawBytes(added, "item", addedItem)
-			if err != nil {
-				return nil, false
-			}
-			if !appendEvent("response.output_item.added", added) {
-				return nil, false
-			}
-
 		}
 		event, err := sjson.SetBytes([]byte(`{"type":"response.output_item.done"}`), "output_index", outputIndex)
 		if err != nil {

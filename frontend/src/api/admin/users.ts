@@ -45,13 +45,6 @@ export interface AdminBoundAuthIdentity {
   channel?: AdminBoundAuthIdentityChannel | null
 }
 
-export interface BatchRechargeRequest { user_ids: number[]; amount: number; notes: string }
-export async function batchRecharge(body: BatchRechargeRequest, key: string): Promise<{ affected: number }> {
-  return (await apiClient.post<{ affected: number }>('/admin/users/batch-recharge', body, {
-    headers: { 'Idempotency-Key': key }, timeout: 70000
-  })).data
-}
-
 export interface BatchUpdateUserLimitsRequest {
   user_ids: number[]
   all?: boolean
@@ -76,7 +69,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     status?: 'active' | 'disabled'
-    role?: 'admin' | 'user' | 'observer'
+    role?: 'admin' | 'user'
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
     api_key_group_id?: number   // filter users by the group their API keys are bound to
@@ -140,11 +133,10 @@ export async function create(userData: {
   password: string
   username?: string
   notes?: string
-  role?: 'admin' | 'user' | 'observer'
+  role?: 'admin' | 'user'
   balance?: number
   concurrency?: number
   rpm_limit?: number
-  observer_group_ids?: number[] | null
   allowed_groups?: number[] | null
 }): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>('/admin/users', userData)
@@ -215,6 +207,32 @@ export async function batchUpdateLimits(
   return data
 }
 
+/** Active non-admin user whose inbox identity matches a blacklisted email. */
+export interface BlacklistedEmailUser {
+  id: number
+  email: string
+  username: string
+}
+
+/** Find active non-admin users whose email (or an alias of it) is in the given list. */
+export async function findBlacklistedEmailUsers(
+  emails: string[]
+): Promise<{ items: BlacklistedEmailUser[]; total: number }> {
+  const { data } = await apiClient.post<{ items: BlacklistedEmailUser[]; total: number }>(
+    '/admin/users/blacklist-matches',
+    { emails }
+  )
+  return data
+}
+
+/** Disable multiple users; admins and already-disabled users are skipped. */
+export async function batchDisable(userIds: number[]): Promise<{ affected: number }> {
+  const { data } = await apiClient.post<{ affected: number }>('/admin/users/batch-disable', {
+    user_ids: userIds
+  })
+  return data
+}
+
 /**
  * Toggle user status
  * @param id - User ID
@@ -262,18 +280,7 @@ export async function getUserUsageStats(
 /**
  * Balance history item returned from the API
  */
-export interface AutoCreditBalanceHistory {
-  ledger_id: number
-  amount: string
-  balance_before: string
-  balance_after: string
-  status: 'pending' | 'settled'
-  settled_at: string | null
-  settled_by: number | null
-}
-
 export interface BalanceHistoryItem {
-  auto_credit?: AutoCreditBalanceHistory
   id: number
   code: string
   type: string
@@ -432,7 +439,8 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   batchUpdateLimits,
-  batchRecharge,
+  findBlacklistedEmailUsers,
+  batchDisable,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,

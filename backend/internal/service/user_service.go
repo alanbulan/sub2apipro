@@ -78,8 +78,6 @@ type UserListFilters struct {
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).
 	IncludeSubscriptions *bool
-	// UserIDs 只列出这些用户；为空表示不按用户 ID 过滤。
-	UserIDs []int64
 	// IncludeDeleted 为 true 时绕过软删除过滤，返回含已删除（deleted_at 非空）的用户。
 	// 仅供 /admin/usage 的 SearchUsers 端点使用，其他列表调用方不要设置。
 	IncludeDeleted bool
@@ -113,8 +111,7 @@ type UserUpdateFields struct {
 	// BalanceNotifyExtraEmails 与上一项分开，避免"改通知阈值"覆盖并发的"加通知邮箱"。
 	BalanceNotifyExtraEmails bool
 	// AllowedGroups 为 true 时才同步 user_allowed_groups 关联表。
-	AllowedGroups    bool
-	ObserverGroupIDs bool
+	AllowedGroups bool
 	// RestrictPublicGroups 覆盖 restrict_public_groups 列。
 	RestrictPublicGroups bool
 }
@@ -233,7 +230,6 @@ type UserIdentitySummarySet struct {
 	OIDC     UserIdentitySummary `json:"oidc"`
 	WeChat   UserIdentitySummary `json:"wechat"`
 	DingTalk UserIdentitySummary `json:"dingtalk"`
-	Feishu   UserIdentitySummary `json:"feishu"`
 }
 
 type StartUserIdentityBindingRequest struct {
@@ -354,7 +350,6 @@ func (s *UserService) GetProfileIdentitySummaries(ctx context.Context, userID in
 		OIDC:     s.buildProviderIdentitySummary("oidc", user, records),
 		WeChat:   s.buildProviderIdentitySummary("wechat", user, records),
 		DingTalk: s.buildProviderIdentitySummary("dingtalk", user, records),
-		Feishu:   s.buildProviderIdentitySummary("feishu", user, records),
 	}
 
 	s.applyExplicitProviderAvailability(ctx, &summaries)
@@ -375,15 +370,11 @@ func (s *UserService) applyExplicitProviderAvailability(ctx context.Context, sum
 		SettingKeyWeChatConnectMobileEnabled,
 		SettingKeyWeChatConnectMode,
 		SettingKeyDingTalkConnectEnabled,
-		SettingKeyFeishuConnectEnabled,
 	})
 	if err != nil {
 		return
 	}
 
-	if settings[SettingKeyFeishuConnectEnabled] != "true" {
-		disableIdentityBindAction(&summaries.Feishu)
-	}
 	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
 		disableIdentityBindAction(&summaries.LinuxDo)
 	}
@@ -749,9 +740,6 @@ func (s *UserService) buildEmailIdentitySummary(user *User, records []UserAuthId
 	}
 
 	// Compatibility fallback for legacy normal-email users that predate auth_identities backfill.
-	if user.SignupSource == "feishu" {
-		return summary
-	}
 	email := strings.TrimSpace(user.Email)
 	if email == "" || isReservedEmail(email) {
 		return summary
@@ -807,7 +795,7 @@ func (s *UserService) canUnbindProvider(provider string, user *User, records []U
 		return true
 	}
 
-	for _, candidate := range []string{"linuxdo", "oidc", "wechat", "dingtalk", "feishu"} {
+	for _, candidate := range []string{"linuxdo", "oidc", "wechat", "dingtalk"} {
 		if candidate == provider {
 			continue
 		}
@@ -883,8 +871,6 @@ func buildUserIdentityBindAuthorizeURL(provider, redirectTo string) (string, err
 		path = "/api/v1/auth/oauth/oidc/bind/start"
 	case "wechat":
 		path = "/api/v1/auth/oauth/wechat/bind/start"
-	case "feishu":
-		path = "/api/v1/auth/oauth/feishu/bind/start"
 	case "dingtalk":
 		path = "/api/v1/auth/oauth/dingtalk/bind/start"
 	default:
@@ -905,8 +891,6 @@ func normalizeUserIdentityProvider(provider string) string {
 		return "oidc"
 	case "wechat":
 		return "wechat"
-	case "feishu":
-		return "feishu"
 	case "dingtalk":
 		return "dingtalk"
 	case "email":
@@ -1291,7 +1275,7 @@ func saveNotifyVerifyCode(ctx context.Context, cache EmailCache, email, code str
 
 // sendNotifyVerifyEmail builds and sends the verification email.
 func (s *UserService) sendNotifyVerifyEmail(ctx context.Context, emailService *EmailService, userID int64, email, code, locale string) error {
-	siteName := defaultSiteName
+	siteName := "Sub2API"
 	if s.settingRepo != nil {
 		if name, err := s.settingRepo.GetValue(ctx, SettingKeySiteName); err == nil && name != "" {
 			siteName = name

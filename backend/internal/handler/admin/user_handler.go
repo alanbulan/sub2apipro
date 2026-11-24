@@ -23,14 +23,11 @@ import (
 // UserWithConcurrency wraps AdminUser with current concurrency info
 type UserWithConcurrency struct {
 	dto.AdminUser
-	AutoCreditOutstanding string `json:"auto_credit_outstanding"`
-	CurrentConcurrency    int    `json:"current_concurrency"`
-	CurrentRPM            *int   `json:"current_rpm"`
+	CurrentConcurrency int `json:"current_concurrency"`
 }
 
 // UserHandler handles admin user management
 type UserHandler struct {
-	autoCredit            service.AutoCreditRepository
 	adminService          service.AdminService
 	concurrencyService    *service.ConcurrencyService
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository // T13 admin quota view
@@ -67,33 +64,28 @@ type CreateUserRequest struct {
 	Password             string   `json:"password" binding:"required,min=6"`
 	Username             string   `json:"username"`
 	Notes                string   `json:"notes"`
-	Role                 string   `json:"role" binding:"omitempty,oneof=admin user observer"`
+	Role                 string   `json:"role" binding:"omitempty,oneof=admin user"`
 	Balance              *float64 `json:"balance"`
 	Concurrency          int      `json:"concurrency"`
 	RPMLimit             int      `json:"rpm_limit"`
 	AllowedGroups        []int64  `json:"allowed_groups"`
-	ObserverGroupIDs     []int64  `json:"observer_group_ids"`
 	RestrictPublicGroups bool     `json:"restrict_public_groups"`
 }
 
 // UpdateUserRequest represents admin update user request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateUserRequest struct {
-	// Reason is audit-only metadata; the existing middleware records the request body.
-	Reason               string                        `json:"reason" binding:"omitempty,max=500"`
-	Email                string                        `json:"email" binding:"omitempty,email"`
-	Password             string                        `json:"password" binding:"omitempty,min=6"`
-	Username             *string                       `json:"username"`
-	Notes                *string                       `json:"notes"`
-	Role                 string                        `json:"role" binding:"omitempty,oneof=admin user observer"`
-	Balance              *float64                      `json:"balance"`
-	Concurrency          *int                          `json:"concurrency"`
-	RPMLimit             *int                          `json:"rpm_limit"`
-	Status               string                        `json:"status" binding:"omitempty,oneof=active disabled"`
-	AllowedGroups        *[]int64                      `json:"allowed_groups"`
-	ObserverGroupIDs     *[]int64                      `json:"observer_group_ids"`
-	ObserverSetup        *service.ObserverSetupOptions `json:"observer_setup"`
-	RestrictPublicGroups *bool                         `json:"restrict_public_groups"`
+	Email                string   `json:"email" binding:"omitempty,email"`
+	Password             string   `json:"password" binding:"omitempty,min=6"`
+	Username             *string  `json:"username"`
+	Notes                *string  `json:"notes"`
+	Role                 string   `json:"role" binding:"omitempty,oneof=admin user"`
+	Balance              *float64 `json:"balance"`
+	Concurrency          *int     `json:"concurrency"`
+	RPMLimit             *int     `json:"rpm_limit"`
+	Status               string   `json:"status" binding:"omitempty,oneof=active disabled"`
+	AllowedGroups        *[]int64 `json:"allowed_groups"`
+	RestrictPublicGroups *bool    `json:"restrict_public_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64 `json:"group_rates"`
@@ -159,7 +151,7 @@ func (h *UserHandler) List(c *gin.Context) {
 		includeSubscriptions := parseBoolQueryWithDefault(raw, true)
 		filters.IncludeSubscriptions = &includeSubscriptions
 	}
-	principal := adminaccess.FromContext(c.Request.Context())
+	principal := adminaccess.RestrictedFromContext(c.Request.Context())
 	if principal != nil {
 		includeSubscriptions := false
 		filters.IncludeSubscriptions = &includeSubscriptions
@@ -194,24 +186,10 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	// Build response with concurrency info
-	debt := map[int64]string{}
-	if h.autoCredit != nil {
-		ids := make([]int64, len(users))
-		for i := range users {
-			ids[i] = users[i].ID
-		}
-		debt, err = h.autoCredit.OutstandingByUsers(c.Request.Context(), ids)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-	}
 	out := make([]UserWithConcurrency, len(users))
 	for i := range users {
 		out[i] = UserWithConcurrency{
-			AdminUser:             *dto.UserFromServiceAdmin(&users[i]),
-			AutoCreditOutstanding: debt[users[i].ID],
-			CurrentRPM:            users[i].CurrentRPM,
+			AdminUser: *dto.UserFromServiceAdmin(&users[i]),
 		}
 		if info := loadInfo[users[i].ID]; info != nil {
 			out[i].CurrentConcurrency = info.CurrentConcurrency
@@ -316,7 +294,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	// 创建管理员账号属权限敏感操作：需最近完成 step-up 2FA 验证。
-	if req.Role == service.RoleAdmin || req.Role == service.RoleObserver {
+	if req.Role == service.RoleAdmin {
 		if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
 			return
 		}
@@ -332,7 +310,6 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Concurrency:          req.Concurrency,
 		RPMLimit:             req.RPMLimit,
 		AllowedGroups:        req.AllowedGroups,
-		ObserverGroupIDs:     req.ObserverGroupIDs,
 		RestrictPublicGroups: req.RestrictPublicGroups,
 		ActorAdminID:         getAdminIDFromContext(c),
 	})
@@ -361,20 +338,20 @@ func (h *UserHandler) Update(c *gin.Context) {
 
 	// 防锁死保护：管理员不能把自己降级为普通用户(单管理员场景下会失去后台访问权)。
 	// 与既有"不能禁用/删除 admin"保护一致。降级其他管理员仍然允许。
-	if req.Role != "" && req.Role != service.RoleAdmin && userID == getAdminIDFromContext(c) {
+	if req.Role == service.RoleUser && userID == getAdminIDFromContext(c) {
 		response.BadRequest(c, "cannot demote yourself from admin")
 		return
 	}
 
 	// 把普通用户提升为管理员属权限敏感操作：需最近完成 step-up 2FA 验证。
 	// 目标已是管理员时（前端编辑表单总是携带 role）不触发，避免日常编辑被打断。
-	if req.Role == service.RoleAdmin || req.Role == service.RoleObserver || req.ObserverGroupIDs != nil {
+	if req.Role == service.RoleAdmin {
 		target, err := h.adminService.GetUser(c.Request.Context(), userID)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
-		if (req.Role != "" && target.Role != req.Role) || observerGrantsExpanded(target.ObserverGroupIDs, req.ObserverGroupIDs) {
+		if target.Role != service.RoleAdmin {
 			if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
 				return
 			}
@@ -393,10 +370,8 @@ func (h *UserHandler) Update(c *gin.Context) {
 		RPMLimit:             req.RPMLimit,
 		Status:               req.Status,
 		AllowedGroups:        req.AllowedGroups,
-		ObserverGroupIDs:     req.ObserverGroupIDs,
 		RestrictPublicGroups: req.RestrictPublicGroups,
 		GroupRates:           req.GroupRates,
-		ObserverSetup:        req.ObserverSetup,
 		ActorAdminID:         getAdminIDFromContext(c),
 	})
 	if err != nil {
@@ -448,7 +423,6 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		Body:   req,
 	}
 	executeAdminIdempotentJSONWithResponse(c, "admin.users.balance.update", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		ctx = service.WithAdminBalanceOperation(ctx, adminActorScope(c), c.GetHeader("Idempotency-Key"))
 		user, execErr := h.adminService.UpdateUserBalance(ctx, userID, req.Balance, req.Operation, req.Notes)
 		if execErr != nil {
 			return nil, execErr
@@ -456,7 +430,7 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		return dto.UserFromServiceAdmin(user), nil
 	}, func(data any) any {
 		// 成功确认不隐式授予用户资料或余额读取权限；缓存重放也必须经过此边界。
-		if adminaccess.FromContext(c.Request.Context()) != nil {
+		if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
 			return gin.H{"id": userID}
 		}
 		return data
@@ -512,7 +486,7 @@ func (h *UserHandler) GetUserUsage(c *gin.Context) {
 // GetBalanceHistory handles getting user's balance/concurrency change history
 // GET /api/v1/admin/users/:id/balance-history
 // Query params:
-//   - type: filter by record type (balance, affiliate_balance, admin_balance, auto_credit, concurrency, admin_concurrency, subscription)
+//   - type: filter by record type (balance, affiliate_balance, admin_balance, concurrency, admin_concurrency, subscription)
 func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1032,20 +1006,4 @@ func (h *UserHandler) ResetUserPlatformQuotaWindow(c *gin.Context) {
 		out = append(out, quotaview.LazyZeroQuotaForResponse(records[i], now, true))
 	}
 	response.Success(c, map[string]any{"platform_quotas": out})
-}
-
-func observerGrantsExpanded(existing []int64, requested *[]int64) bool {
-	if requested == nil {
-		return false
-	}
-	allowed := make(map[int64]bool, len(existing))
-	for _, id := range existing {
-		allowed[id] = true
-	}
-	for _, id := range *requested {
-		if !allowed[id] {
-			return true
-		}
-	}
-	return false
 }

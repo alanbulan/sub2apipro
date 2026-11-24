@@ -8,14 +8,10 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/cyberevidence"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/qualityqueue"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/redissession"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -57,12 +53,6 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
 }
 
-func ProvideAutoCreditEmailWorker(repo AutoCreditEmailOutboxRepository, mail *NotificationEmailService, cfg *config.Config) *AutoCreditEmailWorker {
-	w := NewAutoCreditEmailWorker(repo, mail)
-	startBackgroundService(cfg, w)
-	return w
-}
-
 // ProvideAuthService wires the optional captcha providers into AuthService while
 // keeping NewAuthService's public constructor compatible with existing tests.
 func ProvideAuthService(
@@ -81,7 +71,7 @@ func ProvideAuthService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	affiliateService *AffiliateService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
-	lottery *LotteryService,
+	mcpOAuthService *MCPOAuthService,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -100,7 +90,9 @@ func ProvideAuthService(
 	)
 	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetAliyunCaptchaService(aliyunCaptchaService)
-	svc.lottery = lottery
+	if mcpOAuthService != nil {
+		svc.SetMCPGrantRevoker(mcpOAuthService)
+	}
 	return svc
 }
 
@@ -115,7 +107,7 @@ func ProvideBatchImageModelPricingResolver(resolver *ModelPricingResolver) *Batc
 
 func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo AccountRepository, cfg *config.Config) *BatchImageCleanupService {
 	svc := NewBatchImageCleanupService(repo, accountRepo, cfg)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -124,46 +116,9 @@ func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient OpenAIOAuthClient,
 	privacyClientFactory PrivacyClientFactory,
-	cfg *config.Config,
 ) *OpenAIOAuthService {
 	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
 	svc.SetPrivacyClientFactory(privacyClientFactory)
-	return svc
-}
-
-// ProvideOpenAIOAuthReauthService wires the durable mailbox/task flow while
-// keeping the pure HTTP protocol runner in a separately run worker process.
-func ProvideOpenAIOAuthReauthService(
-	repo OpenAIOAuthReauthRepository,
-	sessionExportRepo OpenAISessionExportRepository,
-	adminService AdminService,
-	accountRepo AccountRepository,
-	openaiOAuthService *OpenAIOAuthService,
-	secretEncryptor OpenAICredentialEncryptor,
-	cfg *config.Config,
-	tokenCacheInvalidator TokenCacheInvalidator,
-	runtimeBlocker AccountRuntimeBlocker,
-	buildInfo BuildInfo,
-	settings SettingRepository,
-	redisClient *redis.Client,
-) *OpenAIOAuthReauthService {
-	credentialUpdater, _ := accountRepo.(OpenAIOAuthReauthCredentialUpdater)
-	svc := NewOpenAIOAuthReauthService(repo, adminService, credentialUpdater, openaiOAuthService, secretEncryptor, cfg != nil && cfg.Totp.EncryptionKeyConfigured, tokenCacheInvalidator, runtimeBlocker)
-	if redisClient != nil {
-		svc.siwcSessionStore = redissession.New(redisClient, siwcSessionPrefix, openai.SessionTTL)
-	}
-	svc.SetSessionExportRepository(sessionExportRepo)
-	svc.settings = settings
-	if admin, ok := adminService.(*adminServiceImpl); ok {
-		admin.excelOAuthReauth = svc
-	}
-	svc.configureWorker(cfg, buildInfo)
-	if gateway, ok := runtimeBlocker.(*OpenAIGatewayService); ok {
-		gateway.excelOAuthReauth = svc
-		if gateway.rateLimitService != nil {
-			gateway.rateLimitService.openAITOTP429Rotator = svc
-		}
-	}
 	return svc
 }
 
@@ -192,7 +147,7 @@ func ProvideTokenRefreshService(
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
 	svc.SetAccountRuntimeBlocker(runtimeBlocker)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -256,7 +211,6 @@ func ProvideOpenAIQuotaAutoResetService(
 	audit *AuditLogService,
 	settingService *SettingService,
 	leaderLock LeaderLockCache,
-	cfg *config.Config,
 ) *OpenAIQuotaAutoResetService {
 	service := NewOpenAIQuotaAutoResetService(
 		accountRepo,
@@ -267,7 +221,7 @@ func ProvideOpenAIQuotaAutoResetService(
 		settingService,
 		leaderLock,
 	)
-	startBackgroundService(cfg, service)
+	service.Start()
 	return service
 }
 
@@ -329,29 +283,6 @@ func ProvideAccountTestService(
 	service.SetOpenAIGatewayService(openAIGatewayService)
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
-	if p, ok := httpUpstream.(AstraGatewayRuntimeProvider); ok {
-		p.SetAstraGatewayPreparer(service.prepareAstraGatewaySource)
-	}
-	settingService.SetAstraRoutingOnSaved(service.StartAstraAutomaticSetup)
-	if recorder, ok := httpUpstream.(AstraGatewayHistoryRecorder); ok {
-		if history, ok := settingService.settingRepo.(AstraGatewayHistoryRepository); ok {
-			recorder.SetAstraGatewayHistoryRecorder(func(row AstraGatewayHistoryRecord, passed bool) {
-				if row.Gateway == "" {
-					return
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
-				if err := history.RecordAstraGateway(ctx, row, passed); err != nil {
-					logger.L().Warn("astra gateway history persistence failed")
-				}
-			})
-		}
-	}
-	stopScheduling := service.startAstraAccountScheduling()
-	openAIGatewayService.stopAstraSetup = func() {
-		stopScheduling()
-		service.StopAstraAutomaticSetup()
-	}
 	return service
 }
 
@@ -404,7 +335,7 @@ func ProvideCNProviderBalanceCheckService(
 		minutes = cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes
 	}
 	svc := NewCNProviderBalanceCheckService(accountRepo, balanceService, quotaService, cfg, time.Duration(minutes)*time.Minute)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -459,21 +390,21 @@ func ProvideDashboardAggregationService(repo DashboardAggregationRepository, tim
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
 	svc.settingRepo = settingRepo
 	svc.SetLeaderLock(lockCache, db)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
 // ProvideUsageCleanupService 创建并启动使用记录清理任务服务
 func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWheelService, dashboardAgg *DashboardAggregationService, cfg *config.Config) *UsageCleanupService {
 	svc := NewUsageCleanupService(repo, timingWheel, dashboardAgg, cfg)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
-func ProvideAccountExpiryService(accountRepo AccountRepository, cfg *config.Config) *AccountExpiryService {
+func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -483,10 +414,9 @@ func ProvideOpenAICodexVersionSyncService(
 	settingRepo SettingRepository,
 	settingService *SettingService,
 	githubClient GitHubReleaseClient,
-	cfg *config.Config,
 ) *OpenAICodexVersionSyncService {
 	svc := NewOpenAICodexVersionSyncService(settingRepo, settingService, githubClient, openAICodexVersionSyncInterval)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -496,27 +426,26 @@ func ProvideClaudeCodeVersionSyncService(
 	settingRepo SettingRepository,
 	settingService *SettingService,
 	githubClient GitHubReleaseClient,
-	cfg *config.Config,
 ) *ClaudeCodeVersionSyncService {
 	svc := NewClaudeCodeVersionSyncService(settingRepo, settingService, githubClient, claudeCodeVersionSyncInterval)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
 // ProvideProxyExpiryService creates and starts ProxyExpiryService.
-func ProvideProxyExpiryService(proxyRepo ProxyRepository, cfg *config.Config) *ProxyExpiryService {
+func ProvideProxyExpiryService(proxyRepo ProxyRepository) *ProxyExpiryService {
 	svc := NewProxyExpiryService(proxyRepo, time.Minute)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
 // ProvideSubscriptionExpiryService creates and starts SubscriptionExpiryService.
-func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, notificationEmailService *NotificationEmailService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config) *SubscriptionExpiryService {
+func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, notificationEmailService *NotificationEmailService, lockCache LeaderLockCache, db *sql.DB) *SubscriptionExpiryService {
 	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
 	svc.SetSettingRepository(settingRepo)
 	svc.SetNotificationEmailService(notificationEmailService)
 	svc.SetLeaderLock(lockCache, db)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -530,8 +459,7 @@ func ProvideTimingWheelService() (*TimingWheelService, error) {
 	return svc, nil
 }
 
-// ProvideDeferredService drains this process's request observations on every role.
-// A full node cannot flush the last-used updates held in a gateway's memory.
+// ProvideDeferredService creates and starts DeferredService
 func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService) *DeferredService {
 	svc := NewDeferredService(accountRepo, timingWheel, 10*time.Second)
 	svc.Start()
@@ -539,32 +467,14 @@ func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWh
 }
 
 // ProvideConcurrencyService creates ConcurrencyService and starts slot cleanup worker.
-func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config, snapshot *SchedulerSnapshotService) *ConcurrencyService {
+func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config) *ConcurrencyService {
 	svc := NewConcurrencyService(cache)
-	svc.performancePauses, _ = accountRepo.(PerformancePauseReader)
-	if snapshot != nil && snapshot.localSnapshotReader != nil {
-		svc.performancePauses = localPerformancePauseReader{reader: snapshot.localSnapshotReader}
-	}
-	if runtime, ok := cache.(interface{ RunRegionalRuntime(context.Context) }); ok {
-		go runtime.RunRegionalRuntime(svc.apiKeyQueueStopContext())
-	}
-	// This scans shared expired-slot indexes, not this process's live requests.
-	// Keep request leases and regional runtime active on every role; let full
-	// nodes maintain the shared backlog instead of repeating scans per gateway.
-	if cfg.RunsBackgroundJobs() {
-		if err := svc.CleanupStaleProcessSlots(context.Background()); err != nil {
-			logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
-		}
+	if err := svc.CleanupStaleProcessSlots(context.Background()); err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
 	}
 	if cfg != nil {
-		svc.SetAPIKeyQueuePolicy(APIKeyQueuePolicy{
-			MaxWaiting: cfg.Gateway.APIKeyQueue.MaxWaiting,
-			Timeout:    cfg.Gateway.APIKeyQueue.Timeout(),
-		})
 		svc.SetAccountLoadBatchCacheTTL(time.Duration(cfg.Gateway.Scheduling.LoadBatchCacheTTLMS) * time.Millisecond)
-		if cfg.RunsBackgroundJobs() {
-			svc.StartSlotCleanupWorker(accountRepo, cfg.Gateway.Scheduling.SlotCleanupInterval)
-		}
+		svc.StartSlotCleanupWorker(accountRepo, cfg.Gateway.Scheduling.SlotCleanupInterval)
 	}
 	return svc
 }
@@ -585,26 +495,10 @@ func ProvideSchedulerSnapshotService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
 	cfg *config.Config,
-	authority RegionalSchedulerAuthority,
-) (*SchedulerSnapshotService, error) {
+) *SchedulerSnapshotService {
 	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
-	if cfg != nil && cfg.Runtime.RegionalSchedulerFile != "" {
-		runtime, err := startRegionalSchedulerRuntime(cfg, authority)
-		if err != nil {
-			return nil, err
-		}
-		svc.regionalRuntime = runtime
-		if runtime.replica != nil {
-			reader, err := NewRegionalSchedulerReader(runtime.replica)
-			if err != nil {
-				runtime.stop()
-				return nil, err
-			}
-			svc.SetLocalSnapshotReader(reader)
-		}
-	}
 	svc.Start()
-	return svc, nil
+	return svc
 }
 
 // ProvideRateLimitService creates RateLimitService with optional dependencies.
@@ -619,20 +513,8 @@ func ProvideRateLimitService(
 	settingService *SettingService,
 	tokenCacheInvalidator TokenCacheInvalidator,
 	ollamaCloudUsage *OllamaCloudUsageService,
-	accountOps *AccountOpsService,
-	tempUnschedTriggerCounter TempUnschedTriggerCounter,
-	rdb *redis.Client,
 ) *RateLimitService {
 	svc := NewRateLimitService(accountRepo, usageRepo, cfg, geminiQuotaService, tempUnschedCache)
-	svc.accountOps = accountOps
-	// Redis 计数让多实例共享同一条规则的错误累计；rdb 为空时构造器返回 nil，服务回退到进程内窗口。
-	svc.SetTempUnschedTriggerCounter(tempUnschedTriggerCounter)
-	if rdb != nil {
-		svc.qualityTrigger = &quality5xxTrigger{queue: qualityqueue.NewRedis(rdb)}
-	}
-	if svc.qualityTrigger != nil {
-		svc.qualityTrigger.immediate, _ = accountRepo.(quality5xxImmediateRepository)
-	}
 	if healthCache, ok := tempUnschedCache.(OpenAIAPIKeyHealthCache); ok {
 		svc.SetOpenAIAPIKeyHealthCache(healthCache)
 	}
@@ -655,7 +537,7 @@ func ProvideOpsMetricsCollector(
 	cfg *config.Config,
 ) *OpsMetricsCollector {
 	collector := NewOpsMetricsCollector(opsRepo, settingRepo, accountRepo, concurrencyService, db, redisClient, cfg)
-	startBackgroundService(cfg, collector)
+	collector.Start()
 	return collector
 }
 
@@ -668,7 +550,7 @@ func ProvideOpsAggregationService(
 	cfg *config.Config,
 ) *OpsAggregationService {
 	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -682,7 +564,7 @@ func ProvideOpsAlertEvaluatorService(
 	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
 	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -701,8 +583,8 @@ func ProvideOpsCleanupService(
 	opsService *OpsService,
 ) *OpsCleanupService {
 	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, settingRepo)
-	startBackgroundService(cfg, svc)
-	if opsService != nil && cfg.RunsBackgroundJobs() {
+	svc.Start()
+	if opsService != nil {
 		opsService.SetCleanupReloader(svc)
 	}
 	return svc
@@ -710,22 +592,16 @@ func ProvideOpsCleanupService(
 
 func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
 	sink := NewOpsSystemLogSink(opsRepo)
-	// The sink drains process-local warning/error and request log events. A
-	// gateway must keep this writer even though global aggregation is full-only.
 	sink.Start()
 	logger.SetSink(sink)
 	return sink
 }
 
-// ProvideAuditLogService keeps local audit writes on every role and runs shared
-// retention cleanup only on full nodes.
+// ProvideAuditLogService 创建操作审计日志服务并启动异步写入与保留期清理协程。
 // 停止逻辑挂在 cmd/server 的 provideCleanup。
-func ProvideAuditLogService(repo AuditLogRepository, settingService *SettingService, cfg *config.Config) *AuditLogService {
+func ProvideAuditLogService(repo AuditLogRepository, settingService *SettingService) *AuditLogService {
 	svc := NewAuditLogService(repo, settingService)
-	svc.StartWriter()
-	if cfg.RunsBackgroundJobs() {
-		svc.StartRetentionCleanup()
-	}
+	svc.Start()
 	return svc
 }
 
@@ -764,14 +640,14 @@ func ProvideSystemOperationLockService(repo IdempotencyRepository, cfg *config.C
 
 func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCleanupService {
 	svc := NewIdempotencyCleanupService(repo, cfg)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
 // ProvideGeminiCachedContentService creates GeminiCachedContentService and starts its mutation recovery loop.
 func ProvideGeminiCachedContentService(repo GeminiCachedContentRepository, compat *GeminiMessagesCompatService, cfg *config.Config) *GeminiCachedContentService {
 	svc := NewGeminiCachedContentService(repo, compat, cfg)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -779,16 +655,8 @@ func ProvideGeminiCachedContentService(repo GeminiCachedContentRepository, compa
 func ProvideScheduledTestService(
 	planRepo ScheduledTestPlanRepository,
 	resultRepo ScheduledTestResultRepository,
-	templateRepo QualityRuleTemplateRepository,
-	accountTests *AccountTestService,
 ) *ScheduledTestService {
-	svc := NewScheduledTestService(planRepo, resultRepo)
-	svc.templateRepo = templateRepo
-	svc.accountTests = accountTests
-	if accountTests != nil {
-		svc.qualityModels = svc.accountQualityModels
-	}
-	return svc
+	return NewScheduledTestService(planRepo, resultRepo)
 }
 
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.
@@ -798,19 +666,9 @@ func ProvideScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
-	judge *QualityJudgeService,
-	rdb *redis.Client,
-	groupTests *PelicanGroupTestService,
-	monitor *ChannelMonitorV2Service,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
-	if rdb != nil {
-		svc.qualityTrigger = &quality5xxTrigger{queue: qualityqueue.NewRedis(rdb)}
-	}
-	svc.judgeQuality = judge.Judge
-	svc.groupTests = groupTests
-	svc.candyMonitor = monitor.candy
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -823,7 +681,7 @@ func ProvideOpsScheduledReportService(
 	cfg *config.Config,
 ) *OpsScheduledReportService {
 	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -875,7 +733,7 @@ func ProvideBackupService(
 ) *BackupService {
 	svc := NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
 	svc.SetLeaderLock(lockCache, db)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -884,7 +742,6 @@ func ProvideBackupService(
 // hold a *SettingService reference, but wire injects a tiny callback so writes to
 // ops_advanced_settings immediately propagate into the scheduler hot-path cache.
 func ProvideOpsService(
-	accountOps *AccountOpsService,
 	opsRepo OpsRepository,
 	settingRepo SettingRepository,
 	cfg *config.Config,
@@ -919,12 +776,9 @@ func ProvideOpsService(
 		// a populated cache rather than zero defaults. Best-effort, sync-bounded.
 		settingService.WarmOpenAIQuotaAutoPauseSettings(context.Background())
 	}
-	svc.SetAutoConfigObserver(accountOps.ObserveConcurrencyResult)
 	svc.authCacheInvalidationWorker = authCacheInvalidationWorker
 	svc.apiKeyService = apiKeyService
 	svc.StartRuntimeSettingsRefresh(context.Background())
-	accountOps.setOpenAIAPIKeyFallbackSLAReader(svc, settingService)
-	svc.StartAIOpsController(context.Background())
 	return svc
 }
 
@@ -983,11 +837,8 @@ func ProvideBillingCacheService(
 	rateRepo UserGroupRateRepository,
 	cfg *config.Config,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
-	balanceNotifyService *BalanceNotifyService,
 ) *BillingCacheService {
-	svc := NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, userPlatformQuotaRepo)
-	svc.SetBalanceRejectionNotifier(balanceNotifyService)
-	return svc
+	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, userPlatformQuotaRepo)
 }
 
 // ProvideAPIKeyService wires APIKeyService and connects rate-limit cache invalidation.
@@ -1001,86 +852,38 @@ func ProvideAPIKeyService(
 	cfg *config.Config,
 	billingCacheService *BillingCacheService,
 	concurrencyService *ConcurrencyService,
-	authority RegionalAuthAuthority,
-	autoCredit AutoCreditRepository,
-) (*APIKeyService, error) {
+) *APIKeyService {
 	svc := NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg)
 	svc.SetRateLimitCacheInvalidator(billingCacheService)
-	if billingCacheService != nil {
-		svc.SetBalanceRejectionNotifier(billingCacheService.balanceRejectionNotifier)
-	}
 	svc.SetConcurrencyService(concurrencyService)
-	if cfg != nil && cfg.Runtime.RegionalAuthFile != "" {
-		runtime, err := startRegionalAuthRuntime(cfg, authority)
-		if err != nil {
-			return nil, err
-		}
-		svc.regionalAuthRuntime = runtime
-		if runtime.replica != nil {
-			reader, err := NewRegionalAuthReader(runtime.replica, runtime.cfg.AuthLookupKey)
-			if err != nil {
-				runtime.stop()
-				return nil, err
-			}
-			svc.localAuth = reader
-		}
-	}
-	if cfg == nil || cfg.Runtime.Role != config.RuntimeRoleGateway {
-		svc.SetAutoCredit(autoCredit, billingCacheService)
-	}
-	return svc, nil
-}
-
-// ProvideAPIKeyServiceWithGroupProtection keeps the existing constructor compatible.
-func ProvideAPIKeyServiceWithGroupProtection(
-	apiKeyRepo APIKeyRepository, userRepo UserRepository, groupRepo GroupRepository,
-	userSubRepo UserSubscriptionRepository, userGroupRateRepo UserGroupRateRepository,
-	cache APIKeyCache, cfg *config.Config, billingCacheService *BillingCacheService,
-	concurrencyService *ConcurrencyService, authority RegionalAuthAuthority,
-	autoCredit AutoCreditRepository, protection *GroupAntiDistillationService,
-) (*APIKeyService, error) {
-	svc, err := ProvideAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg, billingCacheService, concurrencyService, authority, autoCredit)
-	if err == nil {
-		svc.groupAntiDistillation = protection
-	}
-	return svc, err
+	return svc
 }
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
-	ProvideQQBotService,
-	ProvideAutoCreditEmailWorker,
-	ProvideAccountPerformanceService,
-	ProvideRequestCaptureManager,
 	// Core services
 	ProvideAuthService,
 	NewPasskeyService,
 	NewUserService,
-	ProvideAPIKeyServiceWithGroupProtection,
-	NewGroupAntiDistillationService,
-	NewSecurityPenaltyService,
+	NewMCPOAuthService,
+	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	ProvideAuthCacheInvalidationWorker,
 	NewGroupService,
 	NewCompositeRouteResolver,
 	NewAccountService,
 	NewProxyService,
-	NewLotteryService,
-	ProvideRedeemService,
+	NewRedeemService,
 	NewPromoService,
 	NewUsageService,
-	NewConversationLogService,
 	NewDashboardService,
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
-	ProvideAdminService,
+	NewAdminService,
 	NewGatewayService,
-	ProvideOpenAIGatewayService,
-	NewSafetyPromptStore,
-	wire.Struct(new(OpenAIGatewayDependencies), "*"),
-	ProvideCodexHarvestService,
+	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,
@@ -1090,8 +893,8 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
+	ProvideClaudeResetCreditService,
 	ProvideOpenAIOAuthService,
-	ProvideOpenAIOAuthReauthService,
 	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
 	NewGeminiOAuthService,
@@ -1132,9 +935,6 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsAlertEvaluatorService,
 	ProvideOpsCleanupService,
 	ProvideOpsScheduledReportService,
-	ProvideAccountOpsService,
-	ProvideAccountTokenGuardService,
-	ProvideAccountTokenGuardV2Service,
 	NewEmailService,
 	NewNotificationEmailService,
 	ProvideEmailQueueService,
@@ -1145,10 +945,10 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
-	ProvideUsageRecordWorkerPool,
+	NewUsageRecordWorkerPool,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
-	ProvideCRSSyncService,
+	NewCRSSyncService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
@@ -1173,19 +973,14 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
-	NewPelicanShowcaseService,
-	NewPelicanGroupTestService,
-	NewControlledExperimentGateway,
-	NewControlledExperimentService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
-	NewQualityJudgeService,
 	NewGroupCapacityService,
 	NewChannelService,
 	wire.Bind(new(ChannelCacheInvalidator), new(*ChannelService)),
 	NewModelPricingResolver,
 	NewModelPlazaService,
-	ProvideContentModerationService,
+	NewContentModerationService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
@@ -1196,12 +991,16 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorQuotaFetcher,
 	ProvideChannelMonitorV2Service,
 	ProvideChannelMonitorV2Aggregator,
-	ProvideChannelMonitorV3Service,
-	ProvideChannelMonitorV3Prober,
-	NewSupportTicketService,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
+	NewUsageBillingLaneCombiner,
+	ProvideUsageBillingRepository,
 )
+
+// ProvideUsageBillingRepository 以按用户合并结算的通道作为各服务使用的计费仓储。
+func ProvideUsageBillingRepository(lanes *UsageBillingLaneCombiner) UsageBillingRepository {
+	return lanes
+}
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {
@@ -1224,18 +1023,17 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvidePaymentService creates PaymentService and attaches notification email delivery.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, lottery *LotteryService) *PaymentService {
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
-	svc.lottery = lottery
 	svc.SetNotificationEmailService(notificationEmailService)
 	return svc
 }
 
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.
-func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config) *PaymentOrderExpiryService {
+func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache LeaderLockCache, db *sql.DB) *PaymentOrderExpiryService {
 	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
 	svc.SetLeaderLock(lockCache, db)
-	startBackgroundService(cfg, svc)
+	svc.Start()
 	return svc
 }
 
@@ -1262,7 +1060,6 @@ func ProvideChannelMonitorRunner(
 	svc *ChannelMonitorService,
 	settingService *SettingService,
 	quotaFetcher *ChannelMonitorQuotaFetcher,
-	cfg *config.Config,
 ) *ChannelMonitorRunner {
 	r := NewChannelMonitorRunner(svc, settingService)
 	if svc != nil {
@@ -1272,100 +1069,34 @@ func ProvideChannelMonitorRunner(
 		svc.SetScheduler(r)
 		svc.SetQuotaFetcher(quotaFetcher)
 	}
-	startBackgroundService(cfg, r)
+	r.Start()
 	return r
 }
 
 // ProvideChannelMonitorV2Service wires settings for user-facing privacy flags
 // (e.g. hide RPM/TPM throughput).
-func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService, groups *PelicanGroupTestService) *ChannelMonitorV2Service {
+func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService) *ChannelMonitorV2Service {
 	svc := NewChannelMonitorV2Service(repo)
 	svc.SetRuntimeReader(settingService)
-	svc.candy = newChannelMonitorV2CandyService(repo, groups, settingService)
 	return svc
-}
-
-// ProvideChannelMonitorV3Service wires the component status page. It reads
-// the V2 passive aggregates, which the V2 aggregator keeps in v2 and v3 mode.
-func ProvideChannelMonitorV3Service(repo ChannelMonitorV3Repository, groupRepo GroupRepository) *ChannelMonitorV3Service {
-	return NewChannelMonitorV3Service(repo, groupRepo)
-}
-
-// ProvideChannelMonitorV3Prober starts the opt-in idle probes of V3, which send
-// requests only for checked groups while the site shows V3.
-func ProvideChannelMonitorV3Prober(repo ChannelMonitorV3Repository, groups *PelicanGroupTestService, settingService *SettingService, cfg *config.Config) *ChannelMonitorV3Prober {
-	prober := NewChannelMonitorV3Prober(repo, groups, settingService)
-	startBackgroundService(cfg, prober)
-	return prober
 }
 
 // ProvideChannelMonitorV2Aggregator starts the passive minute-rollup worker.
 // Aggregation only runs when channel_monitor_enabled=true and mode=v2 (and V2 config enabled).
 // Set CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR=1 to skip Start (local demo with seeded facts).
-func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.DB, settingService *SettingService, cfg *config.Config) *ChannelMonitorV2Aggregator {
+func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.DB, settingService *SettingService) *ChannelMonitorV2Aggregator {
 	aggregator := NewChannelMonitorV2Aggregator(repo, db, settingService)
 	if os.Getenv("CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR") == "1" {
 		return aggregator
 	}
-	startBackgroundService(cfg, aggregator)
+	aggregator.Start()
 	return aggregator
 }
 
-func ProvideAccountOpsService(settings SettingRepository, repo AccountOpsRepository, email *EmailService, accounts AccountRepository, groups GroupRepository, cfg *config.Config, encryptor SecretEncryptor, usageCache *UsageCache, usageLogs UsageLogRepository, geminiQuota *GeminiQuotaService, newAPI NewAPIAuthorizationRepository) *AccountOpsService {
-	svc := NewAccountOpsService(settings, repo, email)
-	svc.SetNotificationDependencies(accounts, encryptor, cfg.Totp.EncryptionKeyConfigured, cfg.Timezone)
-	svc.SetNewAPIGroupReader(newAPI)
-	svc.SetNotificationUsageCache(usageCache)
-	svc.SetNotificationQuotaReaders(usageLogs, geminiQuota)
-	svc.autoAccounts, _ = accounts.(AccountConcurrencyRepository)
-	svc.autoGroups = groups
-	svc.start(cfg.RunsBackgroundJobs())
-	return svc
-}
-
-// ProvideAccountTokenGuardService 创建并启动「凭证守护」后台巡检（智能运维子页面）。
-func ProvideAccountTokenGuardService(settings SettingRepository, repo AccountTokenGuardRepository,
-	accounts AccountRepository, admin AdminService, invalidator TokenCacheInvalidator,
-	cfg *config.Config,
-) *AccountTokenGuardService {
-	svc := NewAccountTokenGuardService(settings, repo, accounts, admin, invalidator)
-	startBackgroundService(cfg, svc)
-	return svc
-}
-
-func ProvideAccountTokenGuardV2Service(repo AccountTokenGuardV2Repository, settings SettingRepository, admin AdminService,
-	openAIGateway *OpenAIGatewayService, reauth *OpenAIOAuthReauthService,
-	cfg *config.Config,
-) *AccountTokenGuardV2Service {
-	svc := NewAccountTokenGuardV2Service(repo, settings, admin, openAIGateway, reauth)
-	if recorder, ok := repo.(CredentialOperationRefreshRecorder); ok && reauth != nil && reauth.oauth != nil {
-		reauth.oauth.SetRefreshFailureRecorder(recorder)
-	}
-	startBackgroundService(cfg, svc)
-	return svc
-}
-
-func ProvideCRSSyncService(accounts AccountRepository, proxies ProxyRepository, oauth *OAuthService, openai *OpenAIOAuthService, gemini *GeminiOAuthService, cfg *config.Config, settings *SettingService, groups GroupRepository) *CRSSyncService {
-	svc := NewCRSSyncService(accounts, proxies, oauth, openai, gemini, cfg)
-	defaults := &adminServiceImpl{settingService: settings, groupRepo: groups}
-	svc.autoConfigure = defaults.ApplyOAuthAutoConfig
-	return svc
-}
-
-// ProvideContentModerationService reuses the existing fixed TOTP AES-GCM key.
-func ProvideContentModerationService(accounts AccountRepository, settings SettingRepository, repo ContentModerationRepository, hashes ContentModerationHashCache, groups GroupRepository, users UserRepository, proxies ProxyRepository, invalidator APIKeyAuthCacheInvalidator, email *EmailService, db *sql.DB, cipher SecretEncryptor, cfg *config.Config) *ContentModerationService {
-	s := NewContentModerationService(settings, repo, hashes, groups, users, proxies, invalidator, email)
-	s.accountRepo = accounts
-	s.cyberEvidence = cyberevidence.New(cyberevidence.NewSQLStore(db), cipher, cfg != nil && cfg.Totp.EncryptionKeyConfigured)
-	return s
-}
-
-func ProvideAccountPerformanceService(repo AccountPerformanceRepository, cfg *config.Config) *AccountPerformanceService {
-	s := NewAccountPerformanceService(repo)
-	// The publisher may also configure a regional file. Runtime role already
-	// excludes subscriber gateways; the control plane must keep evaluating.
-	if cfg.RunsBackgroundJobs() {
-		s.Start()
-	}
+// ProvideClaudeResetCreditService wires the Claude reset query and, with the
+// idempotency store and Redis leases, manual redemption.
+func ProvideClaudeResetCreditService(accounts AccountRepository, tokens *ClaudeTokenProvider, proxies ProxyRepository, settings *SettingService, idem *IdempotencyCoordinator, locks LeaderLockCache) *ClaudeResetCreditService {
+	s := NewClaudeResetCreditService(accounts, tokens, proxies, settings)
+	s.ConfigureRedemption(idem, locks)
 	return s
 }

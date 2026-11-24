@@ -13,17 +13,11 @@ import type {
   AuthResponse,
   ActionCaptchaRequestProof
 } from '@/types'
-import {
-  AUTH_TOKEN_KEY,
-  AUTH_USER_KEY,
-  REFRESH_TOKEN_KEY,
-  TOKEN_EXPIRES_AT_KEY,
-  clearAuthStorage,
-  getAuthItem,
-  setAuthItem,
-  setAuthStorageMode
-} from '@/utils/authStorage'
 
+const AUTH_TOKEN_KEY = 'auth_token'
+const AUTH_USER_KEY = 'auth_user'
+const REFRESH_TOKEN_KEY = 'refresh_token'
+const TOKEN_EXPIRES_AT_KEY = 'token_expires_at' // 存储过期时间戳而非有效期
 const PENDING_AUTH_SESSION_KEY = 'pending_auth_session'
 const AUTO_REFRESH_INTERVAL = 60 * 1000 // 60 seconds for user data refresh
 const TOKEN_REFRESH_BUFFER = 120 * 1000 // 120 seconds before expiry to refresh token
@@ -91,8 +85,6 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingAuthSession = ref<PendingAuthSessionSummary | null>(null)
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
-  let pendingRememberMe = true
-  let authSessionGeneration = 0
 
   // ==================== Computed ====================
 
@@ -103,9 +95,6 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => {
     return user.value?.role === 'admin'
   })
-
-  const isObserver = computed(() => user.value?.role === 'observer')
-  const canManageAccounts = computed(() => isAdmin.value || isObserver.value)
 
   const isSimpleMode = computed(() => runMode.value === 'simple')
   const hasPendingAuthSession = computed(() => pendingAuthSession.value !== null)
@@ -118,11 +107,10 @@ export const useAuthStore = defineStore('auth', () => {
    * Also starts auto-refresh and immediately fetches latest user data
    */
   function checkAuth(): void {
-    authSessionGeneration += 1
-    const savedToken = getAuthItem(AUTH_TOKEN_KEY)
-    const savedUser = getAuthItem(AUTH_USER_KEY)
-    const savedRefreshToken = getAuthItem(REFRESH_TOKEN_KEY)
-    const savedExpiresAt = getAuthItem(TOKEN_EXPIRES_AT_KEY)
+    const savedToken = localStorage.getItem(AUTH_TOKEN_KEY)
+    const savedUser = localStorage.getItem(AUTH_USER_KEY)
+    const savedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+    const savedExpiresAt = localStorage.getItem(TOKEN_EXPIRES_AT_KEY)
     pendingAuthSession.value = getPersistedPendingAuthSession()
 
     if (savedToken && savedUser) {
@@ -209,12 +197,10 @@ export const useAuthStore = defineStore('auth', () => {
    * Schedule proactive token refresh before expiry (based on expires_in seconds)
    * @param expiresInSeconds - Token expiry time in seconds from now
    */
-  function scheduleTokenRefresh(expiresInSeconds: number, persistExpiry = true): void {
+  function scheduleTokenRefresh(expiresInSeconds: number): void {
     const expiresAtMs = Date.now() + expiresInSeconds * 1000
     tokenExpiresAt.value = expiresAtMs
-    if (persistExpiry) {
-      setAuthItem(TOKEN_EXPIRES_AT_KEY, String(expiresAtMs))
-    }
+    localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(expiresAtMs))
     scheduleTokenRefreshAt(expiresAtMs)
   }
 
@@ -222,40 +208,19 @@ export const useAuthStore = defineStore('auth', () => {
    * Perform the actual token refresh
    */
   async function performTokenRefresh(): Promise<void> {
-    const refreshTokenSnapshot = refreshTokenValue.value
-    const userIDSnapshot = user.value?.id
-    const sessionGeneration = authSessionGeneration
-    if (!refreshTokenSnapshot || userIDSnapshot == null) {
+    if (!refreshTokenValue.value) {
       return
     }
 
     try {
       const response = await authAPI.refreshToken()
 
-      let storedUserID: number | null = null
-      try {
-        const storedUser = getAuthItem(AUTH_USER_KEY)
-        storedUserID = storedUser ? (JSON.parse(storedUser) as User).id : null
-      } catch {
-        return
-      }
-      if (
-        authSessionGeneration !== sessionGeneration ||
-        refreshTokenValue.value !== refreshTokenSnapshot ||
-        user.value?.id !== userIDSnapshot ||
-        storedUserID !== userIDSnapshot ||
-        getAuthItem(AUTH_TOKEN_KEY) !== response.access_token ||
-        getAuthItem(REFRESH_TOKEN_KEY) !== response.refresh_token
-      ) {
-        return
-      }
-
       // Update state
       token.value = response.access_token
       refreshTokenValue.value = response.refresh_token
 
-      // The refresh coordinator owns persistence; the store only updates memory and its timer.
-      scheduleTokenRefresh(response.expires_in, false)
+      // Schedule next refresh (this also updates tokenExpiresAt and localStorage)
+      scheduleTokenRefresh(response.expires_in)
     } catch (error) {
       console.error('Token refresh failed:', error)
       // Don't clear auth here - the interceptor will handle 401 errors
@@ -278,10 +243,9 @@ export const useAuthStore = defineStore('auth', () => {
    * @returns Promise resolving to the login response (may require 2FA)
    * @throws Error if login fails
    */
-  async function login(credentials: LoginRequest, rememberMe = true): Promise<LoginResponse> {
-    pendingRememberMe = rememberMe
+  async function login(credentials: LoginRequest): Promise<LoginResponse> {
     try {
-      const response = await authAPI.login(credentials, rememberMe)
+      const response = await authAPI.login(credentials)
 
       // If 2FA is required, return the response without setting auth state
       if (isTotp2FARequired(response)) {
@@ -289,7 +253,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       // Set auth state from the response
-      setAuthFromResponse(response, rememberMe)
+      setAuthFromResponse(response)
 
       return response
     } catch (error) {
@@ -308,11 +272,8 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function login2FA(tempToken: string, totpCode: string): Promise<User> {
     try {
-      const response = await authAPI.login2FA(
-        { temp_token: tempToken, totp_code: totpCode },
-        pendingRememberMe
-      )
-      setAuthFromResponse(response, pendingRememberMe)
+      const response = await authAPI.login2FA({ temp_token: tempToken, totp_code: totpCode })
+      setAuthFromResponse(response)
       return user.value!
     } catch (error) {
       clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
@@ -320,13 +281,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function loginWithPasskey(
-    proof?: ActionCaptchaRequestProof,
-    rememberMe = true
-  ): Promise<User> {
+  async function loginWithPasskey(proof?: ActionCaptchaRequestProof): Promise<User> {
     try {
       const response = await passkeyAPI.login(proof)
-      setAuthFromResponse(response, rememberMe)
+      setAuthFromResponse(response)
       return user.value!
     } catch (error) {
       clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
@@ -338,16 +296,14 @@ export const useAuthStore = defineStore('auth', () => {
    * Set auth state from an AuthResponse
    * Internal helper function
    */
-  function setAuthFromResponse(response: AuthResponse, rememberMe = true): void {
-    authSessionGeneration += 1
-    const storage = setAuthStorageMode(rememberMe)
+  function setAuthFromResponse(response: AuthResponse): void {
     // Store token and user
     token.value = response.access_token
 
     // Store refresh token if present
     if (response.refresh_token) {
       refreshTokenValue.value = response.refresh_token
-      storage.setItem(REFRESH_TOKEN_KEY, response.refresh_token)
+      localStorage.setItem(REFRESH_TOKEN_KEY, response.refresh_token)
     }
 
     // Extract run_mode if present
@@ -357,8 +313,9 @@ export const useAuthStore = defineStore('auth', () => {
     const { run_mode: _run_mode, ...userData } = response.user
     user.value = userData
 
-    storage.setItem(AUTH_TOKEN_KEY, response.access_token)
-    storage.setItem(AUTH_USER_KEY, JSON.stringify(userData))
+    // Persist to localStorage
+    localStorage.setItem(AUTH_TOKEN_KEY, response.access_token)
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData))
     clearPendingAuthSession()
 
     // Start auto-refresh interval for user data
@@ -394,23 +351,23 @@ export const useAuthStore = defineStore('auth', () => {
 
   /**
    * 直接设置 token（用于 OAuth/SSO 回调），并加载当前用户信息。
-   * 会自动读取当前认证存储中已设置的 refresh_token 和 token_expires_in
+   * 会自动读取 localStorage 中已设置的 refresh_token 和 token_expires_in
    * @param newToken - 后端签发的 JWT access token
    */
   async function setToken(newToken: string): Promise<User> {
-    authSessionGeneration += 1
     // Clear any previous state first (avoid mixing sessions)
-    // Do not clear storage here because an OAuth callback may have stored refresh_token first.
+    // Note: Don't clear localStorage here as OAuth callback may have set refresh_token
     stopAutoRefresh()
     stopTokenRefresh()
     token.value = null
     user.value = null
 
     token.value = newToken
-    setAuthItem(AUTH_TOKEN_KEY, newToken)
+    localStorage.setItem(AUTH_TOKEN_KEY, newToken)
 
-    const savedRefreshToken = getAuthItem(REFRESH_TOKEN_KEY)
-    const savedExpiresAt = getAuthItem(TOKEN_EXPIRES_AT_KEY)
+    // Read refresh token and expires_at from localStorage if set by OAuth callback
+    const savedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+    const savedExpiresAt = localStorage.getItem(TOKEN_EXPIRES_AT_KEY)
 
     if (savedRefreshToken) {
       refreshTokenValue.value = savedRefreshToken
@@ -452,19 +409,11 @@ export const useAuthStore = defineStore('auth', () => {
     setPendingAuthSession(null)
   }
 
-  function setLoginPersistence(rememberMe: boolean): void {
-    pendingRememberMe = rememberMe
-    setAuthStorageMode(rememberMe)
-  }
-
   /**
    * User logout
    * Clears all authentication state and persisted data
    */
   async function logout(): Promise<void> {
-    authSessionGeneration += 1
-    stopAutoRefresh()
-    stopTokenRefresh()
     try {
       // Call API logout (revokes refresh token on server)
       await authAPI.logout()
@@ -496,7 +445,8 @@ export const useAuthStore = defineStore('auth', () => {
       const { run_mode: _run_mode, ...userData } = response.data
       user.value = userData
 
-      setAuthItem(AUTH_USER_KEY, JSON.stringify(userData))
+      // Update localStorage
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData))
 
       return userData
     } catch (error) {
@@ -513,7 +463,6 @@ export const useAuthStore = defineStore('auth', () => {
    * Internal helper function
    */
   function clearAuth(options?: { preservePendingAuthSession?: boolean }): void {
-    authSessionGeneration += 1
     // Stop auto-refresh
     stopAutoRefresh()
     // Stop token refresh
@@ -523,7 +472,10 @@ export const useAuthStore = defineStore('auth', () => {
     refreshTokenValue.value = null
     tokenExpiresAt.value = null
     user.value = null
-    clearAuthStorage()
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    localStorage.removeItem(AUTH_USER_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
+    localStorage.removeItem(TOKEN_EXPIRES_AT_KEY)
 
     if (options?.preservePendingAuthSession) {
       pendingAuthSession.value = getPersistedPendingAuthSession()
@@ -546,8 +498,6 @@ export const useAuthStore = defineStore('auth', () => {
     // Computed
     isAuthenticated,
     isAdmin,
-    isObserver,
-    canManageAccounts,
     isSimpleMode,
     hasPendingAuthSession,
 
@@ -560,7 +510,6 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     checkAuth,
     refreshUser,
-    setLoginPersistence,
     setPendingAuthSession,
     clearPendingAuthSession
   }

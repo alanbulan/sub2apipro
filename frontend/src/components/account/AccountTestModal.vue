@@ -6,19 +6,6 @@
     @close="handleClose"
   >
     <div class="space-y-4">
-      <AccountTestTiming :timing="connectionTiming.timing.value" :delivery="connectionTiming.delivery.value" />
-      <div v-if="legacyBPSAuthorizationPending" role="status" class="text-sm text-amber-700 dark:text-amber-300">
-        {{ t('admin.accounts.bpsAuthorizing') }}
-        <a href="/admin/token-guard-v2" target="_blank" rel="noopener noreferrer" class="ml-2 underline">{{ t('admin.accounts.openCredentialOperations') }}</a>
-      </div>
-      <div v-if="modelLoadError" role="alert" class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-        <p>{{ modelLoadError }}</p>
-        <div class="mt-2 flex gap-4">
-          <button type="button" :disabled="loadingModels" class="underline" @click="loadAvailableModels">{{ t('admin.accounts.retryModels') }}</button>
-          <a v-if="modelAuthError" href="/admin/token-guard-v2" target="_blank" rel="noopener noreferrer" class="underline">{{ t('admin.accounts.openCredentialOperations') }}</a>
-        </div>
-      </div>
-      <AccountTestEvidence v-if="upstreamEvidence" :evidence="upstreamEvidence" />
       <!-- Account Info Card -->
       <div
         v-if="account"
@@ -255,16 +242,10 @@
 </template>
 
 <script setup lang="ts">
-import { AUTH_TOKEN_KEY, getAuthItem } from '@/utils/authStorage'
-import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import AccountTestTiming from '@/components/account/AccountTestTiming.vue'
-import { useAccountTestTiming, type AccountTestTiming as TimingPayload } from '@/composables/useAccountTestTiming'
-import { consumeAccountTestStream } from '@/utils/accountTestStream'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
-import AccountTestEvidence from './AccountTestEvidence.vue'
-import type { AccountTestUpstreamEvidence } from '@/types/accountTestEvidence'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
@@ -273,8 +254,6 @@ import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
-const connectionTiming = useAccountTestTiming()
-let streamGeneration = 0
 const { copyToClipboard } = useClipboard()
 
 interface OutputLine {
@@ -294,12 +273,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'tested'): void
 }>()
 
-let reportedTestCompletion = false
-const notifyTestComplete = () => { if (!reportedTestCompletion) { reportedTestCompletion = true; emit('tested') } }
-const upstreamEvidence = ref<AccountTestUpstreamEvidence | null>(null)
 const terminalRef = ref<HTMLElement | null>(null)
 const status = ref<'idle' | 'connecting' | 'success' | 'error'>('idle')
 const outputLines = ref<OutputLine[]>([])
@@ -309,30 +284,14 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
-const modelLoadError = ref('')
-const modelAuthError = ref(false)
-let modelLoadGeneration = 0
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
-const testMode = ref<'default' | 'compact' | 'bps_tools'>('default')
+const testMode = ref<'default' | 'compact'>('default')
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
-// Managed accounts authorize BPS through authorization connections and never
-// receive the legacy Excel grant this marker waits for.
-const legacyBPSAuthorizationPending = computed(() =>
-  props.account?.extra?.openai_excel_bps_authorization_pending === true && props.account?.extra?.openai_connections_managed !== true
-)
-const isBPSAccount = computed(() =>
-  isOpenAIAccount.value && props.account?.type === 'oauth' && props.account?.extra?.openai_excel_bps === true && props.account?.extra?.openai_excel_bps_authorization_pending !== true
-)
-const openAITestModeOptions = computed(() => isBPSAccount.value
-  ? [
-      { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-      { value: 'bps_tools', label: t('admin.accounts.openai.testModeBPSTools') }
-    ]
-  : [
-      { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-      { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
-    ])
+const openAITestModeOptions = computed(() => [
+  { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
+  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+])
 const previewImageUrl = ref('')
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
 const supportsGeminiImageTest = computed(() => {
@@ -363,17 +322,14 @@ const sortTestModels = (models: ClaudeModel[]) => {
 
 // Load available models when modal opens
 watch(
-  () => [props.show, props.account?.id] as const,
-  async ([newVal]) => {
+  () => props.show,
+  async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
       testMode.value = 'default'
       resetState()
       await loadAvailableModels()
     } else {
-      ++modelLoadGeneration
-      modelLoadError.value = ''
-      modelAuthError.value = false
       abortStream()
     }
   }
@@ -388,15 +344,10 @@ watch(selectedModelId, () => {
 const loadAvailableModels = async () => {
   if (!props.account) return
 
-  const generation = ++modelLoadGeneration
   loadingModels.value = true
-  modelLoadError.value = ''
-  modelAuthError.value = false
-  availableModels.value = []
   selectedModelId.value = '' // Reset selection before loading
   try {
     const models = await adminAPI.accounts.getAvailableModels(props.account.id)
-    if (generation !== modelLoadGeneration) return
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
@@ -411,24 +362,16 @@ const loadAvailableModels = async () => {
       }
     }
   } catch (error) {
-    if (generation !== modelLoadGeneration) return
-    const reason = typeof error === 'object' && error !== null && 'reason' in error ? String(error.reason) : ''
-    modelAuthError.value = reason.startsWith('OPENAI_EXCEL_AUTH_')
-    const key = 'admin.accounts.excelAuthErrors.' + reason
-    const authReasons = ['OPENAI_EXCEL_AUTH_PENDING', 'OPENAI_EXCEL_AUTH_FAILED', 'OPENAI_EXCEL_AUTH_VERIFICATION_REQUIRED', 'OPENAI_EXCEL_AUTH_CONFIG_REQUIRED', 'OPENAI_EXCEL_AUTH_REQUIRED', 'OPENAI_EXCEL_AUTH_UNAVAILABLE']
-    modelLoadError.value = authReasons.includes(reason) ? t(key) : t('admin.accounts.modelsLoadFailed')
+    console.error('Failed to load available models:', error)
     // Fallback to empty list
     availableModels.value = []
     selectedModelId.value = ''
   } finally {
-    if (generation === modelLoadGeneration) loadingModels.value = false
+    loadingModels.value = false
   }
 }
 
 const resetState = () => {
-  connectionTiming.reset()
-  reportedTestCompletion = false
-  upstreamEvidence.value = null
   status.value = 'idle'
   outputLines.value = []
   streamingContent.value = ''
@@ -443,10 +386,7 @@ const handleClose = () => {
 }
 
 const abortStream = () => {
-  streamGeneration++
   if (abortController) {
-    connectionTiming.cancel()
-    status.value = 'idle'
     abortController.abort()
     abortController = null
   }
@@ -467,17 +407,15 @@ const scrollToBottom = async () => {
 const startTest = async () => {
   if (!props.account || !selectedModelId.value) return
 
-  abortStream()
   resetState()
-  connectionTiming.begin()
   status.value = 'connecting'
   addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
   addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-gray-400')
   addLine('', 'text-gray-300')
 
-  const generation = ++streamGeneration
-  const controller = new AbortController()
-  abortController = controller
+  abortStream()
+
+  abortController = new AbortController()
 
   try {
     // Use the configured API base; EventSource does not support POST.
@@ -487,7 +425,7 @@ const startTest = async () => {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${getAuthItem(AUTH_TOKEN_KEY)}`,
+        Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -495,40 +433,56 @@ const startTest = async () => {
         prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
         mode: isOpenAIAccount.value ? testMode.value : 'default'
       }),
-      signal: controller.signal
+      signal: abortController.signal
     })
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    await consumeAccountTestStream(response, controller.signal, (event) => {
-      if (generation === streamGeneration) handleEvent(event)
-    })
-    if (generation !== streamGeneration) return
-    connectionTiming.finish()
-    if (status.value === 'connecting') {
-      status.value = 'error'
-      errorMessage.value = t('accountTestTiming.delivery.incomplete')
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim()
+          if (jsonStr) {
+            try {
+              const event = JSON.parse(jsonStr)
+              handleEvent(event)
+            } catch (e) {
+              console.error('Failed to parse SSE event:', e)
+            }
+          }
+        }
+      }
     }
   } catch (error: unknown) {
-    if (generation !== streamGeneration) return
     if (error instanceof DOMException && error.name === 'AbortError') {
-      connectionTiming.cancel()
       status.value = 'idle'
       return
     }
-    connectionTiming.fail()
     status.value = 'error'
     const msg = error instanceof Error ? error.message : 'Unknown error'
     errorMessage.value = msg
     addLine(`Error: ${msg}`, 'text-red-400')
   }
-  finally { if (generation === streamGeneration) abortController = null }
 }
 
 const handleEvent = (event: {
-  timing?: TimingPayload
   type: string
   text?: string
   model?: string
@@ -536,15 +490,10 @@ const handleEvent = (event: {
   error?: string
   image_url?: string
   mime_type?: string
-  upstream_status?: number
-  upstream_model?: string
-  request_id?: string
-  upstream_error_code?: string
 }) => {
-  connectionTiming.accept(event)
   switch (event.type) {
     case 'test_start':
-      addLine(t('admin.accounts.testRequestStarted'), 'text-gray-400')
+      addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
@@ -556,12 +505,6 @@ const handleEvent = (event: {
       )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')
-      break
-
-    case 'upstream_response':
-      if (event.upstream_status && event.upstream_status >= 100 && event.upstream_status <= 599) {
-        upstreamEvidence.value = { status: event.upstream_status, model: event.upstream_model, requestId: event.request_id, errorCode: event.upstream_error_code }
-      }
       break
 
     case 'content':
@@ -588,7 +531,6 @@ const handleEvent = (event: {
       break
 
     case 'test_complete':
-      notifyTestComplete()
       // Move streaming content to output lines
       if (streamingContent.value) {
         addLine(streamingContent.value, 'text-green-300')
@@ -603,7 +545,6 @@ const handleEvent = (event: {
       break
 
     case 'error':
-      notifyTestComplete()
       status.value = 'error'
       errorMessage.value = event.error || 'Unknown error'
       if (streamingContent.value) {
@@ -613,9 +554,6 @@ const handleEvent = (event: {
       break
   }
 }
-
-onBeforeUnmount(abortStream)
-watch(() => props.account?.id, () => { abortStream(); resetState() })
 
 const copyOutput = () => {
   const text = outputLines.value.map((l) => l.text).join('\n')

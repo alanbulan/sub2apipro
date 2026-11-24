@@ -26,8 +26,6 @@ export default {
       output: '输出',
       cacheToday: '今日缓存',
       performance: '性能指标',
-      accountConcurrency: '账号并发',
-      accountConcurrencyHint: '全站账号当前占用的并发槽位总数，加载页面或点击刷新时更新；读取不可用时显示 —。',
       avgResponse: '平均响应',
       averageTime: '平均时间',
       active: '活跃',
@@ -221,7 +219,7 @@ export default {
         step1: {
           title: '创建 R2 存储桶',
           line1: '登录 Cloudflare Dashboard (dash.cloudflare.com)，左侧菜单选择「R2 对象存储」',
-          line2: '点击「创建存储桶」，输入存储桶名称，选择区域',
+          line2: '点击「创建存储桶」，输入名称（如 sub2api-backups），选择区域',
           line3: '点击创建完成'
         },
         step2: {
@@ -496,39 +494,6 @@ export default {
 
     // Users Management
     users: {
-      bulkRecharge: {
-  "title": "批量充值",
-  "action": "批量充值",
-  "count": "已选择 {count} 个用户",
-  "amount": "每人充值金额（$）",
-  "total": "本次充值总额：${total}",
-  "hint": "所有选中用户使用同一充值金额；余额和充值记录同时保存，失败时整批撤销。",
-  "pending": "上次结果尚未确认。重试将查询同一笔充值，请勿另外重复充值。",
-  "confirm": "为 {count} 个用户每人充值 ${amount}，合计 ${total}？",
-  "success": "已为 {count} 个用户充值",
-  "failed": "批量充值失败，请重试同一笔操作",
-  "sessionRequired": "请重新登录后充值"
-},
-      feishuSync: {
-  "action": "同步飞书用户",
-  "running": "同步中…",
-  "retryStatus": "读取进度失败，点击重试",
-  "confirm": "同步当前飞书企业的在职成员？将自动创建普通用户，补齐姓名、头像及可读取的邮箱；已有余额和权限保留。飞书管理员可能需要在官方页面审批通讯录权限。",
-  "preparing": "正在检查飞书权限…",
-  "reading": "正在读取完整企业通讯录…",
-  "syncing": "同步进度：{processed}/{total}",
-  "succeeded": "完成：新建 {created}，更新 {updated}，跳过 {skipped}",
-  "partial": "部分完成：新建 {created}，更新 {updated}，失败 {failed}，可重新同步",
-  "failed": "同步未完成。",
-  "approval_required": "等待飞书管理员授权。",
-  "errors": {
-    "permission_required": "请在飞书开发者后台批准通讯录读取权限和全员通讯录范围，再重试。",
-    "expired": "任务超时或服务已重启，可重新同步。",
-    "config_changed": "应用配置已变更，请重新同步。",
-    "upstream_error": "飞书接口暂不可用，请稍后重试。",
-    "service_error": "服务暂不可用，请稍后重试。"
-  }
-},
       title: '用户管理',
       description: '管理用户账户和权限',
       createUser: '创建用户',
@@ -600,11 +565,7 @@ export default {
       passwordCopied: '密码已复制',
       creating: '创建中...',
       updating: '更新中...',
-      liveUsageHint: '每分钟刷新当前页。并发为当前占用／上限；RPM 为现有用户级限流计数／上限，每个自然分钟重置，可能包含被限流请求。上限为 0 表示不限额（∞），仍记录使用量；不包含在分组检查阶段被拒绝的请求。',
-      liveConcurrency: '并发',
-      liveUsageUnavailable: '暂不可用',
       columns: {
-        liveUsage: '并发 / RPM',
         user: '用户',
         id: 'ID',
         email: '邮箱',
@@ -665,23 +626,7 @@ export default {
       failedToToggle: '更新用户状态失败',
       failedToLoadApiKeys: '加载用户 API 密钥失败',
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
-      observerGroups: '可管理的账号分组',
-      observerSetup: {
-        title: '转为观察者时同步执行',
-        createGroup: '创建以该用户名称命名的专属分组',
-        createGroupHint: '固定为 OpenAI 平台, 倍率为 1. 自动授予该分组的账号管理和 API 使用权限. 同名分组已存在时提交失败.',
-        simpleModeHint: '简易模式不支持专属分组, 此选项不可用.',
-        revokePublic: '取消该用户使用其他公开分组的权限',
-        revokePublicHint: '限制公开普通分组及其已有 API Key. 保留专属分组授权和已购订阅; 账号管理分组不受此选项影响.',
-        grantResources: '增加 99999 余额额度和 1000 并发',
-        grantResourcesHint: '余额累加 99999, 并发在表单值基础上增加 1000. 并发为 0 时保持无限制. 变更记录在余额/并发历史中.',
-        onceHint: '默认不勾选. 仅在本次从其他角色改为观察者时执行, 后续编辑不会重复执行.',
-        usernameRequired: '创建专属分组前请填写用户名'
-      },
-      observerGroupsHint: '仅授权账号管理, 不影响用户调用 API 的分组权限. 未选择分组时无账号管理权限. 允许查看和导出账号凭据; 共享账号的操作也会影响其他分组.',
-      observerImportHint: '选择导入目标分组. 观察者导入不包含代理配置, 请使用不含代理的备份文件.',
       roles: {
-        observer: '观察者',
         admin: '管理员',
         user: '用户'
       },
@@ -899,23 +844,6 @@ export default {
 
     // Groups Management
     groups: {
-      antiDistillation: {
-        title: 'OpenAI 防蒸馏保护（零缓存规则）',
-        enable: '启用本 OpenAI 分组的保护',
-        rule: '同一客户跨 API Key、跨已开启的 OpenAI 分组，最近 20 条完整成功且缓存统计明确的有效文本请求中，至少 18 条缓存读取为 0 时，暂停该客户在已开启分组的新请求，并异步通知其账号邮箱。未知缓存统计不计入。',
-        signalHint: '零缓存仅是保护信号，不代表已认定蒸馏。正常的新会话和无缓存场景也可能触发。',
-        pauseMinutes: '暂停请求时长（分钟）',
-        minutesHint: '可设置 1–1440 分钟，默认 5 分钟；由触发保护的分组决定，已开始的暂停不会续期。',
-        invalidMinutes: '请输入 1–1440 之间的整数。',
-        scopeHint: '仅影响已开启保护分组的新请求；现有流式响应继续完成。未开启的分组不受此保护限制，也不会自动转入更高价格的分组。',
-        saveHint: '本项单独保存，最多 10 秒生效；无需点击底部的分组保存按钮。关闭保护后，本分组按配置生效时间恢复放行。',
-        createHint: '默认关闭。请先创建分组，再进入“编辑分组”单独配置并保存防蒸馏保护。',
-        save: '保存防蒸馏设置',
-        saved: '防蒸馏设置已保存，最多 10 秒生效',
-        loadFailed: '防蒸馏设置加载失败；重新加载成功前不能保存，避免覆盖原配置。',
-        saveFailed: '防蒸馏设置保存失败，请重试。',
-        retry: '重新加载',
-      },
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
       searchGroups: '搜索分组...',
@@ -941,7 +869,6 @@ export default {
         rateMultiplier: '费率倍数',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
-        deniedModels: '禁用模型',
         rateDefault: '默认',
         rpmDefault: '默认',
         exclusive: '独占',
@@ -982,13 +909,6 @@ export default {
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
-        blockSubagents: '禁止子代理',
-        blockSubagentsHint: '拒绝带子代理或父线程标识的员工请求（包括自动审查等子代理）。主线程、后台测试和质量运维不受影响；客户端删除这些标识后无法可靠识别。',
-        codexCLIOnly: '仅允许 Codex 客户端',
-        codexCLIOnlyHint: '仅限制员工 API 调用，使用全局 Codex 客户端识别策略。账号管理的测试连接、智商测试及质量运维判题不受影响。',
-        streamOnly: '仅允许流式请求',
-        streamOnlyHint: '开启后本分组只接受流式对话请求：Messages、Chat Completions、Responses 里没写 "stream": true 的请求，以及 Gemini 的 generateContent，都会直接返回 400。Token 计数、模型列表、Embeddings、图片视频等本来没有流式的接口不受影响。注意：部分客户端的连通性检测是非流式请求，开启后会检测失败。',
-        streamOnlyBadge: '仅流式',
         maxReasoningEffort: '推理强度上限',
         maxReasoningEffortUnlimited: '不限制（跟随请求）',
         maxReasoningEffortHint: '仅限制客户端主动请求的 Anthropic/OpenAI 推理强度；Composite 分组按实际目标平台生效。不会为缺省请求主动开启推理。上限优先级高于推理强度映射。',
@@ -1119,13 +1039,6 @@ export default {
       noRpmOverrides: '暂无用户设置了专属 RPM',
       rpmSaved: '专属 RPM 已保存',
       groupRpmDefault: '分组默认 RPM',
-      userDeniedModels: '用户模型限制',
-      userDeniedModelsTitle: '分组用户模型限制',
-      userDeniedModelsHint: '禁止指定用户在本分组使用某些模型，其他模型不受影响。不区分大小写，支持末尾 * 通配（如 gpt-6-*）。',
-      addUserDeniedModels: '添加用户模型限制',
-      deniedModelsPlaceholder: '输入模型名后回车',
-      noUserDeniedModels: '暂无用户设置了模型限制',
-      userDeniedModelsSaved: '用户模型限制已保存',
       searchUserPlaceholder: '搜索用户邮箱...',
       noRateMultipliers: '暂无用户设置了专属倍率',
       rateUpdated: '专属倍率已更新',
@@ -1162,7 +1075,7 @@ export default {
         description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
         allowImageGeneration: '允许当前分组生图',
         allowBatchImageGeneration: '允许当前分组批量生图',
-        perImageBilling: '图片端点按张计费（显式 Token 定价优先）',
+        perImageBilling: '按张计费',
         independentMultiplier: '生图倍率独立',
         imageMultiplier: '生图独立倍率',
         batchDiscountMultiplier: '批量生图折扣倍率',
@@ -1175,16 +1088,6 @@ export default {
         notConfigured: '未配置'
       },
       videoPricing: {
-        h3Enable: '开启 MiniMax-H3 视频模型',
-        h3Mode: '计费方式',
-        h3PerSecond: '按秒',
-        h3PerRequest: '按次',
-        h3Seconds: '每次视频时长（1–15 秒）',
-        h3SecondPrice: '每秒单价（USD/秒）',
-        h3RequestPrice: '每次价格（USD/次）',
-        h3Hint: '统一美元定价，不区分分辨率。最终费用 = 基础费用 × 当前分组倍率。成功任务在查询结果时结算，失败任务不扣费。',
-        h3DurationHint: '按次计费仅接受这里配置的时长，其他时长会在提交上游前被拒绝。',
-        h3Preview: '当前分组倍率 {multiplier}，最终价格 {price}',
         title: '视频生成计费',
         description:
           '配置 Grok 视频生成的每秒单价（USD/秒），留空则使用默认每秒价（grok-imagine-video：480p $0.05/s、720p $0.07/s；video-1.5：480p $0.08/s、720p $0.14/s、1080p $0.25/s）',
@@ -1359,18 +1262,18 @@ export default {
       openaiLive: {
         title: 'OpenAI Live',
         allow: '允许访问 Live',
-        hint: '启用后，此 OpenAI 分组的 API Key 可以创建并控制 Live 语音会话。默认关闭。服务端必须是 Apple Silicon Mac，并安装官方 ChatGPT App；客户端平台不受限制。',
+        hint: '启用后，此 OpenAI 分组的 API Key 可以创建并控制 Live 语音会话。默认关闭。运行 Sub2API 的服务端必须是 Apple Silicon Mac，并安装官方 ChatGPT App；客户端平台不受限制。',
         unsupportedTitle: '当前服务端不支持 Live',
-        unsupportedMessage: '当前服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
+        unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
         enableAnyway: '仍然开启'
       },
       openaiFast: {
         title: 'OpenAI Fast 模式',
         force: '强制使用 Fast（priority）',
         hint: '开启后，此分组的 OpenAI 请求会强制写入 service_tier=priority；全局 Fast/Flex 策略仍可过滤或拦截。保存后新请求立即生效，已建立的 WebSocket 会话需重连。',
+        forceUltrafast: '强制使用 Ultra Fast（ultrafast）',
+        ultrafastHint: '对支持的模型强制使用 Ultra Fast（service_tier=ultrafast）。GPT-6.2 订阅档位按套餐补全：Pro 200 支持 Sol，Pro 500 支持 Sol 和 Astra；其他账号使用其目录明确提供的档位。不可用时，若同时开启强制 Fast 则使用 Fast，否则跟随客户端。6.2 Sol 和 Astra 在太平洋时间 2027 年 2 月 28 日及之前按标准价 3 倍计费，之后为 6 倍。GPT-6 Astra 和 GPT-6.1 Sol 为 6 倍。免费 Fast 不包含 Ultra Fast。',
         free: '免费 Fast',
-        freeUltrafast: '免费 UltraFast',
-        freeUltrafastHint: '开启后，最终按 ultrafast 档位结算的请求向用户按 Standard 价格计费（含缓存读写）。独立于免费 Fast；不强制上游使用 UltraFast，账号成本统计仍保留实际档位。',
         freeHint: '该分组的 Fast 请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。'
       },
       invalidRequestFallback: {

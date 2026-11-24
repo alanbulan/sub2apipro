@@ -92,30 +92,18 @@ func isOpenAIAccount(account *Account) bool {
 
 // handleOpenAIAccountUpstreamError expects canonicalModel to be the model used
 // for scheduling after applying account mapping exactly once.
-func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) (shouldDisable bool) {
+func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) bool {
+	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
+		return false
+	}
+	// Any non-2xx upstream HTTP response means the model request was actually sent.
 	if s != nil {
-		var disabledOn429 bool
-		ctx, disabledOn429 = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, statusCode, headers)
-		if disabledOn429 {
-			defer func() { shouldDisable = true }()
-		}
-	}
-	if isOpenAIUpstreamSessionBlocked(responseBody) {
-		return false
-	}
-	// Apply the same exemption before access-state and custom cooldown fast
-	// paths, which can otherwise block the credential before the shared handler.
-	if isOpenAIRequestScoped403(account, statusCode, responseBody) {
-		return false
+		scheduleOllamaCloudUsageActivity(s.deferredService, account)
+		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
 	}
 	// Capacity shedding describes this request, not account health. Keep the
 	// account schedulable while the request-local retry budget handles recovery.
-	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityResponse(statusCode, headers, responseBody) {
-		// This upstream response still breaks an IP-401 streak even though its
-		// request-scoped failure must not disable the selected credential.
-		if s != nil && s.rateLimitService != nil {
-			s.rateLimitService.resetOpenAIIPUnauthorizedStreak(account)
-		}
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
 		// An explicit model-scoped rule overrides the default retry policy without
 		// turning a request-level overload into an account-wide health failure.
 		model := firstRequestedModel(canonicalModel)
@@ -130,42 +118,8 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		}
 		return false
 	}
-	if account != nil && account.AuthConnectionID != "" && !isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) && statusCode != http.StatusTooManyRequests {
-		if (statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden || statusCode >= 500) && s != nil && s.excelOAuthReauth != nil {
-			stateCtx, cancel := openAIAccountStateContext(ctx)
-			defer cancel()
-			_ = s.excelOAuthReauth.FailAuthConnection(stateCtx, account, statusCode)
-		}
-		return false
-	}
-	// SIWC has independent credentials and limits. Never revoke or relogin the primary Codex grant on its errors.
-	if account.IsSIWCEnabled() && account.AuthConnectionID == "" {
-		return false
-	}
-	if s != nil {
-		ctx = s.rateLimitService.maybeRotateOpenAITOTPOn429(ctx, account, statusCode)
-	}
-	// Observe other HTTP responses before request/model-scoped policies return.
-	// The shared handler below skips this reset to keep one observation per response.
-	if s != nil && s.rateLimitService != nil && !isOpenAIIPUnauthorizedResponse(statusCode, responseBody) {
-		s.rateLimitService.resetOpenAIIPUnauthorizedStreak(account)
-	}
-	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
-		return false
-	}
-	// Any non-2xx upstream HTTP response means the model request was actually sent.
-	if s != nil {
-		scheduleOllamaCloudUsageActivity(s.deferredService, account)
-		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
-	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	// Fastpath 和后面的通用错误处理会各自判断临时不可调度。绑在同一次
-	// stateCtx 上，一条上游错误只会计数一次。
-	stateCtx = bindTempUnschedAttempt(stateCtx)
-	if s != nil {
-		stateCtx = s.rateLimitService.observeAccountOps(stateCtx, account, statusCode, headers, responseBody)
-	}
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) {
 		message := "OpenAI upstream account or workspace is unavailable"
 		if upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody)); upstreamMsg != "" {
@@ -195,9 +149,7 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// "tool choice not found in 'tools'" 400 means upstream revoked this account's
 	// image capability. Gated on the self-built marker: passthrough clients control
 	// their own tools/tool_choice and could otherwise poison a healthy account.
-	// A structured 403 image-permission denial is authoritative for passthrough too.
-	if isOpenAIImagePermissionError(statusCode, responseBody) ||
-		(isOpenAIImagesSelfBuiltRequest(ctx) && isOpenAIImageCapabilityLossError(statusCode, responseBody)) {
+	if isOpenAIImagesSelfBuiltRequest(ctx) && isOpenAIImageCapabilityLossError(statusCode, responseBody) {
 		if s != nil && s.rateLimitService != nil {
 			_ = s.rateLimitService.HandleOpenAIImageCapabilityLoss(stateCtx, account, statusCode, responseBody)
 		}
@@ -233,7 +185,7 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if s.rateLimitService == nil {
 		return false
 	}
-	shouldDisable = s.rateLimitService.handleUpstreamErrorAfterStreakReset(stateCtx, account, statusCode, headers, responseBody)
+	shouldDisable := s.rateLimitService.HandleUpstreamError(stateCtx, account, statusCode, headers, responseBody)
 	tempModel := tempUnschedulableModel(stateCtx, nil)
 	modelTempMatched := tempModel != "" && tempUnschedRulesApply(account, statusCode, responseBody, tempModel) &&
 		len(matchTempUnschedulableRules(account, statusCode, responseBody)) > 0
@@ -613,22 +565,11 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 // scheduling Account as source of truth. When TempUnschedulableUntil,
 // RateLimitResetAt, and OverloadUntil are all inactive, a stale local account
 // block is dropped with generation+deadline CAS. Model-scoped transient blocks
-// and Excel BPS cooldowns (BPS-routed models only) are left alone. This is
-// fail-open if a DB write failed or the snapshot has not caught up yet: empty
-// cooldown fields drop the local account-level block.
-// requireCompact 必须与 Forward 的 /responses/compact 判定同源（两侧都来自
-// IsOpenAIResponsesCompactPath）：门票门控按真正出站的模型名判定，否则 compact
-// 请求会被按客户端原始模型误拦（见 openAICodexTicketOutboundModel）。
-func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string, requireCompact bool) bool {
+// are left alone. This is fail-open if a DB write failed or the snapshot has
+// not caught up yet: empty cooldown fields drop the local account-level block.
+func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
 	if s == nil {
 		return false
-	}
-	if s.isExcelBPSCoolingDown(account, requestedModel) || s.isExcelBPSModelCoolingDown(account, requestedModel) {
-		return true
-	}
-	outboundModel := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
-	if s.openAICodexTicketBlocksAccount(account, outboundModel) {
-		return true
 	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {

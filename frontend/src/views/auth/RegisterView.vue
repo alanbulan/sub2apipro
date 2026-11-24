@@ -12,10 +12,6 @@
       </div>
 
       <!-- Registration Disabled Message -->
-      <div v-if="lotteryInviteNotice" role="status" class="rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm leading-6 text-primary-800 dark:border-primary-800 dark:bg-primary-950 dark:text-primary-200">
-        <p v-if="lotteryInviteName" class="font-semibold">{{ lotteryInviteName }}</p>
-        {{ lotteryInviteNotice }}
-      </div>
       <div
         v-if="!registrationEnabled && settingsLoaded"
         class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
@@ -327,13 +323,7 @@
           @start="handleOAuthStart"
         />
 
-        <FeishuOAuthSection
-            v-if="feishuOAuthEnabled"
-            :disabled="registrationActionDisabled"
-            :show-divider="false"
-            @start="handleOAuthStart"
-          />
-          <LinuxDoOAuthSection
+        <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
@@ -379,7 +369,6 @@ import { computed, ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
-import FeishuOAuthSection from '@/components/auth/FeishuOAuthSection.vue'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
@@ -388,7 +377,6 @@ import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { useAuthStore, useAppStore } from '@/stores'
-import { lotteryAPI, lotteryRuleKey, lotteryRuleParams } from '@/api/lottery'
 import {
   buildOAuthLoginStartURL,
   getPublicSettings,
@@ -420,8 +408,6 @@ const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
-const lotteryVisitLoading = ref(false)
-const lotteryInviteNotice = ref(''), lotteryInviteName = ref('')
 const appStore = useAppStore()
 
 // ==================== State ====================
@@ -454,8 +440,7 @@ const aliyunCaptchaEnabled = ref<boolean>(false)
 const aliyunCaptchaSceneId = ref<string>('')
 const aliyunCaptchaPrefix = ref<string>('')
 const aliyunCaptchaRegion = ref<string>('cn')
-const siteName = ref<string>('')
-const feishuOAuthEnabled = ref(false)
+const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
@@ -542,7 +527,7 @@ const validationToastMessage = computed(() =>
 
 const showOAuthLogin = computed(
   () =>
-    feishuOAuthEnabled.value || linuxdoOAuthEnabled.value ||
+    linuxdoOAuthEnabled.value ||
     wechatOAuthEnabled.value ||
     oidcOAuthEnabled.value ||
     githubOAuthEnabled.value ||
@@ -554,7 +539,7 @@ const agreementGateActive = computed(
 )
 
 const registrationActionDisabled = computed(
-  () => isLoading.value || !settingsLoaded.value || agreementGateActive.value || lotteryVisitLoading.value
+  () => isLoading.value || !settingsLoaded.value || agreementGateActive.value
 )
 
 watch(validationToastMessage, (value, previousValue) => {
@@ -575,7 +560,6 @@ function syncAffiliateReferralCode(): string {
 
 onMounted(async () => {
   syncAffiliateReferralCode()
-  await captureLotteryInvitation()
 
   try {
     const settings = await getPublicSettings()
@@ -593,8 +577,7 @@ onMounted(async () => {
     aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
-    siteName.value = settings.site_name || ''
-    feishuOAuthEnabled.value = settings.feishu_oauth_enabled ?? false
+    siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
@@ -625,21 +608,6 @@ onMounted(async () => {
     settingsLoaded.value = true
   }
 })
-
-async function captureLotteryInvitation() {
-  const code = route.query.lottery_invite
-  if (typeof code !== 'string' || !/^[a-f0-9]{64}$/i.test(code) || authStore.isAuthenticated) return
-  lotteryVisitLoading.value = true
-  try {
-    try { localStorage.setItem('lottery_invitation_pending', '1') } catch { /* The HttpOnly receipt still binds during registration. */ }
-    const pool = await lotteryAPI.visit(code)
-    lotteryInviteName.value = pool.name
-    lotteryInviteNotice.value = `${t(lotteryRuleKey(pool), lotteryRuleParams(pool))} ${t(pool.invite_config?.reward_to === 'both' ? 'lottery.rewardBoth' : 'lottery.rewardInviter')}${pool.mode === 'invite_visit' && pool.invite_config?.reward_to === 'both' ? ` ${t('lottery.visitRecipientNote')}` : ''}`
-  } catch (e) {
-    const reason = (e as { reason?: string }).reason
-    lotteryInviteNotice.value = `${t(reason && ['LOTTERY_VISIT_BLOCKED', 'LOTTERY_VISIT_LIMIT', 'LOTTERY_INVITE_BOUND', 'LOTTERY_INVITE_STOPPED'].includes(reason) ? `lottery.errors.${reason}` : 'lottery.inviteUnavailable')} ${t('lottery.registrationUnaffected')}`
-  } finally { lotteryVisitLoading.value = false }
-}
 
 watch(
   () => [route.query.aff, route.query.aff_code],
@@ -1141,11 +1109,11 @@ async function handleRegister(): Promise<void> {
 }
 
 function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
-  if (extractApiErrorCode(error) === 'EMAIL_ALIAS_NOT_ALLOWED') {
-    return t('auth.emailAliasNotAllowed')
-  }
   if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
     return t('auth.emailDomainRegistrationLimit')
+  }
+  if (extractApiErrorCode(error) === 'EMAIL_BLOCKED') {
+    return t('auth.errors.EMAIL_BLOCKED')
   }
   return buildAuthErrorMessage(error, { fallback })
 }

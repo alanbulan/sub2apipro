@@ -168,17 +168,6 @@ func WriteSinkEvent(level, component, message string, fields map[string]any) {
 	for k, v := range fields {
 		eventFields[k] = v
 	}
-	identity := runtimeLogIdentity()
-	if identity.NodeID != "" {
-		// Explicit sink events must carry the same trusted process attribution.
-		enc := zapcore.NewMapObjectEncoder()
-		for _, field := range identity.fields() {
-			field.AddTo(enc)
-		}
-		for key, value := range enc.Fields {
-			eventFields[key] = value
-		}
-	}
 	if component != "" {
 		if _, ok := eventFields["component"]; !ok {
 			eventFields["component"] = component
@@ -254,9 +243,6 @@ func bridgeSlogLocked() {
 }
 
 func buildLogger(options InitOptions) (*zap.Logger, zap.AtomicLevel, error) {
-	if err := options.Runtime.validate(); err != nil {
-		return nil, zap.AtomicLevel{}, err
-	}
 	level, _ := parseLevel(options.Level)
 	atomic := zap.NewAtomicLevelAt(level)
 
@@ -331,7 +317,6 @@ func buildLogger(options InitOptions) (*zap.Logger, zap.AtomicLevel, error) {
 		zap.String("service", options.ServiceName),
 		zap.String("env", options.Environment),
 	)
-	logger = logger.With(options.Runtime.fields()...)
 	return logger, atomic, nil
 }
 

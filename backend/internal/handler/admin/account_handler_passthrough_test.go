@@ -44,8 +44,7 @@ func TestAccountHandler_Create_AnthropicAPIKeyPassthroughExtraForwarded(t *testi
 			"base_url": "https://api.anthropic.com",
 		},
 		"extra": map[string]any{
-			"anthropic_passthrough":                true,
-			"anthropic_strip_claude_code_identity": true,
+			"anthropic_passthrough": true,
 		},
 		"concurrency": 1,
 		"priority":    1,
@@ -66,5 +65,4 @@ func TestAccountHandler_Create_AnthropicAPIKeyPassthroughExtraForwarded(t *testi
 	require.Equal(t, "apikey", created.Type)
 	require.NotNil(t, created.Extra)
 	require.Equal(t, true, created.Extra["anthropic_passthrough"])
-	require.Equal(t, true, created.Extra["anthropic_strip_claude_code_identity"])
 }

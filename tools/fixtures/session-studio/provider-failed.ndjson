@@ -1,3 +1,0 @@
-{"type":"progress","status":"active"}
-{"type":"result","payload":{"status":"failed","error":{"code":"synthetic-private","message":"synthetic-private"}}}
-{"type":"result","payload":{"credential":{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":"synthetic-id"}}}

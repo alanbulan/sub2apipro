@@ -25,7 +25,7 @@
         <!-- Quick presets -->
         <div class="date-picker-presets">
           <button
-            v-for="preset in visiblePresets"
+            v-for="preset in presets"
             :key="preset.value"
             @click="selectPreset(preset)"
             :class="['date-picker-preset', isPresetActive(preset) && 'date-picker-preset-active']"
@@ -42,8 +42,8 @@
             <label class="date-picker-label">{{ t('dates.startDate') }}</label>
             <input
               type="date"
-              v-model="startDateInput"
-              :max="endDateInput || tomorrow()"
+              v-model="localStartDate"
+              :max="localEndDate || tomorrow()"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -55,8 +55,8 @@
             <label class="date-picker-label">{{ t('dates.endDate') }}</label>
             <input
               type="date"
-              v-model="endDateInput"
-              :min="startDateInput"
+              v-model="localEndDate"
+              :min="localStartDate"
               :max="tomorrow()"
               class="date-picker-input"
               @change="onDateChange"
@@ -89,10 +89,6 @@ interface DatePreset {
 interface Props {
   startDate: string
   endDate: string
-  // Opt in where the consumer accepts RFC3339 instants as well as calendar dates.
-  rolling24Hours?: boolean
-  // Calendar-only consumers can omit the rolling-window shortcut.
-  showLast24Hours?: boolean
 }
 
 interface Emits {
@@ -101,9 +97,7 @@ interface Emits {
   (e: 'change', range: { startDate: string; endDate: string; preset: string | null }): void
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  showLast24Hours: true
-})
+const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
@@ -132,16 +126,6 @@ const formatDateToString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-const calendarDate = (value: string) => value.includes('T') ? formatDateToString(new Date(value)) : value
-const startDateInput = computed({
-  get: () => calendarDate(localStartDate.value),
-  set: (value: string) => { localStartDate.value = value }
-})
-const endDateInput = computed({
-  get: () => calendarDate(localEndDate.value),
-  set: (value: string) => { localEndDate.value = value }
-})
-
 const presets: DatePreset[] = [
   {
     labelKey: 'dates.today',
@@ -168,8 +152,8 @@ const presets: DatePreset[] = [
       const end = new Date()
       const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
       return {
-        start: props.rolling24Hours ? start.toISOString() : formatDateToString(start),
-        end: props.rolling24Hours ? end.toISOString() : formatDateToString(end)
+        start: formatDateToString(start),
+        end: formatDateToString(end)
       }
     }
   },
@@ -227,13 +211,9 @@ const presets: DatePreset[] = [
   }
 ]
 
-const visiblePresets = computed(() => props.showLast24Hours
-  ? presets
-  : presets.filter(preset => preset.value !== 'last24Hours'))
-
 const displayValue = computed(() => {
   if (activePreset.value) {
-    const preset = visiblePresets.value.find((p) => p.value === activePreset.value)
+    const preset = presets.find((p) => p.value === activePreset.value)
     if (preset) return t(preset.labelKey)
   }
 
@@ -248,7 +228,7 @@ const displayValue = computed(() => {
 })
 
 const formatDate = (dateStr: string): string => {
-  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00')
+  const date = new Date(dateStr + 'T00:00:00')
   const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })
 }
@@ -264,18 +244,10 @@ const selectPreset = (preset: DatePreset) => {
   activePreset.value = preset.value
 }
 
-const detectPreset = () => {
-  // Recognize an applied snapshot without requiring it to equal the current clock.
-  // Date-only pairs must never be mistaken for a rolling window.
-  if (props.showLast24Hours && props.rolling24Hours && localStartDate.value.includes('T') && localEndDate.value.includes('T') &&
-      Date.parse(localEndDate.value) - Date.parse(localStartDate.value) === 86_400_000) {
-    activePreset.value = 'last24Hours'
-    return
-  }
+const onDateChange = () => {
   // Check if current dates match any preset
   activePreset.value = null
-  for (const preset of visiblePresets.value) {
-    if (props.rolling24Hours && preset.value === 'last24Hours') continue
+  for (const preset of presets) {
     const range = preset.getRange()
     if (range.start === localStartDate.value && range.end === localEndDate.value) {
       activePreset.value = preset.value
@@ -284,21 +256,11 @@ const detectPreset = () => {
   }
 }
 
-const onDateChange = () => {
-  // Editing either date switches the entire range back to calendar-day semantics.
-  localStartDate.value = calendarDate(localStartDate.value)
-  localEndDate.value = calendarDate(localEndDate.value)
-  detectPreset()
-}
-
 const toggle = () => {
   isOpen.value = !isOpen.value
 }
 
 const apply = () => {
-  if (props.showLast24Hours && props.rolling24Hours && activePreset.value === 'last24Hours') {
-    selectPreset(presets.find(preset => preset.value === 'last24Hours')!)
-  }
   emit('update:startDate', localStartDate.value)
   emit('update:endDate', localEndDate.value)
   emit('change', {
@@ -326,23 +288,31 @@ watch(isOpen, (open) => {
   if (open) return
   localStartDate.value = props.startDate
   localEndDate.value = props.endDate
-  detectAppliedRange()
+  onDateChange()
 }, { flush: 'post' })
 
 // Sync local state with props
-const detectAppliedRange = () => {
-  localStartDate.value = props.startDate
-  localEndDate.value = props.endDate
-  detectPreset()
-}
-watch(() => [props.startDate, props.endDate], detectAppliedRange)
-watch(() => [props.showLast24Hours, props.rolling24Hours], detectPreset)
+watch(
+  () => props.startDate,
+  (val) => {
+    localStartDate.value = val
+    onDateChange()
+  }
+)
 
-detectPreset()
+watch(
+  () => props.endDate,
+  (val) => {
+    localEndDate.value = val
+    onDateChange()
+  }
+)
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
+  // Initialize active preset detection
+  onDateChange()
 })
 
 onUnmounted(() => {

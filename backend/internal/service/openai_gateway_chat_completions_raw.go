@@ -10,7 +10,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -62,7 +61,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	body []byte,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	return s.forwardAsRawChatCompletionsWithStartTime(ctx, c, account, body, defaultMappedModel, requesttiming.Now(ctx))
+	return s.forwardAsRawChatCompletionsWithStartTime(ctx, c, account, body, defaultMappedModel, time.Now())
 }
 
 func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
@@ -72,7 +71,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	body []byte,
 	defaultMappedModel string,
 	startTime time.Time,
-) (result *OpenAIForwardResult, resultErr error) {
+) (*OpenAIForwardResult, error) {
 
 	// 1. Parse minimal fields needed for routing/billing
 	originalModel := gjson.GetBytes(body, "model").String()
@@ -80,16 +79,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return nil, fmt.Errorf("missing model in request")
 	}
-	// Raw Chat Completions deliberately keeps draining after the client has
-	// disconnected so upstream usage can still be reconciled. Use a detached
-	// control-plane context for the pre-send admission as well; otherwise a
-	// client cancellation would prevent the request from reaching the same
-	// drain path that existed before admission was added.
-	latest, admissionErr := s.admitOpenAITurn(context.WithoutCancel(ctx), c, account, originalModel)
-	if admissionErr != nil {
-		return nil, admissionErr
-	}
-	account = latest
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
@@ -215,11 +204,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
-	upstreamBody, err = normalizeMistralChatRequest(account, upstreamBody)
-	if err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
-	}
 	SetActualOpenAIUpstreamEndpoint(c, grokChatRawEndpoint)
 	customUA := account.GetOpenAIUserAgent()
 	if customUA == "" && account.IsGrokOAuth() {
@@ -229,12 +213,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	// the outbound request (for example GLM xhigh is forwarded as max).
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(upstreamBody, upstreamModel, billingModel, originalModel)
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, upstreamBody, upstreamModel)
-	forwardBoundary := requesttiming.Now(ctx)
-	defer func() {
-		if result != nil {
-			applyOpenAIQueueTiming(result, openAIIngressStart(ctx), forwardBoundary, startTime, "http_ingress_raw_chat", "first_forward_including_admission")
-		}
-	}()
 	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA, grokCacheIdentity)
 	if err != nil {
 		return nil, err
@@ -259,12 +237,11 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 				UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
 				Kind:               kind,
 				Message:            upstreamMsg,
-				Detail:             s.opsUpstreamErrorDetail(respBody),
 			})
 			s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, upstreamModel), account, resp.StatusCode, resp.Header, respBody)
 			if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 				retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
-				return nil, (&UpstreamFailoverError{
+				return nil, &UpstreamFailoverError{
 					StatusCode:               resp.StatusCode,
 					ResponseBody:             respBody,
 					ResponseHeaders:          resp.Header.Clone(),
@@ -273,7 +250,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 					SameAccountRetryDelay:    retryDelay,
 					SameAccountRetryDeadline: retryDeadline,
 					SameAccountRetryMax:      retryMax,
-				}).WithGrokForbiddenPolicy(account)
+				}
 			}
 			return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 		}
@@ -288,6 +265,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	}
 
 	// 8. Forward response
+	var result *OpenAIForwardResult
 	var forwardErr error
 	if clientStream {
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
@@ -337,22 +315,22 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
-	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	clientDisconnected := false
 	clientOutputStarted := false
+	flushPending := false
+	flushToClient := func() {
+		if flushPending && !clientDisconnected && clientOutputStarted {
+			c.Writer.Flush()
+		}
+		flushPending = false
+	}
+	scanner := s.newUpstreamSSEScanner(&flushBeforeUpstreamRead{r: resp.Body, flush: flushToClient})
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var terminal openAIRawStreamTerminalState
-	var regionalUsagePayload []byte
-	var normalizationErr error
-	semanticFailure := false
-	var pendingErrorLines []string
-	var pendingErrorData []string
-	pendingErrorBytes := 0
-	stagingError := false
 
 	writeLine := func(line string) {
 		if clientDisconnected {
@@ -388,80 +366,18 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		// Error frames must be complete before becoming authoritative. In
-		// particular, gjson can find an object in truncated, invalid JSON.
-		if eventType, ok := extractOpenAISSEEventLine(line); ok && eventType == "error" {
-			stagingError = true
-		}
-		if payload, ok := extractOpenAISSEDataLine(line); ok && gjson.Get(payload, "error").IsObject() {
-			stagingError = true
-		}
-		if stagingError {
-			pendingErrorLines = append(pendingErrorLines, line)
-			pendingErrorBytes += len(line)
-			if payload, ok := extractOpenAISSEDataLine(line); ok {
-				pendingErrorData = append(pendingErrorData, payload)
-			}
-			if pendingErrorBytes > openAIFirstOutputStageMaxBytes {
-				normalizationErr = errors.New("upstream error event exceeds size limit")
-				break
-			}
-			if line != "" {
-				continue
-			}
-			payload := strings.Join(pendingErrorData, "\n")
-			if gjson.Valid(payload) && (gjson.Get(payload, "error").IsObject() || gjson.Get(payload, "type").String() == "error") {
-				writeStreamHeaders()
-				for _, pending := range pendingLines {
-					if _, writeErr := c.Writer.WriteString(pending + "\n"); writeErr != nil {
-						clientDisconnected = true
-						break
-					}
-				}
-				pendingLines = nil
-				for _, pending := range pendingErrorLines {
-					if _, writeErr := c.Writer.WriteString(pending + "\n"); writeErr != nil {
-						clientDisconnected = true
-						break
-					}
-				}
-				c.Writer.Flush()
-				clientOutputStarted = true
-				semanticFailure = true
-				break
-			}
-			// Invalid error-shaped events are not terminal evidence. Discard
-			// them; a subsequent read reset must still reach classification.
-			pendingErrorLines = nil
-			pendingErrorData = nil
-			pendingErrorBytes = 0
-			stagingError = false
-			continue
-		}
-
-		if payload, ok := extractOpenAISSEDataLine(line); ok {
-			if u := extractCCStreamUsage(payload); u != nil {
-				regionalUsagePayload = []byte(payload)
-				mergeOpenAIProtectionUsageEvidence(usage, u)
-				usage = *u
-			}
-		}
-		line, normalizationErr = normalizeMistralChatSSELine(account, line)
-		if normalizationErr != nil {
-			break
-		}
 		refusalDetector.ObserveSSELine(line)
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			terminal.ObserveDataLine(trimmedPayload)
-			if trimmedPayload == "[DONE]" && c.Request != nil {
-				regionalMeterObserveUsage(c.Request.Context(), regionalUsagePayload, "json")
-			}
 			if trimmedPayload != "[DONE]" {
 				observer.ObserveOpenAI([]byte(payload), strings.TrimSpace(gjson.Get(payload, "type").String()))
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
+				if u := extractCCStreamUsage(payload); u != nil {
+					usage = *u
+				}
 				if firstTokenMs == nil && !usageOnlyChunk {
-					elapsed := int(requesttiming.Now(c.Request.Context()).Sub(startTime).Milliseconds())
+					elapsed := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &elapsed
 				}
 			}
@@ -471,16 +387,10 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 		line = s.replaceModelInSSELine(line, upstreamModel, originalModel)
 		writeLine(line)
-		if line == "" {
-			if !clientDisconnected && clientOutputStarted {
-				c.Writer.Flush()
-			}
-			continue
-		}
-		if !clientDisconnected && clientOutputStarted {
-			c.Writer.Flush()
-		}
+		// 不逐行 flush：scanner 下次向上游读取前统一 flush（见 flushBeforeUpstreamRead）。
+		flushPending = true
 	}
+	flushToClient()
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
@@ -496,19 +406,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			ReasoningEffort:               reasoningEffort,
 			ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:                        true,
-			ClientDisconnect:              clientDisconnected,
-			Duration:                      requesttiming.Now(c.Request.Context()).Sub(startTime),
+			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 		}
 	}
 
-	if normalizationErr != nil {
-		if !clientOutputStarted {
-			return nil, newOpenAIRawStreamTruncatedFailoverError(c, account, requestID, normalizationErr)
-		}
-		recordOpenAIRawStreamTruncation(c, account, requestID, normalizationErr, "http_error")
-		return resultWithUsage(), newOpenAIUpstreamStreamReadError(normalizationErr)
-	}
 	scanErr := scanner.Err()
 	if scanErr != nil && !errors.Is(scanErr, context.Canceled) && !errors.Is(scanErr, context.DeadlineExceeded) {
 		logger.L().Warn("openai chat_completions raw: stream read error",
@@ -522,16 +424,6 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	clientAborted := clientDisconnected ||
 		errors.Is(scanErr, context.Canceled) ||
 		errors.Is(scanErr, context.DeadlineExceeded)
-
-	if semanticFailure && clientOutputStarted {
-		MarkResponseCommitted(c)
-		return resultWithUsage(), errors.New("upstream response failed")
-	}
-	if !clientAborted && !terminal.Terminated() {
-		if resetErr, handled := handleOpenAIHTTP2PeerReset(c, account, requestID, scanErr); handled {
-			return resultWithUsage(), resetErr
-		}
-	}
 
 	// 上游在任何终止信号之前结束：连接被 reset（scanErr != nil）或干净 EOF。
 	// 两者都不能再记成功——此前统一返回 nil error，把上游截断伪装成
@@ -582,9 +474,6 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 	}
 
-	if clientAborted || clientDisconnected || scanErr != nil || (!terminal.sawDone && !terminal.sawFinishReason) {
-		usage.CacheReadKnown = false
-	}
 	return resultWithUsage(), nil
 }
 
@@ -640,9 +529,6 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		if resetErr, handled := handleOpenAIHTTP2PeerReset(c, account, resp.Header.Get("x-request-id"), err); handled {
-			return nil, resetErr
-		}
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
 			writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")
 		}
@@ -653,9 +539,6 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	observer.ObserveOpenAI(respBody, strings.TrimSpace(gjson.GetBytes(respBody, "type").String()))
-	if c.Request != nil {
-		regionalMeterObserveUsage(c.Request.Context(), respBody, "json")
-	}
 
 	var usage OpenAIUsage
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
@@ -665,11 +548,6 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) && !hasBillableGrokChatUsage(usage) {
 		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
-	}
-	respBody, err = normalizeMistralChatResponse(account, respBody, false)
-	if err != nil {
-		writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to parse upstream response")
-		return nil, err
 	}
 	respBody = applyOllamaCloudRawChatCompletionsResponse(account, respBody)
 	respBody = s.replaceModelInResponseBody(respBody, upstreamModel, originalModel)
@@ -698,7 +576,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		ReasoningEffort:               reasoningEffort,
 		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                        false,
-		Duration:                      requesttiming.Now(c.Request.Context()).Sub(startTime),
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 

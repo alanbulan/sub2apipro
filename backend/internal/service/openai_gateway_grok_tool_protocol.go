@@ -3,14 +3,13 @@ package service
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -124,11 +123,11 @@ func newResponsesClientToolStreamBody(
 	source io.ReadCloser,
 	mapping apicompat.ResponsesClientToolMapping,
 	maxLineSize int,
-	timingContext ...context.Context,
+	cfg *config.Config,
 ) io.ReadCloser {
 	reader, writer := io.Pipe()
 	body := &responsesClientToolStreamBody{PipeReader: reader, source: source}
-	go transformResponsesClientToolStream(source, writer, mapping, maxLineSize, timingContext...)
+	go transformResponsesClientToolStream(source, writer, mapping, maxLineSize, cfg)
 	return body
 }
 
@@ -136,8 +135,9 @@ func newGrokResponsesClientToolStreamBody(
 	source io.ReadCloser,
 	mapping apicompat.ResponsesClientToolMapping,
 	maxLineSize int,
+	cfg *config.Config,
 ) io.ReadCloser {
-	return newResponsesClientToolStreamBody(source, mapping, maxLineSize)
+	return newResponsesClientToolStreamBody(source, mapping, maxLineSize, cfg)
 }
 
 func transformResponsesClientToolStream(
@@ -145,7 +145,7 @@ func transformResponsesClientToolStream(
 	destination *io.PipeWriter,
 	mapping apicompat.ResponsesClientToolMapping,
 	maxLineSize int,
-	timingContext ...context.Context,
+	cfg *config.Config,
 ) {
 	defer func() { _ = source.Close() }()
 	if maxLineSize <= 0 {
@@ -156,12 +156,8 @@ func transformResponsesClientToolStream(
 	scanBuf := getSSEScannerBuf64K()
 	defer putSSEScannerBuf64K(scanBuf)
 	scanner.Buffer(scanBuf[:0], maxLineSize)
+	scanner.Split(newBoundedSSESplit(cfg, maxLineSize, nil))
 	documents := newOpenAISSEJSONDocumentScanner(scanner)
-	var timingCtx context.Context
-	if len(timingContext) > 0 && requesttiming.From(timingContext[0]) != nil {
-		timingCtx = timingContext[0]
-		documents.ctx = timingCtx
-	}
 	restorer := apicompat.NewResponsesClientToolStreamRestorer(mapping)
 	buffered := bufio.NewWriterSize(destination, 4*1024)
 	pendingFields := make([]string, 0, 2)
@@ -197,12 +193,6 @@ func transformResponsesClientToolStream(
 	}
 	writePayloads := func(payloads [][]byte) error {
 		for index, payload := range payloads {
-			if timingCtx != nil {
-				requesttiming.Stage(timingCtx, "tool_converted_first")
-				if openAIStreamDataStartsVisibleOutput(string(payload), "") {
-					requesttiming.Stage(timingCtx, "tool_visible_first")
-				}
-			}
 			if index == 0 {
 				if err := writePendingFields(payload, true); err != nil {
 					return err

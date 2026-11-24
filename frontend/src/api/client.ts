@@ -14,13 +14,6 @@ import {
 } from './adminUIRequest'
 import { refreshAuthTokens } from './tokenRefresh'
 import { getAPIBaseURL } from './url'
-import {
-  AUTH_TOKEN_KEY,
-  AUTH_USER_KEY,
-  REFRESH_TOKEN_KEY,
-  clearAuthStorage,
-  getAuthItem
-} from '@/utils/authStorage'
 export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
@@ -47,9 +40,8 @@ const getUserTimezone = (): string => {
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const requestURL = String(config.url || '')
-
-    const token = getAuthItem(AUTH_TOKEN_KEY)
+    // Attach token from localStorage
+    const token = localStorage.getItem('auth_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -59,11 +51,8 @@ apiClient.interceptors.request.use(
       config.headers['Accept-Language'] = getLocale()
     }
 
-    // AI operations rejects query parameters; other GET APIs may use timezone
-    // for default date ranges. Preserve explicitly supplied parameters so the
-    // backend can still reject unsupported input.
-    const isAIOpsRequest = /^\/admin\/ops\/ai(?:\/|$)/.test(requestURL)
-    if (config.method === 'get' && !isAIOpsRequest) {
+    // Attach timezone for all GET requests (backend may use it for default date ranges)
+    if (config.method === 'get') {
       if (!config.params) {
         config.params = {}
       }
@@ -71,6 +60,7 @@ apiClient.interceptors.request.use(
     }
 
     if (config.headers) {
+      const requestURL = String(config.url || '')
       if (shouldMarkAdminUIRequest(requestURL)) {
         config.headers[ADMIN_UI_REQUEST_HEADER] = '1'
       }
@@ -87,6 +77,13 @@ apiClient.interceptors.request.use(
 )
 
 // ==================== Response Interceptor ====================
+
+// Retry-After 只接受整数秒；跨域部署未暴露该头或为 HTTP-date 形式时返回 undefined。
+const parseRetryAfterSeconds = (headers: unknown): number | undefined => {
+  const raw = (headers as Record<string, unknown> | undefined)?.['retry-after']
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw.trim())) return undefined
+  return Number(raw.trim())
+}
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
@@ -173,13 +170,13 @@ apiClient.interceptors.response.use(
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
       if (status === 401 && !originalRequest._retry) {
-        const refreshToken = getAuthItem(REFRESH_TOKEN_KEY)
+        const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
 
         // If we have a refresh token and this is not an auth endpoint, try to refresh
         if (refreshToken && !isAuthEndpoint) {
-          const refreshSessionUser = getAuthItem(AUTH_USER_KEY)
+          const refreshSessionUser = localStorage.getItem('auth_user')
           originalRequest._retry = true
 
           try {
@@ -200,8 +197,8 @@ apiClient.interceptors.response.use(
             // A stale request must never destroy a session that was logged out or replaced while
             // its refresh was in flight (for example, when another tab signs in as another user).
             const sessionChanged =
-              getAuthItem(REFRESH_TOKEN_KEY) !== refreshToken ||
-              getAuthItem(AUTH_USER_KEY) !== refreshSessionUser
+              localStorage.getItem('refresh_token') !== refreshToken ||
+              localStorage.getItem('auth_user') !== refreshSessionUser
             if (sessionChanged) {
               return Promise.reject({
                 status: 401,
@@ -222,7 +219,10 @@ apiClient.interceptors.response.use(
             }
 
             // Clear tokens and redirect to login
-            clearAuthStorage()
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('refresh_token')
+            localStorage.removeItem('auth_user')
+            localStorage.removeItem('token_expires_at')
             sessionStorage.setItem('auth_expired', '1')
 
             if (!window.location.pathname.includes('/login')) {
@@ -238,7 +238,7 @@ apiClient.interceptors.response.use(
         }
 
         // No refresh token or is auth endpoint - clear auth and redirect
-        const hasToken = !!getAuthItem(AUTH_TOKEN_KEY)
+        const hasToken = !!localStorage.getItem('auth_token')
         const headers = error.config?.headers as Record<string, unknown> | undefined
         const authHeader = headers?.Authorization ?? headers?.authorization
         const sentAuth =
@@ -248,7 +248,10 @@ apiClient.interceptors.response.use(
               ? authHeader.length > 0
               : !!authHeader
 
-        clearAuthStorage()
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('refresh_token')
+        localStorage.removeItem('auth_user')
+        localStorage.removeItem('token_expires_at')
         if ((hasToken || sentAuth) && !isAuthEndpoint) {
           sessionStorage.setItem('auth_expired', '1')
         }
@@ -266,6 +269,7 @@ apiClient.interceptors.response.use(
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
         metadata: apiData.metadata,
+        retry_after_seconds: parseRetryAfterSeconds(error.response.headers),
       })
     }
 

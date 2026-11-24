@@ -5,13 +5,12 @@ import (
 	"compress/gzip"
 	"compress/zlib"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/requestcapture"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -75,12 +74,6 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 // requestBodyBuffer carries only allocations owned by the current helper.
 // Borrowed input (notably PrereadBody) has no charge to release: its original
 // owner may still retain it even if normalization creates a replacement.
-// ReadRequestBodyWithPreallocLimit preserves the fork's decoded payload cap.
-func ReadRequestBodyWithPreallocLimit(req *http.Request, maxDecodedBytes int64) ([]byte, error) {
-	body, err := readRequestBodyWithBudget(req, maxDecodedBytes)
-	return body.data, err
-}
-
 type requestBodyBuffer struct {
 	data    []byte
 	charged int64
@@ -92,17 +85,7 @@ func (b *requestBodyBuffer) release(ctx context.Context) {
 	releaseRequestBodyMemory(ctx, charged)
 }
 
-func readRequestBodyWithBudget(req *http.Request, limits ...int64) (result requestBodyBuffer, resultErr error) {
-	maxDecodedBytes := int64(maxDecompressedBodySize)
-	if len(limits) > 0 && limits[0] > 0 {
-		maxDecodedBytes = limits[0]
-	}
-	defer func() {
-		if resultErr == nil && req != nil {
-			requestcapture.FromContext(req.Context()).ClientRequest(result.data, req.Header.Get("Content-Type"), req.Header)
-		}
-	}()
-
+func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 	if req == nil || req.Body == nil {
 		return requestBodyBuffer{}, nil
 	}
@@ -125,8 +108,13 @@ func readRequestBodyWithBudget(req *http.Request, limits ...int64) (result reque
 		}
 	}
 
+	startedAt := time.Now()
 	raw, err := readRequestBodyChunksWithBudget(req.Context(), req.Body, capHint, req.ContentLength)
 	if err != nil {
+		var readErr *RequestBodyReadError
+		if errors.As(err, &readErr) {
+			readErr.Elapsed = time.Since(startedAt)
+		}
 		return requestBodyBuffer{}, err
 	}
 
@@ -136,7 +124,7 @@ func readRequestBodyWithBudget(req *http.Request, limits ...int64) (result reque
 	}
 
 	defer raw.release(req.Context())
-	decoded, err := decompressRequestBodyWithBudget(req.Context(), enc, raw.data, maxDecodedBytes)
+	decoded, err := decompressRequestBodyWithBudget(req.Context(), enc, raw.data)
 	if err != nil {
 		return requestBodyBuffer{}, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
 	}
@@ -174,18 +162,20 @@ func readRequestBodyChunksWithBudget(ctx context.Context, reader io.Reader, init
 		n := 0
 		var err error
 		for n < len(chunk) && err == nil {
-			if err := ctx.Err(); err != nil {
-				return requestBodyBuffer{}, err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return requestBodyBuffer{}, &RequestBodyReadError{Err: ctxErr, BytesRead: int64(total + n)}
 			}
 			var read int
 			read, err = reader.Read(chunk[n:])
 			n += read
 		}
-		if err := ctx.Err(); err != nil {
-			return requestBodyBuffer{}, err
-		}
+		// Report the read error before the context: on HTTP/1 a read deadline
+		// also cancels the request context, which would hide the timeout.
 		if err != nil && err != io.EOF {
-			return requestBodyBuffer{}, err
+			return requestBodyBuffer{}, &RequestBodyReadError{Err: err, BytesRead: int64(total + n)}
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return requestBodyBuffer{}, &RequestBodyReadError{Err: ctxErr, BytesRead: int64(total + n)}
 		}
 		if n > 0 {
 			chunks = append(chunks, chunk[:n])
@@ -240,12 +230,7 @@ func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
 	return body.data, err
 }
 
-func decompressRequestBodyWithBudget(ctx context.Context, encoding string, raw []byte, limits ...int64) (requestBodyBuffer, error) {
-	maxDecodedBytes := int64(maxDecompressedBodySize)
-	if len(limits) > 0 && limits[0] > 0 {
-		maxDecodedBytes = limits[0]
-	}
-
+func decompressRequestBodyWithBudget(ctx context.Context, encoding string, raw []byte) (requestBodyBuffer, error) {
 	var reader io.Reader
 	switch encoding {
 	case "zstd":
@@ -256,7 +241,7 @@ func decompressRequestBodyWithBudget(ctx context.Context, encoding string, raw [
 		dec, err := zstd.NewReader(bytes.NewReader(raw),
 			zstd.WithDecoderConcurrency(1),
 			zstd.WithDecoderMaxWindow(maxRequestZstdWindowSize),
-			zstd.WithDecoderMaxMemory(uint64(maxDecodedBytes)))
+			zstd.WithDecoderMaxMemory(maxDecompressedBodySize))
 		if err != nil {
 			return requestBodyBuffer{}, err
 		}
@@ -279,13 +264,13 @@ func decompressRequestBodyWithBudget(ctx context.Context, encoding string, raw [
 	default:
 		return requestBodyBuffer{}, errors.New("unsupported Content-Encoding")
 	}
-	decoded, err := readRequestBodyChunksWithBudget(ctx, io.LimitReader(reader, maxDecodedBytes+1), requestBodyReadInitCap, -1)
+	decoded, err := readRequestBodyChunksWithBudget(ctx, io.LimitReader(reader, maxDecompressedBodySize+1), requestBodyReadInitCap, -1)
 	if err != nil {
 		return requestBodyBuffer{}, err
 	}
-	if int64(len(decoded.data)) > maxDecodedBytes {
+	if len(decoded.data) > maxDecompressedBodySize {
 		decoded.release(ctx)
-		return requestBodyBuffer{}, &http.MaxBytesError{Limit: maxDecodedBytes}
+		return requestBodyBuffer{}, &http.MaxBytesError{Limit: maxDecompressedBodySize}
 	}
 	return decoded, nil
 }
@@ -311,10 +296,6 @@ func normalizeLenientJSONRequestBody(ctx context.Context, body []byte, maxNormal
 	}
 	if int64(len(body)) > maxNormalizedBytes {
 		return requestBodyBuffer{}, &http.MaxBytesError{Limit: maxNormalizedBytes}
-	}
-
-	if len(body) >= 64<<10 && !hasJSONControlBytes(body) {
-		return requestBodyBuffer{data: body}, nil
 	}
 
 	normalizedSize := int64(len(body))
@@ -389,24 +370,4 @@ func isJSONControlByte(b byte) bool {
 func appendJSONUnicodeEscape(dst []byte, b byte) []byte {
 	const hex = "0123456789abcdef"
 	return append(dst, '\\', 'u', '0', '0', hex[b>>4], hex[b&0x0f])
-}
-
-func hasJSONControlBytes(body []byte) bool {
-	const ones, high = uint64(0x0101010101010101), uint64(0x8080808080808080)
-	for len(body) >= 8 {
-		word := binary.LittleEndian.Uint64(body)
-		// A zero byte identifies either a value below 0x20 or the DEL byte.
-		low := word & 0xe0e0e0e0e0e0e0e0
-		del := word ^ 0x7f7f7f7f7f7f7f7f
-		if (low-ones)&^low&high != 0 || (del-ones)&^del&high != 0 {
-			return true
-		}
-		body = body[8:]
-	}
-	for _, b := range body {
-		if isJSONControlByte(b) {
-			return true
-		}
-	}
-	return false
 }

@@ -11,7 +11,6 @@
         </router-link>
         <div class="flex items-center gap-3">
           <LocaleSwitcher />
-          <ThemeSwitcher />
           <a
             v-if="docUrl"
             :href="docUrl"
@@ -22,6 +21,14 @@
           >
             <Icon name="book" size="md" />
           </a>
+          <button
+            @click="toggleTheme"
+            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
+          >
+            <Icon v-if="isDark" name="sun" size="md" />
+            <Icon v-else name="moon" size="md" />
+          </button>
         </div>
       </nav>
     </header>
@@ -397,6 +404,12 @@
             rel="noopener noreferrer"
             class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
           >{{ t('home.docs') }}</a>
+          <a
+            :href="githubUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+          >GitHub</a>
         </div>
       </div>
     </footer>
@@ -409,23 +422,31 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import { FeatureFlags, resolveFeatureFlag } from '@/utils/featureFlags'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
-import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildGatewayUrl } from '@/api/client'
 import { formatDateLocalInput } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'
-import { useAppTheme } from '@/composables/useAppTheme'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
-const { isDark } = useAppTheme()
 const subscriptionFeatureEnabled = computed(() => resolveFeatureFlag(appStore.cachedPublicSettings, FeatureFlags.subscription))
 
 // ==================== Site Settings (same as HomeView) ====================
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName)
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
+const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
+
+// ==================== Theme (same as HomeView) ====================
+
+const isDark = ref(document.documentElement.classList.contains('dark'))
+
+function toggleTheme() {
+  isDark.value = !isDark.value
+  document.documentElement.classList.toggle('dark', isDark.value)
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
 
 const currentYear = computed(() => new Date().getFullYear())
 
@@ -516,18 +537,6 @@ const RING_GRADIENTS = [
 
 const ringAnimated = ref(false)
 const displayPcts = ref<number[]>([])
-let ringFrame: number | undefined
-let ringTimer: ReturnType<typeof setTimeout> | undefined
-let ringGeneration = 0
-let viewDisposed = false
-
-function cancelRingAnimation() {
-  ringGeneration++
-  if (ringFrame !== undefined) cancelAnimationFrame(ringFrame)
-  if (ringTimer !== undefined) clearTimeout(ringTimer)
-  ringFrame = undefined
-  ringTimer = undefined
-}
 
 const ringTrackColor = computed(() => isDark.value ? '#222222' : '#F0F0EE')
 
@@ -547,20 +556,12 @@ function getRingOffset(ring: RingItem): number {
 }
 
 function triggerRingAnimation(items: RingItem[]) {
-  if (viewDisposed) return
-  cancelRingAnimation()
-  const generation = ringGeneration
   ringAnimated.value = false
   displayPcts.value = items.map(() => 0)
 
   nextTick(() => {
-    if (generation !== ringGeneration) return
-    ringFrame = requestAnimationFrame(() => {
-      ringFrame = undefined
-      if (generation !== ringGeneration) return
-      ringTimer = setTimeout(() => {
-        ringTimer = undefined
-        if (generation !== ringGeneration) return
+    requestAnimationFrame(() => {
+      setTimeout(() => {
         ringAnimated.value = true
 
         // Animate percentage numbers
@@ -569,15 +570,13 @@ function triggerRingAnimation(items: RingItem[]) {
         const targets = items.map(item => item.isBalance ? 0 : item.pct)
 
         function tick() {
-          ringFrame = undefined
-          if (generation !== ringGeneration) return
           const elapsed = performance.now() - startTime
           const p = Math.min(elapsed / duration, 1)
           const ease = 1 - Math.pow(1 - p, 3)
           displayPcts.value = targets.map(target => Math.round(ease * target))
-          if (p < 1) ringFrame = requestAnimationFrame(tick)
+          if (p < 1) requestAnimationFrame(tick)
         }
-        ringFrame = requestAnimationFrame(tick)
+        requestAnimationFrame(tick)
       }, 50)
     })
   })
@@ -911,6 +910,14 @@ async function queryKey() {
 
 // ==================== Lifecycle ====================
 
+function initTheme() {
+  const savedTheme = localStorage.getItem('theme')
+  if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    isDark.value = true
+    document.documentElement.classList.add('dark')
+  }
+}
+
 function formatResetTime(resetAt: string | null | undefined): string {
   if (!resetAt) return ''
   const diff = new Date(resetAt).getTime() - now.value.getTime()
@@ -924,6 +931,7 @@ function formatResetTime(resetAt: string | null | undefined): string {
 }
 
 onMounted(() => {
+  initTheme()
   if (!appStore.publicSettingsLoaded) {
     appStore.fetchPublicSettings()
   }
@@ -931,8 +939,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  viewDisposed = true
-  cancelRingAnimation()
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>
@@ -943,8 +949,8 @@ onUnmounted(() => {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .input-ring:focus {
-  box-shadow: 0 0 0 3px rgb(var(--primary-500-rgb) / 0.2);
-  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
+  border-color: #14b8a6;
   outline: none;
 }
 
@@ -996,6 +1002,6 @@ onUnmounted(() => {
 /* Tabular nums */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
 }
 </style>

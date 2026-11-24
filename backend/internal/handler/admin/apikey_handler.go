@@ -24,19 +24,15 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 
 // AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
 type AdminUpdateAPIKeyGroupRequest struct {
-	GroupID             *int64             `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
-	ResetRateLimitUsage *bool              `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
-	ModelMapping        *map[string]string `json:"model_mapping"`
-	ReasoningEffort     *string            `json:"reasoning_effort"`
-	ContextTokenLimit   *int               `json:"context_token_limit"`
-	AllowLongContext    *bool              `json:"allow_long_context"`
+	GroupID             *int64 `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
+	ResetRateLimitUsage *bool  `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
 }
 
 // UpdateGroup handles updating an API key's admin-managed fields.
 // PUT /api/v1/admin/api-keys/:id
 func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || keyID <= 0 {
+	if err != nil {
 		response.BadRequest(c, "Invalid API key ID")
 		return
 	}
@@ -46,16 +42,9 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	input := service.AdminUpdateAPIKeySettingsInput{GroupID: req.GroupID, ModelMapping: req.ModelMapping, ReasoningEffort: req.ReasoningEffort, AllowLongContext: req.AllowLongContext, ContextTokenLimit: req.ContextTokenLimit}
-	hasModelPolicy := req.ContextTokenLimit != nil || req.ModelMapping != nil || req.ReasoningEffort != nil || req.AllowLongContext != nil
-	input.ResetRateLimitUsage = req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage
-	if err := input.Validate(); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
 
 	var resetKey *service.APIKey
-	if input.ResetRateLimitUsage && !hasModelPolicy {
+	if req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage {
 		resetKey, err = h.adminService.AdminResetAPIKeyRateLimitUsage(c.Request.Context(), keyID)
 		if err != nil {
 			response.ErrorFrom(c, err)
@@ -63,17 +52,12 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		}
 	}
 
-	var result *service.AdminUpdateAPIKeyGroupIDResult
-	if hasModelPolicy {
-		result, err = h.adminService.AdminUpdateAPIKeySettings(c.Request.Context(), keyID, input)
-	} else {
-		result, err = h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, req.GroupID)
-	}
+	result, err := h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, req.GroupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if resetKey != nil && req.GroupID == nil && !hasModelPolicy {
+	if resetKey != nil && req.GroupID == nil {
 		result.APIKey = resetKey
 	}
 

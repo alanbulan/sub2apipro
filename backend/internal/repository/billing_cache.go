@@ -438,10 +438,7 @@ func parseUserPlatformQuotaHash(m map[string]string) *service.UserPlatformQuotaC
 }
 
 func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*service.UserPlatformQuotaCacheEntry, bool, error) {
-	return c.getPlatformQuotaCache(ctx, userPlatformQuotaCacheKey(userID, platform))
-}
-
-func (c *billingCache) getPlatformQuotaCache(ctx context.Context, key string) (*service.UserPlatformQuotaCacheEntry, bool, error) {
+	key := userPlatformQuotaCacheKey(userID, platform)
 	m, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
 		return nil, false, err
@@ -455,13 +452,10 @@ func (c *billingCache) getPlatformQuotaCache(ctx context.Context, key string) (*
 }
 
 func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *service.UserPlatformQuotaCacheEntry, ttl time.Duration) error {
-	return c.setPlatformQuotaCache(ctx, userPlatformQuotaCacheKey(userID, platform), entry, ttl)
-}
-
-func (c *billingCache) setPlatformQuotaCache(ctx context.Context, key string, entry *service.UserPlatformQuotaCacheEntry, ttl time.Duration) error {
 	if entry == nil {
 		return nil
 	}
+	key := userPlatformQuotaCacheKey(userID, platform)
 	pipe := c.rdb.TxPipeline()
 
 	// 浮点可空字段：nil → 空字符串（读取时 parseFloatPtr 返回 nil，表示无限额）
@@ -498,7 +492,7 @@ func (c *billingCache) setPlatformQuotaCache(ctx context.Context, key string, en
 }
 
 func (c *billingCache) DeleteUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) error {
-	return c.rdb.Del(ctx, userPlatformQuotaCacheKey(userID, platform), durablePlatformQuotaCacheKey(userID, platform)).Err()
+	return c.rdb.Del(ctx, userPlatformQuotaCacheKey(userID, platform)).Err()
 }
 
 // updateUserPlatformQuotaUsageScript 缓存累加：EXISTS + schema_version 双重守卫。
@@ -550,19 +544,16 @@ func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, user
 	if markDirty {
 		member = userPlatformQuotaDirtyMember(userID, platform)
 	}
-	applied, err := c.rdb.Eval(ctx, updateUserPlatformQuotaUsageScript,
+	_, err := c.rdb.Eval(ctx, updateUserPlatformQuotaUsageScript,
 		[]string{userPlatformQuotaCacheKey(userID, platform), userPlatformQuotaDirtySetKey()},
 		strconv.FormatFloat(cost, 'f', -1, 64),
 		int(ttl.Seconds()),
 		service.UserPlatformQuotaCacheSchemaV1,
 		member,
 		userPlatformQuotaDirtyTTLSeconds,
-	).Int64()
+	).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return err
-	}
-	if applied != 1 {
-		return service.ErrUserPlatformQuotaCacheNotUpdated
 	}
 	return nil
 }

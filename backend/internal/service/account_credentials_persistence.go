@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 )
 
@@ -11,9 +10,6 @@ type accountCredentialsUpdater interface {
 }
 
 func persistAccountCredentials(ctx context.Context, repo AccountRepository, account *Account, credentials map[string]any) error {
-	if account != nil && account.AuthConnectionID != "" {
-		return errors.New("managed connection credentials require connection CAS")
-	}
 	if repo == nil || account == nil {
 		return nil
 	}

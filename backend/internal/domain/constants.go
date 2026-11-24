@@ -12,9 +12,8 @@ const (
 
 // Role constants
 const (
-	RoleAdmin    = "admin"
-	RoleUser     = "user"
-	RoleObserver = "observer"
+	RoleAdmin = "admin"
+	RoleUser  = "user"
 )
 
 // Platform constants
@@ -39,8 +38,6 @@ const (
 	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
 	// 另有 ClinePass 订阅）。
 	PlatformCline     = "cline"
-	PlatformMistral   = "mistral"
-	PlatformQwen      = "qwen"
 	PlatformComposite = "composite"
 )
 
@@ -181,7 +178,9 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.8-flash-low":    "gemini-3.8-flash-low",
 	"gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
 	"gemini-3.8-flash-tiered": "gemini-3.8-flash-tiered",
-	// Gemini 4 Argon tiered models
+	// Gemini 4 models
+	// Carbon uses the published model ID; do not infer Argon-style tier aliases.
+	"gemini-4-carbon":       "gemini-4-carbon",
 	"gemini-4-argon":        "gemini-4-argon-high",
 	"gemini-4-argon-high":   "gemini-4-argon-high",
 	"gemini-4-argon-low":    "gemini-4-argon-low",

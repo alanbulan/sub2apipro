@@ -23,12 +23,6 @@ const (
 
 // isRateLimitActiveForKey 检查指定 key 的限流是否生效
 func (a *Account) isRateLimitActiveForKey(key string) bool {
-	if a != nil {
-		limits, _ := a.Extra[modelRateLimitsKey].(map[string]any)
-		if IsQualityModelCooldown(limits[key]) {
-			return true
-		}
-	}
 	resetAt := a.modelRateLimitResetAt(key)
 	return resetAt != nil && time.Now().Before(*resetAt)
 }
@@ -48,12 +42,6 @@ func (a *Account) getRateLimitRemainingForKey(key string) time.Duration {
 
 func (a *Account) isModelRateLimitedWithContext(ctx context.Context, requestedModel string) bool {
 	for _, key := range a.modelRateLimitKeysForRequest(ctx, requestedModel) {
-		if ctx.Value(qualityProbeContextKey{}) == true {
-			limits, _ := a.Extra[modelRateLimitsKey].(map[string]any)
-			if IsQualityModelCooldown(limits[key]) {
-				continue
-			}
-		}
 		if a.isRateLimitActiveForKey(key) {
 			return true
 		}
@@ -231,33 +219,6 @@ func (a *Account) modelRateLimitReason(scope string) string {
 	return reason
 }
 
-// modelCapabilityRejected identifies an unexpired upstream observation for
-// scheduling/admission. It is not authoritative configured support: availability
-// diagnostics must not use it to manufacture a new downstream model_not_found.
-func (a *Account) modelCapabilityRejected(scope string) bool {
-	if !a.isRateLimitActiveForKey(scope) {
-		return false
-	}
-	switch a.modelRateLimitReason(scope) {
-	case upstreamModelNotFoundReason, upstreamModelNotFound401Reason, upstreamCodexPlanGatedModelReason:
-		return true
-	default:
-		return false
-	}
-}
-
-// Use the actual outbound model, including Codex alias normalization, so a
-// public alias cannot hide a previously observed model capability rejection.
-func (a *Account) modelCapabilityRejectedForRequest(ctx context.Context, model string) bool {
-	scope := a.GetMappedModel(model)
-	if a.IsOpenAICompatible() {
-		scope = resolveOpenAIAccountUpstreamModelForRequest(a, model, false)
-	} else if a.Platform == PlatformAntigravity {
-		scope = resolveFinalAntigravityModelKey(ctx, a, model)
-	}
-	return a.modelCapabilityRejected(scope)
-}
-
 // setAccountModelRateLimitSnapshot 把模型级限流写进本账号对象的 Extra 快照。
 // 写时复制：Extra 与其中的 model_rate_limits 可能与调度快照母本及其它副本共享，
 // 这里只读取旧 map，写入新复制的 map 后替换 account.Extra，不修改任何已有 map。
@@ -279,6 +240,30 @@ func setAccountModelRateLimitSnapshot(account *Account, scope string, resetAt ti
 	limits[scope] = payload
 
 	extra := make(map[string]any, len(account.Extra)+1)
+	maps.Copy(extra, account.Extra)
+	extra[modelRateLimitsKey] = limits
+	account.Extra = extra
+}
+
+// clearAccountModelRateLimitSnapshot 从本账号对象的 Extra 快照中删除指定 scope，
+// 让当前实例立刻停止跳过该模型，而不必等下一次快照重建。
+// 与 setAccountModelRateLimitSnapshot 一样写时复制，不修改可能共享的旧 map。
+func clearAccountModelRateLimitSnapshot(account *Account, scope string) {
+	if account == nil || strings.TrimSpace(scope) == "" {
+		return
+	}
+	oldLimits, ok := account.Extra[modelRateLimitsKey].(map[string]any)
+	if !ok {
+		return
+	}
+	if _, exists := oldLimits[scope]; !exists {
+		return
+	}
+	limits := make(map[string]any, len(oldLimits))
+	maps.Copy(limits, oldLimits)
+	delete(limits, scope)
+
+	extra := make(map[string]any, len(account.Extra))
 	maps.Copy(extra, account.Extra)
 	extra[modelRateLimitsKey] = limits
 	account.Extra = extra

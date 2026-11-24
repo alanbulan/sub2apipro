@@ -22,8 +22,6 @@ export default {
       output: 'Output',
       cacheToday: 'Cache (Today)',
       performance: 'Performance',
-      accountConcurrency: 'Account concurrency',
-      accountConcurrencyHint: 'Total account slots currently in use across the site. Updated on page load or refresh; — means unavailable.',
       avgResponse: 'Avg Response',
       averageTime: 'Average Time',
       active: 'active',
@@ -221,7 +219,7 @@ export default {
         step1: {
           title: 'Create an R2 Bucket',
           line1: 'Log in to the Cloudflare Dashboard (dash.cloudflare.com), select "R2 Object Storage" from the sidebar',
-          line2: 'Click "Create bucket", enter a bucket name, choose a region',
+          line2: 'Click "Create bucket", enter a name (e.g. sub2api-backups), choose a region',
           line3: 'Click create to finish'
         },
         step2: {
@@ -496,39 +494,6 @@ export default {
 
     // Users
     users: {
-      bulkRecharge: {
-  "title": "Bulk recharge",
-  "action": "Bulk recharge",
-  "count": "{count} users selected",
-  "amount": "Amount per user ($)",
-  "total": "Total recharge: ${total}",
-  "hint": "Credits and ledger entries are saved in one transaction. Any failure rolls back the entire batch.",
-  "pending": "The previous result is unconfirmed. Retry uses the same operation; avoid creating another recharge.",
-  "confirm": "Credit {count} users ${amount} each, ${total} in total?",
-  "success": "Recharged {count} users",
-  "failed": "Recharge failed. Retry the same operation.",
-  "sessionRequired": "Sign in again before recharging"
-},
-      feishuSync: {
-  "action": "Sync Feishu users",
-  "running": "Syncing…",
-  "retryStatus": "Unable to read progress. Retry",
-  "confirm": "Sync active employees from this Feishu enterprise? Create ordinary users and update names, avatars and available emails. Existing balances and roles are preserved. A Feishu administrator may need to approve directory access.",
-  "preparing": "Checking Feishu permissions…",
-  "reading": "Reading the complete enterprise directory…",
-  "syncing": "Progress: {processed}/{total}",
-  "succeeded": "Completed: {created} created, {updated} updated, {skipped} skipped",
-  "partial": "Partially completed: {created} created, {updated} updated, {failed} failed. Sync again to retry.",
-  "failed": "Sync incomplete.",
-  "approval_required": "Awaiting Feishu administrator approval.",
-  "errors": {
-    "permission_required": "Approve read permissions and the full directory range in the Feishu developer console, then retry.",
-    "expired": "Task expired or the service restarted. Sync again.",
-    "config_changed": "App configuration changed. Sync again.",
-    "upstream_error": "Feishu is temporarily unavailable. Retry later.",
-    "service_error": "Service unavailable. Retry later."
-  }
-},
       title: 'User Management',
       description: 'Manage users and their permissions',
       createUser: 'Create User',
@@ -622,11 +587,7 @@ export default {
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
       },
-      liveUsageHint: 'Refreshes this page once per minute. Concurrency shows used / limit. RPM shows the existing user limiter count / limit, resets each calendar minute and may include rejected attempts. Zero limits mean unlimited (∞); usage is still counted. Requests rejected by the earlier group check are excluded.',
-      liveConcurrency: 'Concurrency',
-      liveUsageUnavailable: 'Unavailable',
       columns: {
-        liveUsage: 'Concurrency / RPM',
         user: 'User',
         id: 'ID',
         email: 'Email',
@@ -779,23 +740,7 @@ export default {
       failedToLoadBalanceHistory: 'Failed to load balance history',
       createdAt: 'Created',
       totalRecharged: 'Total Recharged',
-      observerGroups: 'Managed account groups',
-      observerSetup: {
-        title: 'Actions when changing to observer',
-        createGroup: 'Create an exclusive group named after this user',
-        createGroupHint: 'Uses OpenAI with a 1x multiplier. Grants account management and API access to the group. An existing group with the same name causes the update to fail.',
-        simpleModeHint: 'Exclusive groups are unavailable in simple mode.',
-        revokePublic: 'Revoke access to other public groups',
-        revokePublicHint: 'Restricts public standard groups and existing API keys using them. Keeps exclusive-group access and purchased subscriptions. Managed account groups are unchanged.',
-        grantResources: 'Add 99999 balance and 1000 concurrency',
-        grantResourcesHint: 'Adds 99999 to the balance and 1000 to the concurrency entered in this form. Zero remains unlimited. Changes appear in balance/concurrency history.',
-        onceHint: 'Unchecked by default. Runs only when changing a non-observer user to observer; later edits do not repeat these actions.',
-        usernameRequired: 'Enter a username before creating an exclusive group'
-      },
-      observerGroupsHint: 'Account management only; independent of API consumption groups. No groups means no account access. Credentials can be viewed and exported. Changes to shared accounts also affect other groups.',
-      observerImportHint: 'Select destination groups. Observer imports exclude proxy configurations; use an export without proxies.',
       roles: {
-        observer: 'Observer',
         admin: 'Admin',
         user: 'User'
       },
@@ -902,23 +847,6 @@ export default {
 
     // Groups
     groups: {
-      antiDistillation: {
-        title: 'OpenAI anti-distillation protection (zero-cache rule)',
-        enable: 'Enable protection for this OpenAI group',
-        rule: 'Across a customer’s API keys and protected OpenAI groups, pause new requests to protected groups when at least 18 of the latest 20 fully completed text requests with explicit cache statistics report zero cache reads. An email notification is sent asynchronously to the customer’s account email. Unknown cache statistics are excluded.',
-        signalHint: 'Zero cache is a protection signal, not a finding of distillation. Normal new conversations and uncached workloads can also trigger it.',
-        pauseMinutes: 'Pause duration (minutes)',
-        minutesHint: 'Set an integer from 1 to 1440; default: 5 minutes. The triggering group determines the duration. An active pause is never extended.',
-        invalidMinutes: 'Enter an integer between 1 and 1440.',
-        scopeHint: 'Only new requests to protected groups are affected; existing streams finish normally. Unprotected groups remain available. Requests are not automatically moved to a more expensive group.',
-        saveHint: 'Save this setting separately; it takes effect within 10 seconds. The group save button below is not required. Disabling protection releases this group once the setting takes effect.',
-        createHint: 'Disabled by default. Create the group first, then edit it to configure and save protection separately.',
-        save: 'Save protection settings',
-        saved: 'Protection settings saved; effective within 10 seconds',
-        loadFailed: 'Could not load protection settings. Reload successfully before saving to avoid overwriting the existing configuration.',
-        saveFailed: 'Could not save protection settings. Please try again.',
-        retry: 'Reload',
-      },
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
       searchGroups: 'Search groups...',
@@ -948,7 +876,6 @@ export default {
         rateMultiplier: 'Rate Multiplier',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
-        deniedModels: 'Denied models',
         rateDefault: 'default',
         rpmDefault: 'default',
         exclusive: 'Exclusive',
@@ -1000,13 +927,6 @@ export default {
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
-        blockSubagents: 'Block subagents',
-        blockSubagentsHint: 'Reject employee requests with subagent or parent-thread markers, including automatic review agents. Main threads, admin tests and quality judging remain available. Clients that remove all markers cannot be reliably identified.',
-        codexCLIOnly: 'Codex clients only',
-        codexCLIOnlyHint: 'Restrict employee API requests using the global Codex client policy. Account connection tests, IQ tests and quality judging remain available.',
-        streamOnly: 'Streaming requests only',
-        streamOnlyHint: 'When on, this group only accepts streaming chat requests: Messages, Chat Completions and Responses requests without "stream": true, and Gemini generateContent, are rejected with 400. Token counting, model lists, embeddings, images and videos are not affected. Note: some clients check connectivity with non-streaming requests, and those checks will fail.',
-        streamOnlyBadge: 'Stream only',
         maxReasoningEffort: 'Max reasoning effort',
         maxReasoningEffortUnlimited: 'Unlimited (follow request)',
         maxReasoningEffortHint: 'Limits explicit Anthropic and OpenAI reasoning effort requests. For Composite groups, it applies to the resolved target platform. Omitted effort stays omitted. The ceiling takes precedence over reasoning effort mappings.',
@@ -1102,13 +1022,6 @@ export default {
       noRpmOverrides: 'No users have an RPM override yet',
       rpmSaved: 'RPM overrides saved',
       groupRpmDefault: 'Group default RPM',
-      userDeniedModels: 'Model Limits',
-      userDeniedModelsTitle: 'Per-user Model Limits',
-      userDeniedModelsHint: 'Block specific users from using some models in this group; other models are unaffected. Case-insensitive; a trailing * matches a prefix (e.g. gpt-6-*).',
-      addUserDeniedModels: 'Add a user limit',
-      deniedModelsPlaceholder: 'Type a model and press Enter',
-      noUserDeniedModels: 'No user has model limits yet',
-      userDeniedModelsSaved: 'User model limits saved',
       searchUserPlaceholder: 'Search user email...',
       noRateMultipliers: 'No user rate multipliers configured',
       rateUpdated: 'Rate multiplier updated',
@@ -1165,7 +1078,7 @@ export default {
         description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
         allowImageGeneration: 'Allow image generation for this group',
         allowBatchImageGeneration: 'Allow batch image generation for this group',
-        perImageBilling: 'Bill image endpoints per image (explicit token pricing takes priority)',
+        perImageBilling: 'Bill per generated image',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',
         batchDiscountMultiplier: 'Batch image discount',
@@ -1178,16 +1091,6 @@ export default {
         notConfigured: 'Not configured'
       },
       videoPricing: {
-        h3Enable: 'Enable MiniMax-H3 video',
-        h3Mode: 'Billing mode',
-        h3PerSecond: 'Per second',
-        h3PerRequest: 'Per request',
-        h3Seconds: 'Video duration per request (1–15 seconds)',
-        h3SecondPrice: 'Price per second (USD/s)',
-        h3RequestPrice: 'Price per request (USD/request)',
-        h3Hint: 'Uniform USD pricing across resolutions. Final cost = base cost × current group multiplier. Successful jobs are settled when results are queried; failed jobs are not charged.',
-        h3DurationHint: 'Per-request billing only accepts the configured duration. Other durations are rejected before submission to the upstream.',
-        h3Preview: 'Current group multiplier {multiplier}, final price {price}',
         title: 'Video Generation Pricing',
         description:
           'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
@@ -1361,18 +1264,18 @@ export default {
       openaiLive: {
         title: 'OpenAI Live',
         allow: 'Allow Live access',
-        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
+        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The Sub2API server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
         unsupportedTitle: 'Current server does not support Live',
-        unsupportedMessage: 'This server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
+        unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
       },
       openaiFast: {
         title: 'OpenAI Fast mode',
         force: 'Force Fast (priority)',
         hint: 'Forces service_tier=priority on OpenAI requests in this group. The global Fast/Flex policy can still filter or block it. New requests update immediately after saving; existing WebSocket sessions must reconnect.',
+        forceUltrafast: 'Force Ultra Fast (ultrafast)',
+        ultrafastHint: 'Forces Ultra Fast (service_tier=ultrafast) on supported models. Pro 200 includes GPT-6.2 Sol Ultrafast. Pro 500 includes both Sol and Astra Ultrafast. Other subscriptions use the tiers advertised by their account. If unavailable, Force Fast takes precedence over the client tier. GPT-6.2 Sol and Astra cost 3× Standard through February 28, 2027 (Pacific time), then 6×. GPT-6 Astra and GPT-6.1 Sol cost 6×. Free Fast excludes Ultra Fast.',
         free: 'Free Fast',
-        freeUltrafast: 'Free UltraFast',
-        freeUltrafastHint: 'Bill requests settled at the ultrafast tier to customers at Standard prices, including cache reads and writes. Independent of Free Fast; does not force UltraFast upstream, and preserves actual-tier account cost statistics.',
         freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.'
       },
       invalidRequestFallback: {

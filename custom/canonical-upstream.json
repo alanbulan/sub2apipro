@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "Wei-Shaw/sub2api",
+    "url": "https://github.com/Wei-Shaw/sub2api.git",
+    "branch": "main",
+    "reviewed_commit": "0f6671457132425d1b84f3d80536b53e02942424",
+    "reviewed_version": "0.2.25"
+  },
+  "previous_source": {
+    "repository": "ranxi2001/sub2api",
+    "branch": "production",
+    "pro_baseline": "0226a1f40e4019243544c19c476e8b537394809d"
+  },
+  "deployment": {
+    "migration_requires_owner_review": true,
+    "status": "in_progress",
+    "local_builds_and_tests": false
+  },
+  "preserve": [
+    "pro_white_label_and_24_themes",
+    "remember_me_session_storage_contract",
+    "conversation_logs",
+    "enterprise_only_feishu_login_and_qr_setup",
+    "feishu_directory_and_email_backfill",
+    "bulk_user_recharge",
+    "dedicated_employee_key_mail_delivery",
+    "jwt_employee_key_api_and_documentation",
+    "scoped_user_account_pool_and_diagnostics",
+    "manual_intelligence_tests",
+    "scheduled_intelligence_tests_and_history"
+  ],
+  "retire": [
+    "ranxi_production_as_update_source",
+    "ranxi_historical_ci_matrix",
+    "ranxi_smart_operations_and_quality_automation",
+    "ranxi_ticket_harvesting_and_reauth_workers",
+    "ranxi_qq_bot_lottery_and_growth_features",
+    "ranxi_regional_and_profit_operations"
+  ]
+}

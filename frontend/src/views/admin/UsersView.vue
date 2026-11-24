@@ -29,7 +29,6 @@
                 :options="[
                   { value: '', label: t('admin.users.allRoles') },
                   { value: 'admin', label: t('admin.users.admin') },
-                  { value: 'observer', label: t('admin.users.roles.observer') },
                   { value: 'user', label: t('admin.users.user') }
                 ]"
                 @change="applyFilter"
@@ -150,14 +149,14 @@
                 <!-- Dropdown menu -->
                 <div
                   v-if="showFilterDropdown"
-                  class="app-theme-menu-surface absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                  class="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
                 >
                   <!-- Built-in filters -->
                   <button
                     v-for="filter in builtInFilters"
                     :key="filter.key"
                     @click="toggleBuiltInFilter(filter.key)"
-                    class="app-theme-menu-item flex w-full items-center justify-between px-4 py-2 text-left text-sm"
+                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   >
                     <span>{{ filter.name }}</span>
                     <Icon
@@ -171,14 +170,14 @@
                   <!-- Divider if custom attributes exist -->
                   <div
                     v-if="filterableAttributes.length > 0"
-                    class="app-theme-menu-divider my-1 border-t"
+                    class="my-1 border-t border-gray-100 dark:border-dark-700"
                   ></div>
                   <!-- Custom attribute filters -->
                   <button
                     v-for="attr in filterableAttributes"
                     :key="attr.id"
                     @click="toggleAttributeFilter(attr)"
-                    class="app-theme-menu-item flex w-full items-center justify-between px-4 py-2 text-left text-sm"
+                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                   >
                     <span>{{ attr.name }}</span>
                     <Icon
@@ -206,7 +205,7 @@
                 <!-- Dropdown menu -->
                 <div
                   v-if="showColumnDropdown"
-                  class="app-theme-menu-surface absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                  class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
                 >
                   <button
                     v-for="col in toggleableColumns"
@@ -214,10 +213,10 @@
                     :disabled="isForcedVisibleColumn(col.key)"
                     @click="toggleColumn(col.key)"
                     :class="[
-                      'app-theme-menu-item flex w-full items-center justify-between px-4 py-2 text-left text-sm',
+                      'flex w-full items-center justify-between px-4 py-2 text-left text-sm',
                       isForcedVisibleColumn(col.key)
-                        ? 'cursor-not-allowed'
-                        : ''
+                        ? 'cursor-not-allowed text-gray-400 dark:text-gray-500'
+                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700'
                     ]"
                     :title="isForcedVisibleColumn(col.key) ? t('admin.users.columnAlwaysVisible') : ''"
                   >
@@ -243,18 +242,6 @@
               </button>
             </div>
 
-            <FeishuDirectorySync @synced="loadUsers" />
-            <FeishuKeyDelivery :selected-ids="selectedIds" @updated="loadUsers" />
-
-            <!-- Create User Button (full width on mobile, auto width on desktop) -->
-            <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
-              <Icon name="plus" size="md" class="mr-2" />
-              {{ t('admin.users.createUser') }}
-            </button>
-          </div>
-        </div>
-        <div v-if="selectedCount > 0" class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-dark-700">
-          <button class="btn btn-primary" data-test="bulk-recharge-users" @click="showBulkRechargeModal = true">{{ t('admin.users.bulkRecharge.action') }} ({{ selectedCount }})</button>
             <button
               v-if="selectedCount > 0"
               class="btn btn-secondary flex-1 md:flex-initial"
@@ -276,6 +263,12 @@
               {{ t('admin.users.bulkDelete.action', { count: selectedCount }) }}
             </button>
 
+            <!-- Create User Button (full width on mobile, auto width on desktop) -->
+            <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
+              <Icon name="plus" size="md" class="mr-2" />
+              {{ t('admin.users.createUser') }}
+            </button>
+          </div>
         </div>
       </template>
 
@@ -297,13 +290,16 @@
           @sort="handleSort"
           @update:selected-keys="handleSelectedKeysUpdate"
         >
-          <template #cell-email="{ value, row }">
-            <div class="flex min-w-0 items-center gap-2">
-              <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
-                <span class="text-sm font-medium text-primary-700 dark:text-primary-300">{{ (row.username || value).charAt(0).toUpperCase() }}</span>
+          <template #cell-email="{ value }">
+            <div class="flex items-center gap-2">
+              <div
+                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
+              >
+                <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
+                  {{ value.charAt(0).toUpperCase() }}
+                </span>
               </div>
-              <span class="block max-w-[220px] truncate font-medium text-gray-900 dark:text-white" :title="value">{{ shortUserEmail(value) }}</span>
-              <button class="shrink-0 text-gray-400 hover:text-primary-500" :aria-label="t('common.copy')" @click="copyEmail(value)"><Icon name="copy" size="sm" /></button>
+              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
             </div>
           </template>
 
@@ -459,10 +455,6 @@
                 {{ t('admin.users.deposit') }}
               </button>
             </div>
-            <div v-if="creditAuth.isAdmin && row.auto_credit_outstanding && !/^0(?:\.0+)?$/.test(row.auto_credit_outstanding)" class="mt-1 flex items-center gap-1">
-              <button type="button" class="text-left text-xs font-semibold text-amber-700 dark:text-amber-300" @click="autoCreditUser = row">{{ t('autoCredit.debt', { amount: Number(row.auto_credit_outstanding).toFixed(2) }) }}</button>
-              <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.vipAutoCredit" :user-id="creditAuth.user?.id" compact />
-            </div>
           </template>
 
           <template #cell-balance_platform_quota="{ row }">
@@ -581,16 +573,6 @@
             <PlatformCostCell :usage="getPlatformUsage(row.id, 'antigravity')" />
           </template>
 
-          <template #header-live_usage>
-            <span class="inline-flex items-center gap-1" :title="t('admin.users.liveUsageHint')">
-              {{ t('admin.users.columns.liveUsage') }}
-              <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.userLiveLoad" :user-id="creditAuth.user?.id" compact />
-            </span>
-          </template>
-          <template #cell-live_usage="{ row }">
-            <UserLiveUsageCell :user="row" />
-          </template>
-
           <template #cell-concurrency="{ row }">
             <UserConcurrencyCell
               :current="row.current_concurrency ?? 0"
@@ -630,10 +612,6 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
-              <div v-if="creditAuth.isAdmin" class="flex items-center gap-1">
-                <button type="button" class="rounded-lg p-1.5 text-xs text-amber-700 hover:bg-amber-50 dark:text-amber-300" @click="autoCreditUser = row">{{ t('autoCredit.title') }}</button>
-                <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.vipAutoCredit" :user-id="creditAuth.user?.id" compact />
-              </div>
               <!-- Edit Button -->
               <button
                 @click="handleEdit(row)"
@@ -699,7 +677,7 @@
     <Teleport to="body">
       <div
         v-if="activeMenuId !== null && menuPosition"
-        class="app-theme-menu-surface action-menu-content fixed z-[9999] w-48 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        class="action-menu-content fixed z-[9999] w-48 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
         :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px' }"
       >
         <div class="py-1">
@@ -708,7 +686,7 @@
               <!-- View API Keys -->
               <button
                 @click="handleViewApiKeys(user); closeActionMenu()"
-                class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
                 <Icon name="key" size="sm" class="text-gray-400" :stroke-width="2" />
                 {{ t('admin.users.apiKeys') }}
@@ -717,18 +695,18 @@
               <!-- Allowed Groups -->
               <button
                 @click="handleAllowedGroups(user); closeActionMenu()"
-                class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
                 <Icon name="users" size="sm" class="text-gray-400" :stroke-width="2" />
                 {{ t('admin.users.groups') }}
               </button>
 
-              <div class="app-theme-menu-divider my-1 border-t"></div>
+              <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
               <!-- Deposit -->
               <button
                 @click="handleDeposit(user); closeActionMenu()"
-                class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
                 <Icon name="plus" size="sm" class="text-emerald-500" :stroke-width="2" />
                 {{ t('admin.users.deposit') }}
@@ -737,7 +715,7 @@
               <!-- Withdraw -->
               <button
                 @click="handleWithdraw(user); closeActionMenu()"
-                class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
                 <svg class="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
@@ -748,7 +726,7 @@
               <!-- Platform Quotas -->
               <button
                 @click="handlePlatformQuota(user); closeActionMenu()"
-                class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
                 <Icon name="chartBar" size="sm" class="text-gray-400" :stroke-width="2" />
                 {{ t('admin.users.platformQuota.menuItem') }}
@@ -757,19 +735,19 @@
               <!-- Balance History -->
               <button
                 @click="handleBalanceHistory(user); closeActionMenu()"
-                class="app-theme-menu-item flex w-full items-center gap-2 px-4 py-2 text-sm"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
                 <Icon name="dollar" size="sm" class="text-gray-400" :stroke-width="2" />
                 {{ t('admin.users.balanceHistory') }}
               </button>
 
-              <div class="app-theme-menu-divider my-1 border-t"></div>
+              <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
               <!-- Delete (not for admin) -->
               <button
                 v-if="user.role !== 'admin'"
                 @click="handleDelete(user); closeActionMenu()"
-                class="app-theme-menu-item app-theme-menu-item-danger flex w-full items-center gap-2 px-4 py-2 text-sm"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
               >
                 <Icon name="trash" size="sm" :stroke-width="2" />
                 {{ t('common.delete') }}
@@ -792,7 +770,6 @@
     />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
-    <BulkRechargeUserModal :show="showBulkRechargeModal" :selected-ids="selectedIds" @close="showBulkRechargeModal = false" @success="handleBulkLimitsSuccess" />
     <BulkEditUserModal
       :show="showBulkEditModal"
       :selected-ids="selectedIds"
@@ -807,7 +784,6 @@
     />
     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
-    <UserAutoCreditModal :show="!!autoCreditUser" :user="autoCreditUser" @close="autoCreditUser = null" @success="loadUsers" />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
@@ -823,15 +799,7 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
-import FeishuDirectorySync from '@/components/admin/user/FeishuDirectorySync.vue'
-import FeishuKeyDelivery from '@/components/admin/user/FeishuKeyDelivery.vue'
-import BulkRechargeUserModal from '@/components/admin/user/BulkRechargeUserModal.vue'
-import { shortUserEmail } from '@/utils/userEmail'
 
-async function copyEmail(email: string) {
-  try { await navigator.clipboard.writeText(email); appStore.showSuccess(t('common.copied')) }
-  catch { appStore.showError(t('common.error')) }
-}
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
@@ -849,7 +817,6 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import Select from '@/components/common/Select.vue'
 import { buildApiKeyGroupFilterOptions } from './apiKeyGroupFilterOptions'
 import UserAttributesConfigModal from '@/components/user/UserAttributesConfigModal.vue'
-import UserLiveUsageCell from '@/components/user/UserLiveUsageCell.vue'
 import UserConcurrencyCell from '@/components/user/UserConcurrencyCell.vue'
 import PlatformUsageBreakdown from '@/components/user/PlatformUsageBreakdown.vue'
 import PlatformCostCell from '@/components/user/PlatformCostCell.vue'
@@ -861,16 +828,10 @@ import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaMod
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
-import UserAutoCreditModal from '@/components/admin/user/UserAutoCreditModal.vue'
-import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
-import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
-import { useAuthStore } from '@/stores/auth'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
-const creditAuth = useAuthStore()
-const autoCreditUser = ref<AdminUser | null>(null)
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
@@ -937,7 +898,6 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_gemini', label: t('admin.users.columns.usageGemini'), sortable: false },
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
-  { key: 'live_usage', label: t('admin.users.columns.liveUsage'), sortable: false },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
@@ -1367,7 +1327,7 @@ const handleSelectedKeysUpdate = (keys: Array<string | number>) => {
 }
 
 const getUserSelectionLabel = (user: AdminUser) =>
-  t('admin.users.bulkLimits.selectUser', { email: user.username || shortUserEmail(user.email) })
+  t('admin.users.bulkLimits.selectUser', { email: user.email })
 
 // User attribute definitions and values
 const attributeDefinitions = ref<UserAttributeDefinition[]>([])
@@ -1382,7 +1342,6 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
-const showBulkRechargeModal = ref(false)
 const showDeleteDialog = ref(false)
 const bulkDeleteIds = ref<number[]>([])
 const bulkDeleting = ref(false)
@@ -1623,12 +1582,7 @@ const handleAttributesModalClose = async () => {
   loadUsers()
 }
 
-let usersViewActive = true
-let lastUsersLoadAt = 0
-let liveUsageTimer: ReturnType<typeof setInterval> | undefined
-
 const loadUsers = async () => {
-  lastUsersLoadAt = Date.now()
   abortController?.abort()
   const currentAbortController = new AbortController()
   abortController = currentAbortController
@@ -1936,15 +1890,9 @@ const handleScroll = () => {
 
 onMounted(async () => {
   await loadAttributeDefinitions()
-  if (!usersViewActive) return
   loadSavedFilters()
   loadSavedColumns()
   loadUsers()
-  liveUsageTimer = setInterval(() => {
-    if (document.hidden || hiddenColumns.has('live_usage') || loading.value) return
-    if (Date.now() - lastUsersLoadAt < 60_000) return
-    void loadUsers()
-  }, 60_000)
   if (hasVisibleGroupsColumn.value || visibleFilters.has('group')) {
     loadAllGroups()
   }
@@ -1956,8 +1904,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  usersViewActive = false
-  clearInterval(liveUsageTimer)
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', handleScroll, true)
   clearTimeout(searchTimeout)

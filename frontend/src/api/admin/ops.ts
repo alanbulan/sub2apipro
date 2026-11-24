@@ -6,7 +6,6 @@
 
 import { apiClient, buildGatewayUrl } from '../client'
 import type { PaginatedResponse } from '@/types'
-import { AUTH_TOKEN_KEY, getAuthItem } from '@/utils/authStorage'
 
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
 
@@ -15,11 +14,6 @@ export interface OpsRequestOptions {
 }
 
 export type OpsUpstreamErrorEvent = {
-  encrypted_history_400?: {
-    applied: boolean
-    after_409: boolean
-    decision: string
-  }
   at_unix_ms?: number
   platform?: string
   account_id?: number
@@ -29,6 +23,8 @@ export type OpsUpstreamErrorEvent = {
   kind?: string
   message?: string
   detail?: string
+  /** 本次尝试实际发给上游的身份上报请求头（请求头覆写变量生成），键为小写头名 */
+  reported_headers?: Record<string, string>
 }
 
 export interface OpsDashboardOverview {
@@ -616,7 +612,7 @@ export function subscribeQPS(onMessage: (data: any) => void, options: SubscribeQ
     // Do NOT put admin JWT in the URL query string (it can leak via access logs, proxies, etc).
     // Browsers cannot set Authorization headers for WebSockets, so we pass the token via
     // Sec-WebSocket-Protocol (subprotocol list): ["sub2api-admin", "jwt.<token>"].
-    const rawToken = String(options.token ?? getAuthItem(AUTH_TOKEN_KEY) ?? '').trim()
+    const rawToken = String(options.token ?? localStorage.getItem('auth_token') ?? '').trim()
     const protocols: string[] = [OPS_WS_BASE_PROTOCOL]
     if (rawToken) protocols.push(`jwt.${rawToken}`)
 

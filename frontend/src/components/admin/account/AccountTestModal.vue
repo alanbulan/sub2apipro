@@ -6,18 +6,6 @@
     @close="handleClose"
   >
     <div class="space-y-4">
-      <AccountTestTiming :timing="connectionTiming.timing.value" :delivery="connectionTiming.delivery.value" />
-      <div v-if="legacyBPSAuthorizationPending" role="status" class="text-sm text-amber-700 dark:text-amber-300">
-        {{ t('admin.accounts.bpsAuthorizing') }}
-        <a href="/admin/token-guard-v2" target="_blank" rel="noopener noreferrer" class="ml-2 underline">{{ t('admin.accounts.openCredentialOperations') }}</a>
-      </div>
-      <div v-if="modelLoadError" role="alert" class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-        <p>{{ modelLoadError }}</p>
-        <div class="mt-2 flex gap-4">
-          <button type="button" :disabled="loadingModels" class="underline" @click="loadAvailableModels">{{ t('admin.accounts.retryModels') }}</button>
-          <a v-if="modelAuthError" href="/admin/token-guard-v2" target="_blank" rel="noopener noreferrer" class="underline">{{ t('admin.accounts.openCredentialOperations') }}</a>
-        </div>
-      </div>
       <!-- Account Info Card -->
       <div
         v-if="account"
@@ -54,7 +42,7 @@
       </div>
 
       <!-- Grok: mode first, then optional model / mode params -->
-      <div v-if="isGrokAccount && !poolContext" class="space-y-1.5">
+      <div v-if="isGrokAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.grok.testMode') }}
         </label>
@@ -82,7 +70,7 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount && !poolContext" class="space-y-1.5">
+      <div v-if="isOpenAIAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
@@ -377,12 +365,8 @@
 </template>
 
 <script setup lang="ts">
-import { AUTH_TOKEN_KEY, getAuthItem } from '@/utils/authStorage'
-import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import AccountTestTiming from '@/components/account/AccountTestTiming.vue'
-import { useAccountTestTiming, type AccountTestTiming as TimingPayload } from '@/composables/useAccountTestTiming'
-import { consumeAccountTestStream } from '@/utils/accountTestStream'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import TextArea from '@/components/common/TextArea.vue'
@@ -392,11 +376,8 @@ import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
-import { getPoolDiagnosticModels, poolDiagnosticPath, poolTestError, type PoolDiagnosticContext } from '@/api/poolDashboard'
 
 const { t } = useI18n()
-const connectionTiming = useAccountTestTiming()
-let streamGeneration = 0
 const { copyToClipboard } = useClipboard()
 
 interface OutputLine {
@@ -411,11 +392,8 @@ interface PreviewMedia {
 
 const props = defineProps<{
   show: boolean
-  account?: Account | null
-  poolContext?: PoolDiagnosticContext
+  account: Account | null
 }>()
-
-const account = computed(() => props.poolContext?.account ?? props.account ?? null)
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -430,9 +408,6 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
-const modelLoadError = ref('')
-const modelAuthError = ref(false)
-let modelLoadGeneration = 0
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
@@ -447,13 +422,8 @@ const uploadAudioDataURL = ref('')
 const uploadAudioName = ref('')
 const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
-const isOpenAIAccount = computed(() => account.value?.platform === 'openai')
-// Managed accounts authorize BPS through authorization connections and never
-// receive the legacy Excel grant this marker waits for.
-const legacyBPSAuthorizationPending = computed(() =>
-  account.value?.extra?.openai_excel_bps_authorization_pending === true && account.value?.extra?.openai_connections_managed !== true
-)
-const isGrokAccount = computed(() => account.value?.platform === 'grok')
+const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
@@ -472,13 +442,13 @@ const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
 
-  return account.value?.platform === 'gemini' || account.value?.platform === 'antigravity'
+  return props.account?.platform === 'gemini' || props.account?.platform === 'antigravity'
 })
 
 const supportsOpenAIImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gpt-image-')) return false
-  return account.value?.platform === 'openai'
+  return props.account?.platform === 'openai'
 })
 
 const isGrokImageModel = (id: string) => {
@@ -764,9 +734,9 @@ const pickDefaultModelForMode = () => {
 }
 
 watch(
-  () => [props.show, account.value?.id, props.poolContext?.groupId] as const,
-  async ([newVal]) => {
-    if (newVal && account.value) {
+  () => props.show,
+  async (newVal) => {
+    if (newVal && props.account) {
       testPrompt.value = ''
       testMode.value = 'default'
       grokTestMode.value = 'text'
@@ -777,9 +747,6 @@ watch(
         applyDefaultPromptForMode()
       }
     } else {
-      ++modelLoadGeneration
-      modelLoadError.value = ''
-      modelAuthError.value = false
       abortStream()
     }
   }
@@ -794,26 +761,18 @@ watch(grokTestMode, () => {
 })
 
 const loadAvailableModels = async () => {
-  if (!account.value) return
+  if (!props.account) return
 
-  const generation = ++modelLoadGeneration
   loadingModels.value = true
-  modelLoadError.value = ''
-  modelAuthError.value = false
-  availableModels.value = []
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = props.poolContext
-      ? await getPoolDiagnosticModels(props.poolContext)
-      : await adminAPI.accounts.getAvailableModels(account.value.id)
-    if (generation !== modelLoadGeneration) return
-    availableModels.value = account.value.platform === 'gemini' || account.value.platform === 'antigravity'
+    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
+    availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
-    if (props.poolContext && !models.length) modelLoadError.value = t('poolDashboard.noTestModels')
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (account.value.platform === 'gemini') {
+      if (props.account.platform === 'gemini') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model
@@ -822,22 +781,16 @@ const loadAvailableModels = async () => {
       }
     }
   } catch (error) {
-    if (generation !== modelLoadGeneration) return
-    const reason = typeof error === 'object' && error !== null && 'reason' in error ? String(error.reason) : ''
-    modelAuthError.value = reason.startsWith('OPENAI_EXCEL_AUTH_')
-    const key = 'admin.accounts.excelAuthErrors.' + reason
-    const authReasons = ['OPENAI_EXCEL_AUTH_PENDING', 'OPENAI_EXCEL_AUTH_FAILED', 'OPENAI_EXCEL_AUTH_VERIFICATION_REQUIRED', 'OPENAI_EXCEL_AUTH_CONFIG_REQUIRED', 'OPENAI_EXCEL_AUTH_REQUIRED', 'OPENAI_EXCEL_AUTH_UNAVAILABLE']
-    modelLoadError.value = authReasons.includes(reason) ? t(key) : t('admin.accounts.modelsLoadFailed')
+    console.error('Failed to load available models:', error)
     // Fallback to empty list
     availableModels.value = []
     selectedModelId.value = ''
   } finally {
-    if (generation === modelLoadGeneration) loadingModels.value = false
+    loadingModels.value = false
   }
 }
 
 const resetState = () => {
-  connectionTiming.reset()
   status.value = 'idle'
   outputLines.value = []
   streamingContent.value = ''
@@ -854,10 +807,7 @@ const handleClose = () => {
 }
 
 const abortStream = () => {
-  streamGeneration++
   if (abortController) {
-    connectionTiming.cancel()
-    status.value = 'idle'
     abortController.abort()
     abortController = null
   }
@@ -876,14 +826,12 @@ const scrollToBottom = async () => {
 }
 
 const startTest = async () => {
-  if (!account.value || !canStartTest.value) return
+  if (!props.account || !canStartTest.value) return
 
-  abortStream()
   resetState()
-  connectionTiming.begin()
   status.value = 'connecting'
-  addLine(t('admin.accounts.startingTestForAccount', { name: account.value.name }), 'text-blue-400')
-  addLine(t('admin.accounts.testAccountTypeLabel', { type: account.value.type }), 'text-gray-400')
+  addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
+  addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-gray-400')
   if (isGrokAccount.value) {
     const modeLabel =
       grokTestModeOptions.value.find((o) => o.value === grokTestMode.value)?.label || grokTestMode.value
@@ -891,9 +839,9 @@ const startTest = async () => {
   }
   addLine('', 'text-gray-300')
 
-  const generation = ++streamGeneration
-  const controller = new AbortController()
-  abortController = controller
+  abortStream()
+
+  abortController = new AbortController()
 
   try {
     const requestBody: {
@@ -930,51 +878,67 @@ const startTest = async () => {
     }
 
     // Use the configured API base; EventSource does not support POST.
-    const url = buildApiUrl(props.poolContext ? poolDiagnosticPath(props.poolContext, 'test') : `/admin/accounts/${account.value.id}/test`)
+    const url = buildApiUrl(`/admin/accounts/${props.account.id}/test`)
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${getAuthItem(AUTH_TOKEN_KEY)}`,
+        Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         'Content-Type': 'application/json',
-        ...(!props.poolContext ? { [ADMIN_UI_REQUEST_HEADER]: '1' } : {})
+        [ADMIN_UI_REQUEST_HEADER]: '1'
       },
-      body: JSON.stringify(props.poolContext ? { model_id: requestBody.model_id } : requestBody),
-      signal: controller.signal
+      body: JSON.stringify(requestBody),
+      signal: abortController.signal
     })
 
     if (!response.ok) {
-      throw props.poolContext ? await poolTestError(response) : new Error(`HTTP error! status: ${response.status}`)
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    await consumeAccountTestStream(response, controller.signal, (event) => {
-      if (generation === streamGeneration) handleEvent(event)
-    })
-    if (generation !== streamGeneration) return
-    connectionTiming.finish()
-    if (status.value === 'connecting') {
-      status.value = 'error'
-      errorMessage.value = t('accountTestTiming.delivery.incomplete')
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error(t('admin.accounts.grok.noResponseBody'))
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim()
+          if (jsonStr) {
+            try {
+              const event = JSON.parse(jsonStr)
+              handleEvent(event)
+            } catch (e) {
+              console.error('Failed to parse SSE event:', e)
+            }
+          }
+        }
+      }
     }
   } catch (error: unknown) {
-    if (generation !== streamGeneration) return
     if (error instanceof DOMException && error.name === 'AbortError') {
-      connectionTiming.cancel()
       status.value = 'idle'
       return
     }
-    connectionTiming.fail()
     status.value = 'error'
     const msg = error instanceof Error ? error.message : t('common.unknownError')
     errorMessage.value = msg
     addLine(t('admin.accounts.errorPrefix', { message: msg }), 'text-red-400')
   }
-  finally { if (generation === streamGeneration) abortController = null }
 }
 
 const handleEvent = (event: {
-  timing?: TimingPayload
   type: string
   text?: string
   model?: string
@@ -985,10 +949,9 @@ const handleEvent = (event: {
   video_url?: string
   mime_type?: string
 }) => {
-  connectionTiming.accept(event)
   switch (event.type) {
     case 'test_start':
-      addLine(t('admin.accounts.testRequestStarted'), 'text-gray-400')
+      addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
@@ -1084,14 +1047,10 @@ const handleEvent = (event: {
   }
 }
 
-onBeforeUnmount(abortStream)
-watch(() => props.account?.id, () => { abortStream(); resetState() })
-
 const copyOutput = () => {
   const text = outputLines.value.map((l) => l.text).join('\n')
   copyToClipboard(text, t('admin.accounts.outputCopied'))
 }
-onBeforeUnmount(abortStream)
 </script>
 
 <style>

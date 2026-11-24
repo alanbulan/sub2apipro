@@ -4,22 +4,16 @@ import "time"
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
-	ConcurrencyLimit  int                      `json:"concurrency_limit"`
-	Version           int                      `json:"version"`
-	APIKeyID          int64                    `json:"api_key_id"`
-	UserID            int64                    `json:"user_id"`
-	GroupIDs          []int64                  `json:"group_ids,omitempty"`
-	GroupID           *int64                   `json:"group_id,omitempty"`
-	Name              string                   `json:"name"`
-	Status            string                   `json:"status"`
-	ModelMapping      map[string]string        `json:"model_mapping,omitempty"`
-	ReasoningEffort   string                   `json:"reasoning_effort,omitempty"`
-	ContextTokenLimit int                      `json:"context_token_limit"`
-	AllowLongContext  bool                     `json:"allow_long_context"`
-	IPWhitelist       []string                 `json:"ip_whitelist,omitempty"`
-	IPBlacklist       []string                 `json:"ip_blacklist,omitempty"`
-	User              APIKeyAuthUserSnapshot   `json:"user"`
-	Group             *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
+	Version     int                      `json:"version"`
+	APIKeyID    int64                    `json:"api_key_id"`
+	UserID      int64                    `json:"user_id"`
+	GroupID     *int64                   `json:"group_id,omitempty"`
+	Name        string                   `json:"name"`
+	Status      string                   `json:"status"`
+	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
+	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
+	User        APIKeyAuthUserSnapshot   `json:"user"`
+	Group       *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)
@@ -59,9 +53,9 @@ type APIKeyAuthUserSnapshot struct {
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
 	// nil = 无 override（回退到 group/user 级）；0 = 不限流；>0 = 专属上限。
 	UserGroupRPMOverride *int `json:"user_group_rpm_override,omitempty"`
-
-	// UserGroupDeniedModels 该 API Key 对应的 (user, group) 禁用模型；准入与模型列表据此拒绝 / 过滤。
-	UserGroupDeniedModels []string `json:"user_group_denied_models,omitempty"`
+	// UserGroupRPMOverrideGroupID 是成功查询 override 的分组（0 = 未查询或查询失败），
+	// 让 checkRPM 区分"该分组确认无 override"与"需要回源"。
+	UserGroupRPMOverrideGroupID int64 `json:"user_group_rpm_override_group_id,omitempty"`
 }
 
 // APIKeyAuthGroupSnapshot 分组快照
@@ -100,9 +94,6 @@ type APIKeyAuthGroupSnapshot struct {
 	ClaudeCodeOnly                  bool                          `json:"claude_code_only"`
 	FallbackGroupID                 *int64                        `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request,omitempty"`
-	StreamOnly                      bool                          `json:"stream_only"`
-	CodexCLIOnly                    bool                          `json:"codex_cli_only"`
-	BlockSubagents                  bool                          `json:"block_subagents"`
 
 	// Model routing is used by gateway account selection, so it must be part of auth cache snapshot.
 	// Only anthropic groups use these fields; others may leave them empty.
@@ -117,8 +108,8 @@ type APIKeyAuthGroupSnapshot struct {
 	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
 	AllowLive                   bool                              `json:"allow_live"`
 	ForceOpenAIFast             bool                              `json:"force_openai_fast"`
+	ForceOpenAIUltrafast        bool                              `json:"force_openai_ultrafast"`
 	FreeOpenAIFast              bool                              `json:"free_openai_fast"`
-	FreeOpenAIUltrafast         bool                              `json:"free_openai_ultrafast"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	ModelAllowlist              GroupModelAllowlist               `json:"model_allowlist,omitempty"`
@@ -154,6 +145,9 @@ type APIKeyAuthGroupSnapshot struct {
 	ProfitControlEnabled bool    `json:"profit_control_enabled"`
 	ProfitMinMargin      float64 `json:"profit_min_margin"`
 	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
+
+	// RequirePrivacySet 由 OpenAI 选号从 ctx 分组读取，与 GetByKeyForAuth 投影同步。
+	RequirePrivacySet bool `json:"require_privacy_set"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

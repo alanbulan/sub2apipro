@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"github.com/Wei-Shaw/sub2api/internal/requestcapture"
 	"log"
 	"net/http"
 	"sync"
@@ -14,14 +13,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	"github.com/Wei-Shaw/sub2api/internal/qqbot"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/serverless"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/google/wire"
@@ -29,7 +25,6 @@ import (
 )
 
 type Application struct {
-	Lifecycle     *server.Lifecycle
 	Server        *http.Server
 	PromptAudit   *securityaudit.PromptService
 	PluginManager *service.PluginManager
@@ -40,8 +35,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	wire.Build(
 		// Infrastructure layer ProviderSets
 		config.ProviderSet,
-		serverless.NewGeoJSResolver,
-		wire.Bind(new(serverless.CountryResolver), new(*serverless.GeoJSResolver)),
 
 		// Business layer ProviderSets
 		repository.ProviderSet,
@@ -65,7 +58,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		provideCleanup,
 
 		// Application struct
-		wire.Struct(new(Application), "Server", "PromptAudit", "PluginManager", "Lifecycle", "Cleanup"),
+		wire.Struct(new(Application), "Server", "PromptAudit", "PluginManager", "Cleanup"),
 	)
 	return nil, nil
 }
@@ -89,12 +82,6 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
-	providerChannels *admin.ChannelHandler,
-	qqBot *qqbot.Service,
-	autoCreditEmail *service.AutoCreditEmailWorker,
-	feishuSettings *admin.SettingHandler,
-	cfg *config.Config,
-	requestCaptures *requestcapture.Manager,
 	entClient *ent.Client,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
@@ -106,7 +93,6 @@ func provideCleanup(
 	opsService *service.OpsService,
 	opsIngressReject *service.OpsIngressRejectAggregator,
 	apiKeyService *service.APIKeyService,
-	concurrencyService *service.ConcurrencyService,
 	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
@@ -125,6 +111,9 @@ func provideCleanup(
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	usageBillingLanes *service.UsageBillingLaneCombiner,
+	balanceNotify *service.BalanceNotifyService,
+	digestSessions *service.DigestSessionStore,
 	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
@@ -133,16 +122,10 @@ func provideCleanup(
 	grokOAuth *service.GrokOAuthService,
 	openAIGateway *service.OpenAIGatewayService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
-	controlledExperiment *service.ControlledExperimentService,
-	accountOps *service.AccountOpsService,
-	accountPerformance *service.AccountPerformanceService,
-	accountTokenGuard *service.AccountTokenGuardService,
-	accountTokenGuardV2 *service.AccountTokenGuardV2Service,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	channelMonitorV2Aggregator *service.ChannelMonitorV2Aggregator,
-	channelMonitorV3Prober *service.ChannelMonitorV3Prober,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
@@ -151,27 +134,10 @@ func provideCleanup(
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
-	cyberModeration *service.ContentModerationService,
 ) func() {
-	if openAIGateway != nil {
-		openAIGateway.StartBPSWarmPool()
-		if cfg.RunsBackgroundJobs() {
-			openAIGateway.StartBPS403Recovery()
-		}
-	}
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-
-		if openAIGateway != nil {
-			stopCtx, stopCancel := context.WithTimeout(ctx, 5*time.Second)
-			err := stopRegionalFunds(stopCtx, openAIGateway.RegionalFundsReadiness())
-			stopCancel()
-			if err != nil {
-				log.Printf("[Cleanup] Funds join failed; dependencies retained: %v", err)
-				return
-			}
-		}
 
 		type cleanupStep struct {
 			name string
@@ -180,23 +146,15 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
-			{"FeishuKeyDelivery", func() error {
-				if feishuSettings != nil {
-					feishuSettings.StopFeishuKeyDelivery()
+			{"DigestSessionStore", func() error {
+				if digestSessions != nil {
+					digestSessions.Close()
 				}
 				return nil
 			}},
-			{"AutoCreditEmailWorker", func() error { autoCreditEmail.Stop(); return nil }},
-			{"BPSWarmPool", func() error {
-				if openAIGateway != nil {
-					openAIGateway.StopBPS403Recovery()
-					openAIGateway.StopBPSWarmPool()
-				}
-				return nil
-			}},
-			{"AccountTokenGuardService", func() error {
-				if accountTokenGuard != nil {
-					accountTokenGuard.Stop()
+			{"BalanceNotifyService", func() error {
+				if balanceNotify != nil {
+					balanceNotify.Stop()
 				}
 				return nil
 			}},
@@ -236,18 +194,6 @@ func provideCleanup(
 				}
 				return nil
 			}},
-			{"APIKeyQueueWaiters", func() error {
-				if concurrencyService != nil {
-					concurrencyService.StopAPIKeyQueue()
-				}
-				return nil
-			}},
-			{"CyberEvidence", func() error {
-				if cyberModeration != nil && cyberModeration.CyberEvidence() != nil {
-					cyberModeration.CyberEvidence().Close()
-				}
-				return nil
-			}},
 			{"PromptAuditService", func() error {
 				if promptAudit != nil {
 					return promptAudit.Shutdown(ctx)
@@ -260,7 +206,6 @@ func provideCleanup(
 				}
 				return nil
 			}},
-			{"RequestCapture", func() error { requestCaptures.Close(); return nil }},
 			{"OpsCleanupService", func() error {
 				if opsCleanup != nil {
 					opsCleanup.Stop()
@@ -270,18 +215,6 @@ func provideCleanup(
 			{"OpsSystemLogSink", func() error {
 				if opsSystemLogSink != nil {
 					opsSystemLogSink.Stop()
-				}
-				return nil
-			}},
-			{"MatureProviderRefresh", func() error {
-				if providerChannels != nil {
-					providerChannels.StopMatureProviderRefresh()
-				}
-				return nil
-			}},
-			{"QQBotService", func() error {
-				if qqBot != nil {
-					qqBot.Stop()
 				}
 				return nil
 			}},
@@ -399,6 +332,10 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"UsageBillingLaneCombiner", func() error {
+				usageBillingLanes.Stop()
+				return nil
+			}},
 			{"OAuthService", func() error {
 				oauth.Stop()
 				return nil
@@ -421,38 +358,13 @@ func provideCleanup(
 				}
 				return nil
 			}},
-			{"ExcelBPSImages", func() error {
-				return openAIGateway.CloseExcelBPSImages()
-			}},
 			{"OpenAIWSPool", func() error {
 				if openAIGateway != nil {
 					openAIGateway.CloseOpenAIWSPool()
 				}
 				return nil
 			}},
-			{"OpenAICodexTicketHarvester", func() error {
-				if openAIGateway != nil {
-					openAIGateway.StopOpenAICodexTicketHarvester()
-				}
-				return nil
-			}},
-			{"AccountPerformanceService", func() error { accountPerformance.Stop(); return nil }},
-			{"AccountOpsService", func() error {
-				if accountOps != nil {
-					accountOps.Stop()
-				}
-				return nil
-			}},
-			{"AccountTokenGuardV2Service", func() error {
-				if accountTokenGuardV2 != nil {
-					accountTokenGuardV2.Stop()
-				}
-				return nil
-			}},
 			{"ScheduledTestRunnerService", func() error {
-				if controlledExperiment != nil {
-					controlledExperiment.Stop()
-				}
 				if scheduledTestRunner != nil {
 					scheduledTestRunner.Stop()
 				}
@@ -473,12 +385,6 @@ func provideCleanup(
 			{"ChannelMonitorV2Aggregator", func() error {
 				if channelMonitorV2Aggregator != nil {
 					channelMonitorV2Aggregator.Stop()
-				}
-				return nil
-			}},
-			{"ChannelMonitorV3Prober", func() error {
-				if channelMonitorV3Prober != nil {
-					channelMonitorV3Prober.Stop()
 				}
 				return nil
 			}},

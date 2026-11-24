@@ -137,31 +137,11 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	//      被 Anthropic 判 third-party）
 	//   4) NewRequest（body 至此最终敲定）
 	//   5) 透传白名单 / fingerprint / mimic header / 写入 finalBeta
-	stripClaudeCodeIdentity := account != nil && account.IsAnthropicStripClaudeCodeIdentityEnabled()
-	if stripClaudeCodeIdentity {
-		body = stripAnthropicClaudeCodeIdentityFromBody(body)
-	}
-
-	// Anthropic API Key「模拟 Claude Code」：只补缺的特征，记录身份句供可选估算扣减使用。
-	mimicAPIKeyClaudeCode := account != nil && account.IsAnthropicMimicClaudeCodeEnabled()
-	var mimicInjection claudeCodeMimicInjection
-	if mimicAPIKeyClaudeCode {
-		body, mimicInjection = mimicAnthropicClaudeCodeBody(body, account, claudeCodeMimicAPIKeyID(c), mimicUserAgent, modelID)
-	}
-	if account != nil {
-		mimicInjection.AccountID = account.ID
-	}
-	setClaudeCodeMimicInjection(c, mimicInjection)
-
 	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalAnthropicBeta(
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
 	)
-	if stripClaudeCodeIdentity && finalBetaShouldSet {
-		finalBetaHeader = stripAnthropicClaudeCodeIdentityFromBetaHeader(finalBetaHeader)
-		finalBetaShouldSet = finalBetaHeader != ""
-	}
 
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值（由下方 ApplyHeaderOverrides 写入）：
 	// body 能力净化必须以覆写值为准，否则 header/body 不对称会被上游 400。
@@ -250,16 +230,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	if stripClaudeCodeIdentity {
-		stripAnthropicClaudeCodeIdentityFromHeaders(req.Header)
-	}
-	if mimicAPIKeyClaudeCode {
-		applyAnthropicClaudeCodeMimicHeaders(req.Header, mimicUserAgent)
-	}
-
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, modelID)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
@@ -275,15 +248,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// Always capture a compact fingerprint line for later error diagnostics.
 	// We only print it when needed (or when the explicit debug flag is enabled).
 	if c != nil && tokenType == "oauth" {
-		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+		c.Set(claudeMimicDebugInfoKey, newClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
 	}
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
 
-	if err := checkAPIKeyLongContextBeforeForward(ctx, c, s.billingService, body, modelID); err != nil {
-		return nil, nil, err
-	}
 	return req, body, nil
 }
 
@@ -419,9 +389,6 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		"stream":     strconv.FormatBool(reqStream),
 	})
 
-	if err := checkAPIKeyLongContextBeforeForward(ctx, c, s.billingService, vertexBody, modelID); err != nil {
-		return nil, err
-	}
 	return req, nil
 }
 
@@ -474,7 +441,7 @@ func (s *GatewayService) getBetaHeader(modelID string, clientBetaHeader string) 
 
 func requestNeedsBetaFeatures(body []byte) bool {
 	tools := gjson.GetBytes(body, "tools")
-	if tools.Exists() && tools.IsArray() && len(tools.Array()) > 0 {
+	if tools.Exists() && tools.IsArray() && tools.Get("0").Exists() {
 		return true
 	}
 	thinkingType := gjson.GetBytes(body, "thinking.type").String()
@@ -503,9 +470,18 @@ func filterSonnet55ToolsetBeta(header string, body []byte, modelID string) strin
 	if !claude.IsSonnet55(modelID) && !claude.IsHaiku55(modelID) {
 		return header
 	}
-	for _, tool := range gjson.GetBytes(body, "tools").Array() {
-		switch tool.Get("type").String() {
-		case "computer_toolset_20260801", "browser_toolset_20260801":
+	tools := gjson.GetBytes(body, "tools")
+	if tools.IsArray() {
+		matched := false
+		tools.ForEach(func(_, tool gjson.Result) bool {
+			switch tool.Get("type").String() {
+			case "computer_toolset_20260801", "browser_toolset_20260801":
+				matched = true
+				return false
+			}
+			return true
+		})
+		if matched {
 			if !containsBetaToken(header, claude.BetaFineGrainedToolStreaming) {
 				return header
 			}
@@ -1017,9 +993,6 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool, mimicUserAgen
 }
 
 func truncateForLog(b []byte, maxBytes int) string {
-	if redacted := redactOpenAIEncryptedDiagnostic(string(b)); redacted != string(b) {
-		return redacted
-	}
 	if maxBytes <= 0 {
 		maxBytes = 2048
 	}

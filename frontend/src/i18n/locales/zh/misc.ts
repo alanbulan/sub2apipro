@@ -152,16 +152,16 @@ export default {
     // Admin tour steps
     admin: {
       welcome: {
-        title: '👋 欢迎使用本平台',
+        title: '👋 欢迎使用 Sub2API',
         description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">本平台是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
         nextBtn: '开始配置 🚀',
         prevBtn: '跳过'
       },
       groupManage: {
         title: '📦 第一步：分组管理',
         description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>什么是分组？</b></p><p style="margin-bottom: 12px;">分组是 本平台的核心概念，它就像一个"服务套餐"：</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 每个分组可以包含多个上游账号</li><li>💰 每个分组有独立的计费倍率</li><li>👥 可以设置为公开或专属分组</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>您可以创建"VIP专线"（高倍率）和"免费试用"（低倍率）两个分组</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"分组管理"开始</p></div>'
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>什么是分组？</b></p><p style="margin-bottom: 12px;">分组是 Sub2API 的核心概念，它就像一个"服务套餐"：</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 每个分组可以包含多个上游账号</li><li>💰 每个分组有独立的计费倍率</li><li>👥 可以设置为公开或专属分组</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>您可以创建"VIP专线"（高倍率）和"免费试用"（低倍率）两个分组</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"分组管理"开始</p></div>'
       },
       createGroup: {
         title: '➕ 创建新分组',
@@ -273,9 +273,9 @@ export default {
     // User tour steps
     user: {
       welcome: {
-        title: '👋 欢迎使用本平台',
+        title: '👋 欢迎使用 Sub2API',
         description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
         nextBtn: '开始 🚀',
         prevBtn: '跳过'
       },
@@ -311,17 +311,6 @@ export default {
 
   // Payment System
   payment: {
-    cryptoCheckout: {
-      networkDelayed: '收款确认暂有延迟',
-      networkDelayHint: '当前收款网络异常，系统正在自动重试和核对历史转账。请暂勿转账；如果已经付款，请勿重复付款，确认到账后订单会自动更新。',
-      title: '加密货币付款', back: '返回购买页面', address: '收款地址', addressQR: '收款地址二维码',
-      instruction: '请使用 {network} 转入下方精确金额。其他网络的转账无法完成此订单。',
-      exactAmount: '精确转账金额', copyAmount: '复制金额', copyAddress: '复制地址', copied: '已复制',
-      remaining: '剩余时间：{time}', waiting: '等待转账', confirming: '已检测到转账，等待网络确认',
-      paid: '付款已完成', fulfillment: '已收款，正在完成订单', cancelled: '订单已取消', failed: '付款失败', expired: '订单已过期',
-      check: '检查付款状态', viewResult: '查看结果', cancelConfirm: '确认取消此订单？已转账后请勿取消。', keepWaiting: '继续等待',
-      loadError: '无法加载付款信息。', copyError: '复制失败，请手动选择并复制。',
-    },
     title: '充值/订阅',
     amountLabel: '充值金额',
     paymentAmount: '支付金额',
@@ -338,28 +327,9 @@ export default {
     enterAmount: '输入金额',
     paymentMethod: '支付方式',
     fee: '手续费',
-    estimatedPay: '预计实付',
-    feeRangeHint: '不同支付通道的手续费可能不同，最终手续费及实付金额以下单结果为准。',
-    stripePaymentMethod: 'Stripe 支付方式',
-    providerFeeEstimateHint: '按全站默认手续费估算，实际金额取决于所用服务商及支付方式。',
     actualPay: '实付金额',
     createOrder: '确认支付',
     methods: {
-      bepusdt: 'BEpusdt 加密货币',
-      usdt: {
-        trc20: 'USDT (TRC20)', erc20: 'USDT (ERC20)', bep20: 'USDT (BEP20)',
-        polygon: 'USDT (Polygon)', aptos: 'USDT (Aptos)', solana: 'USDT (Solana)',
-        xlayer: 'USDT (X-Layer)', arbitrum: 'USDT (Arbitrum)', plasma: 'USDT (Plasma)', ton: 'USDT (TON)',
-      },
-      usdc: {
-        trc20: 'USDC (TRC20)', erc20: 'USDC (ERC20)', bep20: 'USDC (BEP20)',
-        polygon: 'USDC (Polygon)', aptos: 'USDC (Aptos)', solana: 'USDC (Solana)',
-        xlayer: 'USDC (X-Layer)', arbitrum: 'USDC (Arbitrum)', base: 'USDC (Base)',
-      },
-      tron: { trx: 'TRX (Tron)' },
-      ethereum: { eth: 'ETH (Ethereum)' },
-      bsc: { bnb: 'BNB (BSC)' },
-      ton: { gram: 'TON (TON)' },
       easypay: '易支付',
       alipay: '支付宝',
       wxpay: '微信支付',
@@ -455,7 +425,6 @@ export default {
     confirmCancel: '确定要取消此订单吗？',
     amountTooLow: '最低金额为 {min}',
     amountTooHigh: '最高金额为 {max}',
-		amountPrecision: '{currency} 金额最多支持 {digits} 位小数。',
     amountNoMethod: '该金额没有可用的支付方式',
     rechargeRatePreview: '当前倍率：1 {currency} = {usd} USD',
     refundReason: '退款原因',
@@ -493,10 +462,6 @@ export default {
       TOO_MANY_PENDING: '待支付订单过多（最多 {max} 个），请先完成或取消现有订单',
       DAILY_LIMIT_EXCEEDED: '今日充值已达上限，剩余额度 {remaining}',
       PAYMENT_GATEWAY_ERROR: '支付方式不可用',
-      INVALID_PROVIDER_FEE_RATE: '手续费率需为 0–100%，最多两位小数。',
-      INVALID_PROVIDER_FEE_METHOD: '请先启用对应支付方式，再设置其手续费。',
-      INVALID_PAYMENT_SUBTYPE: '请选择此 Stripe 服务商支持的支付方式。',
-      PAYMENT_SUBTYPE_REQUIRED: '请先选择具体的 Stripe 支付方式，再创建订单。',
       NO_AVAILABLE_INSTANCE: '暂无可用的支付通道',
       PAYMENT_PROVIDER_MISCONFIGURED: '支付通道配置错误，请联系管理员',
       WXPAY_CONFIG_MISSING_KEY: '微信支付配置缺少必填项：{key}',
@@ -526,14 +491,6 @@ export default {
     subscribeNow: '立即开通',
     renewNow: '续费',
     selectPlan: '选择套餐',
-    renewalMode: {
-      title: '续费方式',
-      currentExpiry: '当前订阅到期时间：{date}',
-      restart: '重开周期',
-      extend: '延长周期',
-      restartHint: '立即补满日、周、月额度，并从支付成功时间重新计算套餐周期；当前剩余时长不保留。',
-      extendHint: '保留当前额度使用情况，在原到期时间上增加本套餐时长。',
-    },
     planFeatures: '功能特性',
     planCard: {
       rate: '倍率',

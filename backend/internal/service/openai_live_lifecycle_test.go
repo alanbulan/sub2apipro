@@ -205,7 +205,6 @@ func (c *liveTestConcurrencyCache) AcquireLiveLease(
 	int64,
 	int,
 	int64,
-	int,
 	string,
 	bool,
 ) (bool, error) {
@@ -302,7 +301,6 @@ func TestFinalizeLiveCallIsIdempotentAndWritesZeroUsage(t *testing.T) {
 	log := usageRepo.logs[0]
 	usageRepo.mu.Unlock()
 	require.Equal(t, RequestTypeLive, log.RequestType)
-	require.Equal(t, PlatformOpenAI, log.Platform)
 	require.Equal(t, record.CallHash, log.RequestID)
 	require.NotEqual(t, record.CallID, log.RequestID)
 	require.NotNil(t, log.DurationMs)

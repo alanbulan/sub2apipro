@@ -4,7 +4,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -137,27 +136,4 @@ func TestCNProviderQuotaSnapshotNearExhausted(t *testing.T) {
 	require.True(t, cnProviderQuotaSnapshotNearExhausted(
 		&Account{ID: 702, Platform: PlatformZhipu}, cnFrequencyLimitQuotaGuardPercent))
 	require.True(t, cnProviderQuotaSnapshotNearExhausted(nil, cnFrequencyLimitQuotaGuardPercent))
-}
-
-func TestHandleUpstreamError_ZhipuFrequency429InvalidSnapshotKeepsWindowCooldown(t *testing.T) {
-	for _, value := range []any{nil, "unknown", "NaN", "Inf", -1, true} {
-		t.Run(fmt.Sprint(value), func(t *testing.T) {
-			repo := &rateLimitAccountRepoStub{}
-			svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
-			account := newZhipuCodingPlanAccount(12, 4, 2*time.Hour)
-			account.Extra[cnExtraKey(PlatformZhipu, cnExtraSuffixWeeklyUsed)] = value
-			runZhipu429(svc, account, zhipuFrequencyLimitedBody)
-			require.Equal(t, 1, repo.rateLimitedCalls)
-			require.True(t, repo.lastRateLimitedAt.After(time.Now().Add(time.Hour)))
-		})
-	}
-	t.Run("partial snapshot", func(t *testing.T) {
-		repo := &rateLimitAccountRepoStub{}
-		svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
-		account := newZhipuCodingPlanAccount(12, 4, 2*time.Hour)
-		delete(account.Extra, cnExtraKey(PlatformZhipu, cnExtraSuffixWeeklyUsed))
-		runZhipu429(svc, account, zhipuFrequencyLimitedBody)
-		require.Equal(t, 1, repo.rateLimitedCalls)
-		require.True(t, repo.lastRateLimitedAt.After(time.Now().Add(time.Hour)))
-	})
 }

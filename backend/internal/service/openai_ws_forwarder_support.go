@@ -77,15 +77,7 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 	}
 	prewarmPayload["generate"] = false
 	prewarmPayloadJSON := payloadAsJSONBytes(prewarmPayload)
-	// wsjson.Write adds a newline. The extra generate=false field may exceed
-	// the limit even when the validated main request fits exactly.
-	if decision.Reason == openAIOAuthWSSSEAccelerationReason && int64(len(prewarmPayloadJSON))+1 > s.openAIWSSSEMaxPayloadBytes() {
-		return errOpenAIWSSSEPayloadTooLarge
-	}
 
-	if err := s.acquireOpenAIRPMForSend(ctx, account); err != nil {
-		return err
-	}
 	if err := lease.WriteJSONWithContextTimeout(ctx, prewarmPayload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
@@ -140,7 +132,7 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
 			prewarmModel, _ := reqBody["model"].(string)
-			s.persistOpenAIWSRateLimitSignal(openAI429LeaseObservation(ctx, lease), account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, prewarmModel)
+			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, prewarmModel)
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "OpenAI websocket prewarm error"
@@ -316,38 +308,6 @@ func openAIWSPayloadTransientStatus(payload []byte) int {
 	}
 }
 
-// openAIWSForwardStreamPhaseContext stamps the temp-unsched phase for a websocket
-// event. Before any client output, the default pre-stream phase still lets every
-// rule match. After output has started, legacy mid-stream statuses keep their
-// historical behavior and generic 500/502 failures require an explicit after_stream rule.
-func openAIWSForwardStreamPhaseContext(ctx context.Context, outputStarted bool, payload []byte) context.Context {
-	if !outputStarted {
-		return ctx
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return withTempUnschedStreamPhase(ctx, openAIWSOutputStartedStreamPhase(payload))
-}
-
-func openAIWSOutputStartedStreamPhase(payload []byte) tempUnschedStreamPhase {
-	message := extractOpenAISSEErrorMessage(payload)
-	switch openAIStreamFailureStatus(payload, message) {
-	case http.StatusUnauthorized, http.StatusTooManyRequests, http.StatusServiceUnavailable, 529:
-		return tempUnschedPhaseMidStreamLegacy
-	case http.StatusForbidden:
-		if openAIStream403AccountFailure(payload, message) {
-			return tempUnschedPhaseMidStreamLegacy
-		}
-	}
-	switch openAIWSPayloadTransientStatus(payload) {
-	case http.StatusUnauthorized, http.StatusTooManyRequests, http.StatusServiceUnavailable, 529:
-		return tempUnschedPhaseMidStreamLegacy
-	default:
-		return tempUnschedPhaseMidStreamOptIn
-	}
-}
-
 func (s *OpenAIGatewayService) handleOpenAIWSTerminalTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) string {
 	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 	terminalEvent := normalizeOpenAIWSTerminalEvent(eventType)
@@ -363,11 +323,9 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 	if eventType != "error" {
 		return
 	}
-	s.rateLimitService.observeQualityStatus(ctx, account, openAIStreamFailureStatus(payload, extractOpenAISSEErrorMessage(payload)))
 	status := openAIWSPayloadTransientStatus(payload)
 	if status != 0 {
 		if status == http.StatusTooManyRequests {
-			ctx = context.WithValue(ctx, openAI429WeeklyHeadersKey{}, headers)
 			headers = openAIWSSemantic429Headers(account, canonicalModel, headers)
 		}
 		s.handleOpenAIAccountUpstreamError(ctx, account, status, headers, payload, canonicalModel)
@@ -380,16 +338,15 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 func (s *OpenAIGatewayService) handleOpenAIWSFailureAccountSideEffects(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) bool {
 	message := extractOpenAISSEErrorMessage(payload)
 	status := openAIStreamFailureStatus(payload, message)
-	s.rateLimitService.observeQualityStatus(ctx, account, status)
 	switch status {
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
-		s.handleOpenAIStreamTerminalAccountSideEffectsWithContext(ctx, account, payload, message, headers, canonicalModel)
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
 		return true
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
 			return false
 		}
-		s.handleOpenAIStreamTerminalAccountSideEffectsWithContext(ctx, account, payload, message, headers, canonicalModel)
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
 		return true
 	}
 
@@ -403,9 +360,6 @@ func (s *OpenAIGatewayService) handleOpenAIWSFailureAccountSideEffects(ctx conte
 
 func (s *OpenAIGatewayService) handleOpenAIWSDialTransientFailure(ctx context.Context, account *Account, canonicalModel string, err error) {
 	var dialErr *openAIWSDialError
-	if errors.As(err, &dialErr) && dialErr != nil {
-		s.rateLimitService.observeQualityStatus(ctx, account, dialErr.StatusCode)
-	}
 	if !errors.As(err, &dialErr) || dialErr == nil || !shouldCooldownOpenAITransientUpstreamError(dialErr.StatusCode, dialErr.ResponseBody) {
 		return
 	}
@@ -471,7 +425,6 @@ func populateOpenAIUsageFromResponseJSON(body []byte, usage *OpenAIUsage) {
 		return
 	}
 	if parsed, ok := extractOpenAIUsageFromJSONBytes(body); ok {
-		mergeOpenAIProtectionUsageEvidence(*usage, &parsed)
 		*usage = parsed
 	}
 }
@@ -618,7 +571,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
-	if requestedModel != "" && (!supportsOpenAIRequestModel(account, requestedModel, requireCompact) || !account.IsModelAllowedInGroup(groupID, requestedModel)) {
+	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return 0, nil, "", nil
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -657,7 +610,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if requestedModel != "" && (!supportsOpenAIRequestModel(latest, requestedModel, requireCompact) || !latest.IsModelAllowedInGroup(groupID, requestedModel)) {
+		if requestedModel != "" && !supportsOpenAIRequestModel(latest, requestedModel, requireCompact) {
 			return 0, nil, "", nil
 		}
 		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -670,7 +623,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		if vetoed, _ := openAIProfitControlVetoReason(ctx, latest); vetoed {
 			return 0, nil, "", nil
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel, requireCompact) {
+		if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
@@ -748,10 +701,7 @@ func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Contex
 	// 非空 responseBody 表示已建立连接后收到的语义错误事件；握手响应头
 	// 可能只是成功连接时的全局快照，不能用于普通模型的 429 账号级限流。
 	// 实际拨号 HTTP 429 使用 nil responseBody，必须保留响应头。
-	// 保留调用方从真实输出状态传入的 stream phase；有事件体并不代表已输出
-	// （例如 prewarm），不能在此把所有语义 429 一律视为流前或流中。
 	if len(responseBody) > 0 {
-		ctx = context.WithValue(ctx, openAI429WeeklyHeadersKey{}, headers)
 		headers = openAIWSSemantic429Headers(account, model, headers)
 	}
 	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody, model)

@@ -84,7 +84,7 @@
                 </td>
               </tr>
               <!-- User breakdown sub-rows -->
-              <tr v-if="enableBreakdown && expandedKey === `group-${group.group_id}`">
+              <tr v-if="expandedKey === `group-${group.group_id}`">
                 <td :colspan="distributionColspan" class="p-0">
                   <UserBreakdownSubTable
                     :items="breakdownItems"
@@ -108,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Doughnut } from 'vue-chartjs'
@@ -148,27 +148,15 @@ const emit = defineEmits<{
 const expandedKey = ref<string | null>(null)
 const breakdownItems = ref<UserBreakdownItem[]>([])
 const breakdownLoading = ref(false)
-let breakdownRequest = 0
-const clearBreakdown = () => {
-  breakdownRequest++
-  expandedKey.value = null
-  breakdownItems.value = []
-  breakdownLoading.value = false
-}
-watch(() => [props.enableBreakdown, props.startDate, props.endDate, props.filters], clearBreakdown, { deep: true, flush: 'sync' })
-onBeforeUnmount(clearBreakdown)
-
 const showAccountCost = computed(() => props.showAccountCost)
 const distributionColspan = computed(() => showAccountCost.value ? 6 : 5)
 
 const toggleBreakdown = async (type: string, id: number | string) => {
   const key = `${type}-${id}`
   if (expandedKey.value === key) {
-    clearBreakdown()
+    expandedKey.value = null
     return
   }
-  if (!props.enableBreakdown) return
-  const request = ++breakdownRequest
   expandedKey.value = key
   breakdownLoading.value = true
   breakdownItems.value = []
@@ -179,11 +167,11 @@ const toggleBreakdown = async (type: string, id: number | string) => {
       end_date: props.endDate,
       group_id: Number(id),
     })
-    if (request === breakdownRequest) breakdownItems.value = res.users || []
+    breakdownItems.value = res.users || []
   } catch {
-    if (request === breakdownRequest) breakdownItems.value = []
+    breakdownItems.value = []
   } finally {
-    if (request === breakdownRequest) breakdownLoading.value = false
+    breakdownLoading.value = false
   }
 }
 

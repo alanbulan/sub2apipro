@@ -42,12 +42,6 @@ export default {
 
     // Proxies
     proxies: {
-      managementSections: 'Proxy management sections',
-      proxyList: 'Static proxies / IP pool',
-      subscriptions: 'Subscriptions',
-      dynamicProxies: 'Dynamic proxies',
-      nodes: 'Nodes',
-      kernelRules: 'Kernel and rules',
       title: 'Proxy Management',
       description: 'Manage proxy servers for accounts',
       createProxy: 'Create Proxy',
@@ -237,8 +231,7 @@ export default {
       nDays: '{days}d',
       expiryDaysPlaceholder: 'Custom days, empty = never',
       expiryWarnDays: 'Expiry warning (days)',
-      fallbackMode: 'Failure / expiry fallback',
-      fallbackModeHint: 'Applies the selected policy on expiry. For eligible OpenAI HTTP connection failures, runtime fallback requires confirmation that the request has not been sent; streams with output are not replayed by this fallback. Direct connections use the network of the environment running the platform.',
+      fallbackMode: 'Expiry fallback',
       fallbackNone: 'No fallback',
       fallbackProxy: 'Backup proxy',
       fallbackDirect: 'Direct connection',
@@ -427,18 +420,9 @@ export default {
         conditionType: 'Condition type',
         conditionSubscription: 'Subscription',
         conditionBalance: 'Balance',
-        conditionUser: 'Specific users',
         operator: 'Operator',
         balanceValue: 'Balance threshold',
-        selectPackages: 'Select packages',
-        targetingUsers: 'Specific users',
-        targetingUsersHint: 'Only the selected users can see this announcement, e.g. to remind or warn one user. With the Popup notify mode it pops up after they sign in or reload the page, until they mark it as read.',
-        selectUsers: 'Select users',
-        selectUsersRequired: 'Select at least one user',
-        searchUsersPlaceholder: 'Search by email or username',
-        noUsersFound: 'No matching users',
-        noUsersSelected: 'No users selected yet',
-        userUnavailable: 'User not found'
+        selectPackages: 'Select packages'
       },
       operators: {
         gt: '>',
@@ -449,7 +433,6 @@ export default {
       },
       targetingSummaryAll: 'All users',
       targetingSummaryCustom: 'Custom ({groups} groups)',
-      targetingSummaryUsers: 'Specific users ({count})',
       timeImmediate: 'Immediate',
       timeNever: 'Never',
       readStatus: 'Read Status',
@@ -525,23 +508,8 @@ export default {
       failedToLoadUsages: 'Failed to load usage records'
     },
 
-    conversationLogs: {
-      title: 'Conversation Records', description: 'Review each user conversation request and model response for analysis',
-      empty: 'No conversation records', failedToLoad: 'Failed to load conversation records', detailTitle: 'Conversation Detail', request: 'User Request', response: 'Model Response',
-      payloadSize: 'Request / response size', truncated: 'The payload exceeded the per-record storage limit and is truncated.',
-      filters: { sessionId: 'Session ID', sessionPlaceholder: 'Search session ID', requestId: 'Request ID', user: 'User', userId: 'User ID', userPlaceholder: 'Search user by email', allUsers: 'All users', deletedUser: 'Deleted', apiKeyId: 'API key ID', model: 'Model', protocol: 'Protocol', status: 'Status', startTime: 'Start time', endTime: 'End time' },
-      status: { pending: 'Recording', completed: 'Completed', failed: 'Failed', incomplete: 'Incomplete' },
-      columns: { time: 'Time', session: 'Session', user: 'User / key', model: 'Model', protocol: 'Protocol', endpoint: 'Endpoint', status: 'Status', httpStatus: 'HTTP status', duration: 'Duration' }
-    },
-
     // Usage Records
     usage: {
-      platform: 'Platform',
-      allPlatforms: 'All platforms',
-      unknownPlatform: 'Unknown (legacy)',
-      platformHistoryHint: 'Uses the platform recorded for each request. Older records without a platform remain under Unknown (legacy).',
-      platformCleanupUnavailable: 'Reset the platform filter before cleaning up records.',
-
       title: 'Usage Records',
       description: 'View and manage all user usage records',
       userFilter: 'User',
@@ -609,7 +577,6 @@ export default {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',
         warning: 'Cleanup is irreversible and will affect historical stats.',
-        calendarRangeRequired: 'Cleanup is unavailable for rolling or precise time ranges. Select calendar dates first; cleanup deletes the full selected days.',
         submit: 'Submit Cleanup',
         submitting: 'Submitting...',
         confirmTitle: 'Confirm Cleanup',

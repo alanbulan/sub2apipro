@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
+import { flushPromises, mount } from '@vue/test-utils'
 
 import type { AdminUser } from '@/types'
 import UsersView from '../UsersView.vue'
-
-enableAutoUnmount(afterEach)
 
 const {
   listUsers,
@@ -48,8 +45,6 @@ vi.mock('@/api/admin', () => ({
     }
   }
 }))
-
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isAdmin: true, user: { id: 1 } }) }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -114,8 +109,6 @@ const DataTableStub = {
       <div v-for="row in data" :key="row.id">
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
         <div :data-test="'actions-' + row.id"><slot name="cell-actions" :row="row" /></div>
-        <div :data-test="'live-' + row.id"><slot name="cell-live_usage" :row="row" /></div>
-        <div :data-test="'balance-' + row.id"><slot name="cell-balance" :row="row" :value="row.balance" /></div>
       </div>
     </div>
   `
@@ -162,13 +155,10 @@ const mountBulkDeleteView = () => mount(UsersView, {
       UserConcurrencyCell: true,
       UserCreateModal: true,
       UserEditModal: true,
-      FeishuDirectorySync: true, FeishuKeyDelivery: true, BulkRechargeUserModal: true,
       BulkEditUserModal: true,
       UserPlatformQuotaModal: true,
       UserApiKeysModal: true,
       UserAllowedGroupsModal: true,
-      UserAutoCreditModal: { props: ['show', 'user'], template: '<div v-if="show" data-test="credit-dialog">{{ user.id }}</div>' },
-      NewFeatureBadge: { props: ['noticeId'], template: '<span :data-notice="noticeId" />' },
       UserBalanceModal: true,
       UserBalanceHistoryModal: true,
       GroupReplaceModal: true,
@@ -189,7 +179,6 @@ const getToggleStatusButton = (wrapper: ReturnType<typeof mountBulkDeleteView>, 
 
 describe('admin UsersView', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
     vi.useRealTimers()
     localStorage.clear()
 
@@ -218,41 +207,6 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
-    vi.restoreAllMocks()
-  })
-
-  it('shows the limiter column by default and distinguishes missing RPM from zero', async () => {
-    listUsers.mockResolvedValueOnce({ items: [createAdminUser({ current_rpm: 0, rpm_limit: 60 })], total: 1, pages: 1 })
-    const wrapper = mountBulkDeleteView()
-    await flushPromises()
-    expect(wrapper.get('[data-test="columns"]').text()).toContain('live_usage')
-    expect(wrapper.get('[data-test="live-42"]').text()).toContain('0 / 60')
-    expect(wrapper.find('[data-notice="user-live-load-initial-announcement"]').exists()).toBe(true)
-  })
-
-  it('refreshes at most once a minute and pauses for hidden pages or columns', async () => {
-    vi.useFakeTimers()
-    const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
-    const wrapper = mountBulkDeleteView()
-    await flushPromises()
-    await vi.advanceTimersByTimeAsync(59_999)
-    expect(listUsers).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(1)
-    expect(listUsers).toHaveBeenCalledTimes(2)
-    hiddenSpy.mockReturnValue(true)
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(listUsers).toHaveBeenCalledTimes(2)
-    wrapper.unmount()
-    hiddenSpy.mockReturnValue(false)
-    localStorage.setItem('user-hidden-columns', JSON.stringify(['live_usage']))
-    const hidden = mountBulkDeleteView()
-    await flushPromises()
-    const calls = listUsers.mock.calls.length
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(listUsers).toHaveBeenCalledTimes(calls)
-    hidden.unmount()
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(listUsers).toHaveBeenCalledTimes(calls)
   })
 
   it('cancels bulk deletion without deleting or clearing selected users', async () => {
@@ -414,8 +368,7 @@ describe('admin UsersView', () => {
           UserConcurrencyCell: true,
           UserCreateModal: true,
           UserEditModal: true,
-          FeishuDirectorySync: true, FeishuKeyDelivery: true, BulkRechargeUserModal: true,
-      BulkEditUserModal: BulkEditUserModalStub,
+          BulkEditUserModal: BulkEditUserModalStub,
           UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
@@ -501,8 +454,7 @@ describe('admin UsersView', () => {
           UserConcurrencyCell: true,
           UserCreateModal: true,
           UserEditModal: true,
-          FeishuDirectorySync: true, FeishuKeyDelivery: true, BulkRechargeUserModal: true,
-      BulkEditUserModal: BulkEditUserModalStub,
+          BulkEditUserModal: BulkEditUserModalStub,
           UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
@@ -580,8 +532,7 @@ describe('admin UsersView', () => {
           UserConcurrencyCell: true,
           UserCreateModal: true,
           UserEditModal: true,
-          FeishuDirectorySync: true, FeishuKeyDelivery: true, BulkRechargeUserModal: true,
-      BulkEditUserModal: BulkEditUserModalStub,
+          BulkEditUserModal: BulkEditUserModalStub,
           UserPlatformQuotaModal: true,
           UserApiKeysModal: true,
           UserAllowedGroupsModal: true,
@@ -621,17 +572,4 @@ describe('admin UsersView', () => {
     expect(wrapper.find('[data-test="bulk-edit-limits"]').exists()).toBe(false)
     expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('')
   })
-  it('opens the same credit dialog from actions and visible outstanding debt with a shared notice', async () => {
-    listUsers.mockResolvedValue({ items: [createAdminUser({ auto_credit_outstanding: '5.00000001' })], total: 1, page: 1, page_size: 20, pages: 1 })
-    const wrapper = mountBulkDeleteView(); await flushPromises()
-    const action = wrapper.get('[data-test="actions-42"]').findAll('button').find(b => b.text() === 'autoCredit.title')
-    expect(action).toBeTruthy(); await action!.trigger('click')
-    expect(wrapper.get('[data-test="credit-dialog"]').text()).toBe('42')
-    const debt = wrapper.get('[data-test="balance-42"]').findAll('button').find(b => b.text() === 'autoCredit.debt')
-    expect(debt).toBeTruthy(); await debt!.trigger('click')
-    expect(wrapper.get('[data-test="credit-dialog"]').text()).toBe('42')
-    expect(wrapper.findAll('[data-notice="vip-auto-credit-initial-announcement"]')).toHaveLength(2)
-    wrapper.unmount()
-  })
-
 })

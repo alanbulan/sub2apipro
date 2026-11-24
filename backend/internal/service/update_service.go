@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -26,16 +25,12 @@ import (
 var (
 	ErrNoUpdateAvailable         = infraerrors.Conflict("ALREADY_UP_TO_DATE", "no update available; current version is latest")
 	ErrRollbackVersionNotAllowed = infraerrors.BadRequest("ROLLBACK_VERSION_NOT_ALLOWED", "version is not in the allowed rollback list")
-	ErrSystemRestartRequired     = infraerrors.Conflict("SYSTEM_RESTART_REQUIRED", "an update or rollback is already installed; restart the service before another update or rollback")
 )
 
 const (
 	updateCacheKey = "update_check_cache"
 	updateCacheTTL = 1200 // 20 minutes
-	// Releases are maintained on the owner-controlled production fork. Keep the
-	// updater independent from the upstream repository so production installs
-	// see our release stream and can update to our fork's assets.
-	githubRepo = "ranxi2001/sub2api"
+	githubRepo     = "Wei-Shaw/sub2api"
 
 	// Security: allowed download domains for updates
 	allowedDownloadHost = "github.com"
@@ -66,12 +61,10 @@ type GitHubReleaseClient interface {
 
 // UpdateService handles software updates
 type UpdateService struct {
-	cache           UpdateCache
-	githubClient    GitHubReleaseClient
-	currentVersion  string
-	buildType       string // "source" for manual builds, "release" for CI builds
-	installMu       sync.Mutex
-	restartRequired bool
+	cache          UpdateCache
+	githubClient   GitHubReleaseClient
+	currentVersion string
+	buildType      string // "source" for manual builds, "release" for CI builds
 }
 
 // NewUpdateService creates a new UpdateService
@@ -170,10 +163,6 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
-	if err := s.checkRestartRequired(); err != nil {
-		return err
-	}
-
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -186,27 +175,10 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 	return s.applyReleaseAssets(ctx, info.ReleaseInfo.Assets)
 }
 
-// Check before release lookups so pending restarts take precedence over network
-// failures and version checks. Mutations must also recheck under installMu.
-func (s *UpdateService) checkRestartRequired() error {
-	s.installMu.Lock()
-	defer s.installMu.Unlock()
-	if s.restartRequired {
-		return ErrSystemRestartRequired
-	}
-	return nil
-}
-
 // applyReleaseAssets downloads the platform archive from the given release assets,
 // verifies its checksum, and atomically swaps the running binary.
 // Shared by PerformUpdate (latest) and RollbackToVersion (specific older version).
 func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []Asset) error {
-	s.installMu.Lock()
-	defer s.installMu.Unlock()
-	if s.restartRequired {
-		return ErrSystemRestartRequired
-	}
-
 	// Find matching archive and checksum for current platform
 	archiveName := s.getArchiveName()
 	var downloadURL string
@@ -304,19 +276,11 @@ func (s *UpdateService) applyReleaseAssets(ctx context.Context, releaseAssets []
 
 	// Success - backup file is kept for rollback capability
 	// It will be cleaned up on next successful update
-	// On Linux, os.Executable now points at the renamed backup until restart.
-	s.restartRequired = true
 	return nil
 }
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
-	s.installMu.Lock()
-	defer s.installMu.Unlock()
-	if s.restartRequired {
-		return ErrSystemRestartRequired
-	}
-
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -336,7 +300,6 @@ func (s *UpdateService) Rollback() error {
 		return fmt.Errorf("rollback failed: %w", err)
 	}
 
-	s.restartRequired = true
 	return nil
 }
 
@@ -364,10 +327,6 @@ func (s *UpdateService) ListRollbackVersions(ctx context.Context) ([]RollbackVer
 // The target must be one of the versions returned by ListRollbackVersions;
 // anything else (including the current version) is rejected.
 func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) error {
-	if err := s.checkRestartRequired(); err != nil {
-		return err
-	}
-
 	target := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if target == "" {
 		return ErrRollbackVersionNotAllowed

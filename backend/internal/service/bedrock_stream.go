@@ -60,11 +60,16 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 	}
 	events := make(chan decodeEvent, 16)
 	done := make(chan struct{})
+	queueBudget := newSSEQueueBudget(s.cfg)
 	sendEvent := func(ev decodeEvent) bool {
+		if !queueBudget.acquire(len(ev.payload), done) {
+			return false
+		}
 		select {
 		case events <- ev:
 			return true
 		case <-done:
+			queueBudget.release(len(ev.payload))
 			return false
 		}
 	}
@@ -107,6 +112,9 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 	for {
 		select {
 		case ev, ok := <-events:
+			if ok {
+				queueBudget.release(len(ev.payload))
+			}
 			if !ok {
 				if !clientDisconnected {
 					flusher.Flush()
@@ -180,7 +188,8 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 // extractBedrockChunkData 从 Bedrock EventStream payload 中提取 Claude SSE 事件数据
 // Bedrock payload 格式：{"bytes":"<base64-encoded-json>"}
 func extractBedrockChunkData(payload []byte) []byte {
-	b64 := gjson.GetBytes(payload, "bytes").String()
+	// 零拷贝读取：b64 只在本函数内解码，解码结果写入新 buffer。
+	b64 := parseRawJSONView(payload).Get("bytes").String()
 	if b64 == "" {
 		return nil
 	}

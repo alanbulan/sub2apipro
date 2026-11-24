@@ -25,17 +25,17 @@ func init() {
 
 func TestInjectSiteTitle(t *testing.T) {
 	t.Run("replaces_title_with_site_name", func(t *testing.T) {
-		html := []byte(`<html><head><title>Original title</title></head><body></body></html>`)
+		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
 		settingsJSON := []byte(`{"site_name":"MyCustomSite"}`)
 
 		result := injectSiteTitle(html, settingsJSON)
 
-		assert.Contains(t, string(result), "<title>MyCustomSite</title>")
-		assert.NotContains(t, string(result), "Original title")
+		assert.Contains(t, string(result), "<title>MyCustomSite - AI API Gateway</title>")
+		assert.NotContains(t, string(result), "Sub2API")
 	})
 
 	t.Run("returns_unchanged_when_site_name_empty", func(t *testing.T) {
-		html := []byte(`<html><head><title>Original title</title></head><body></body></html>`)
+		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
 		settingsJSON := []byte(`{"site_name":""}`)
 
 		result := injectSiteTitle(html, settingsJSON)
@@ -44,7 +44,7 @@ func TestInjectSiteTitle(t *testing.T) {
 	})
 
 	t.Run("returns_unchanged_when_site_name_missing", func(t *testing.T) {
-		html := []byte(`<html><head><title>Original title</title></head><body></body></html>`)
+		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
 		settingsJSON := []byte(`{"other_field":"value"}`)
 
 		result := injectSiteTitle(html, settingsJSON)
@@ -53,7 +53,7 @@ func TestInjectSiteTitle(t *testing.T) {
 	})
 
 	t.Run("returns_unchanged_when_invalid_json", func(t *testing.T) {
-		html := []byte(`<html><head><title>Original title</title></head><body></body></html>`)
+		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
 		settingsJSON := []byte(`{invalid json}`)
 
 		result := injectSiteTitle(html, settingsJSON)
@@ -73,7 +73,7 @@ func TestInjectSiteTitle(t *testing.T) {
 	t.Run("returns_unchanged_when_title_has_attributes", func(t *testing.T) {
 		// The function looks for "<title>" literally, so attributes are not supported
 		// This is acceptable since index.html uses plain <title> without attributes
-		html := []byte(`<html><head><title lang="en">Original title</title></head><body></body></html>`)
+		html := []byte(`<html><head><title lang="en">Sub2API</title></head><body></body></html>`)
 		settingsJSON := []byte(`{"site_name":"NewSite"}`)
 
 		result := injectSiteTitle(html, settingsJSON)
@@ -83,7 +83,7 @@ func TestInjectSiteTitle(t *testing.T) {
 	})
 
 	t.Run("escapes_html_in_site_name", func(t *testing.T) {
-		html := []byte(`<html><head><title>Original title</title></head><body></body></html>`)
+		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
 		settingsJSON := []byte(`{"site_name":"</title><script>alert(1)</script><title>"}`)
 
 		result := injectSiteTitle(html, settingsJSON)
@@ -93,16 +93,16 @@ func TestInjectSiteTitle(t *testing.T) {
 	})
 
 	t.Run("escapes_ampersand_in_site_name", func(t *testing.T) {
-		html := []byte(`<html><head><title>Original title</title></head><body></body></html>`)
+		html := []byte(`<html><head><title>Sub2API</title></head><body></body></html>`)
 		settingsJSON := []byte(`{"site_name":"A&B"}`)
 
 		result := injectSiteTitle(html, settingsJSON)
 
-		assert.Contains(t, string(result), "<title>A&amp;B</title>")
+		assert.Contains(t, string(result), "<title>A&amp;B - AI API Gateway</title>")
 	})
 
 	t.Run("preserves_rest_of_html", func(t *testing.T) {
-		html := []byte(`<html><head><meta charset="UTF-8"><title>Original title</title><script src="app.js"></script></head><body><div id="app"></div></body></html>`)
+		html := []byte(`<html><head><meta charset="UTF-8"><title>Sub2API</title><script src="app.js"></script></head><body><div id="app"></div></body></html>`)
 		settingsJSON := []byte(`{"site_name":"TestSite"}`)
 
 		result := injectSiteTitle(html, settingsJSON)
@@ -110,7 +110,7 @@ func TestInjectSiteTitle(t *testing.T) {
 		assert.Contains(t, string(result), `<meta charset="UTF-8">`)
 		assert.Contains(t, string(result), `<script src="app.js"></script>`)
 		assert.Contains(t, string(result), `<div id="app"></div>`)
-		assert.Contains(t, string(result), "<title>TestSite</title>")
+		assert.Contains(t, string(result), "<title>TestSite - AI API Gateway</title>")
 	})
 }
 
@@ -352,7 +352,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.True(t, strings.HasSuffix(etag, `"`))
 	})
 
-	t.Run("returns_304_for_matching_etag_without_nonce", func(t *testing.T) {
+	t.Run("returns_304_only_when_no_nonce_is_present", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -360,7 +360,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
 
-		// Use a real router for proper 304 handling
+		// No nonce in context means the cached body has no per-request part.
 		router := gin.New()
 		router.Use(server.Middleware())
 
@@ -379,38 +379,47 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotModified, w2.Code)
 		assert.Empty(t, w2.Body.String())
+		assertNoStoreHTMLHeaders(t, w2.Header())
 	})
 
-	t.Run("matching_etag_still_returns_html_with_current_nonce", func(t *testing.T) {
-		provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+	t.Run("serves_fresh_html_when_cached_nonce_is_stale", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
+
 		router := gin.New()
-		nonce := "first-page-nonce"
 		router.Use(func(c *gin.Context) {
-			c.Set(middleware.CSPNonceKey, nonce)
+			c.Set(middleware.CSPNonceKey, c.GetHeader("X-Test-Nonce"))
 			c.Next()
 		})
 		router.Use(server.Middleware())
+
 		w1 := httptest.NewRecorder()
-		router.ServeHTTP(w1, httptest.NewRequest(http.MethodGet, "/", nil))
-		require.Equal(t, http.StatusOK, w1.Code)
-		require.Contains(t, w1.Body.String(), `nonce="first-page-nonce"`)
+		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
+		req1.Header.Set("X-Test-Nonce", "first-nonce")
+		router.ServeHTTP(w1, req1)
 		etag := w1.Header().Get("ETag")
 		require.NotEmpty(t, etag)
+		assert.Contains(t, w1.Body.String(), `nonce="first-nonce"`)
 
-		nonce = "current-page-nonce"
+		// The document embeds the request nonce, so a matching ETag must not
+		// turn this into a 304 that reuses the previous nonce.
 		w2 := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("If-None-Match", etag)
-		router.ServeHTTP(w2, req)
+		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
+		req2.Header.Set("X-Test-Nonce", "second-nonce")
+		req2.Header.Set("If-None-Match", etag)
+		router.ServeHTTP(w2, req2)
+
 		assert.Equal(t, http.StatusOK, w2.Code)
-		assert.Contains(t, w2.Body.String(), `nonce="current-page-nonce"`)
-		assert.NotContains(t, w2.Body.String(), `nonce="first-page-nonce"`)
-		assert.Equal(t, 1, provider.called)
+		assert.Contains(t, w2.Body.String(), `nonce="second-nonce"`)
+		assert.NotContains(t, w2.Body.String(), `nonce="first-nonce"`)
+		assertNoStoreHTMLHeaders(t, w2.Header())
 	})
 
-	t.Run("sets_cache_control_header", func(t *testing.T) {
+	t.Run("sets_no_store_cache_headers", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -425,7 +434,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		server.serveIndexHTML(c)
 
-		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+		assertNoStoreHTMLHeaders(t, w.Header())
 	})
 
 	t.Run("fallback_on_settings_error", func(t *testing.T) {
@@ -438,7 +447,6 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		// Invalidate cache to force settings fetch
 		server.InvalidateCache()
-		server.baseHTML = []byte(`<html><head><script nonce="__CSP_NONCE_VALUE__">document.documentElement.dataset.appTheme='minimalism';</script></head></html>`)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -450,10 +458,78 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		// Should still return 200 with base HTML
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
-		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
-		assert.Contains(t, w.Body.String(), `nonce="nonce123"`)
-		assert.NotContains(t, w.Body.String(), NonceHTMLPlaceholder)
-		assert.NotContains(t, w.Body.String(), "window.__APP_CONFIG__")
+	})
+}
+
+func assertNoStoreHTMLHeaders(t *testing.T, header http.Header) {
+	t.Helper()
+	assert.Equal(t, "no-cache, no-store, must-revalidate", header.Get("Cache-Control"))
+	assert.Equal(t, "no-cache", header.Get("Pragma"))
+	assert.Equal(t, "0", header.Get("Expires"))
+	assert.Equal(t, "no-store", header.Get("CDN-Cache-Control"))
+	assert.Equal(t, "no-store", header.Get("Surrogate-Control"))
+}
+
+func TestFrontendServer_NoStoreHeadersOnEveryHTMLPath(t *testing.T) {
+	t.Run("cache_hit", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		w1 := httptest.NewRecorder()
+		c1, _ := gin.CreateTestContext(w1)
+		c1.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c1.Set(middleware.CSPNonceKey, "nonce1")
+		server.serveIndexHTML(c1)
+		require.Equal(t, http.StatusOK, w1.Code)
+
+		w2 := httptest.NewRecorder()
+		c2, _ := gin.CreateTestContext(w2)
+		c2.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c2.Set(middleware.CSPNonceKey, "nonce2")
+		server.serveIndexHTML(c2)
+
+		assert.Equal(t, http.StatusOK, w2.Code)
+		assertNoStoreHTMLHeaders(t, w2.Header())
+	})
+
+	t.Run("settings_error_fallback", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			err: context.DeadlineExceeded,
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c.Set(middleware.CSPNonceKey, "nonce123")
+		server.serveIndexHTML(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assertNoStoreHTMLHeaders(t, w.Header())
+	})
+
+	t.Run("settings_marshal_error_fallback", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: make(chan struct{}),
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c.Set(middleware.CSPNonceKey, "nonce123")
+		server.serveIndexHTML(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assertNoStoreHTMLHeaders(t, w.Header())
 	})
 }
 
@@ -551,7 +627,6 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		apiPaths := []string{
 			"/api/v1/users",
 			"/models",
-			"/models/gpt-5.5",
 			"/v1/models",
 			"/v1beta/chat",
 			"/backend-api/codex/responses",
@@ -559,23 +634,14 @@ func TestFrontendServer_Middleware(t *testing.T) {
 			"/antigravity/test",
 			"/setup/init",
 			"/health",
+			"/.well-known/oauth-protected-resource",
+			"/.well-known/oauth-protected-resource/api/v1/mcp",
+			"/.well-known/oauth-authorization-server",
 			"/responses",
 			"/responses/compact",
 			"/chat/completions",
-			"/messages/count_tokens",
-			"/embeddings",
-			"/contents/generations/tasks",
-			"/contents/generations/tasks/task-123",
-			"/v3/contents/generations/tasks",
-			"/v3/contents/generations/tasks/task-123",
-			"/tts",
-			"/stt",
-			"/custom-voices",
-			"/custom-voices/voice-123",
-			"/realtime",
-			"/web_search",
-			"/x_search",
 			"/models/gpt-5.5",
+			"/v3/contents/generations/tasks/task-123",
 		}
 
 		for _, path := range apiPaths {
@@ -870,6 +936,9 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 			"/antigravity/test",
 			"/setup/init",
 			"/health",
+			"/.well-known/oauth-protected-resource",
+			"/.well-known/oauth-protected-resource/api/v1/mcp",
+			"/.well-known/oauth-authorization-server",
 			"/responses",
 			"/responses/compact",
 			"/chat/completions",

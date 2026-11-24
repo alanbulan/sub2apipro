@@ -45,8 +45,8 @@
       </span>
     </button>
 
-    <!-- Fullscreen pages can keep the dropdown inside their fullscreen element. -->
-    <Teleport :to="teleportTarget">
+    <!-- Teleport dropdown to body to escape stacking context -->
+    <Teleport to="body">
       <Transition name="select-dropdown">
         <div
           v-if="isOpen"
@@ -55,7 +55,6 @@
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"
-          :aria-multiselectable="multiple || undefined"
           tabindex="-1"
           @click.stop
           @mousedown.stop
@@ -140,8 +139,7 @@ export interface SelectOption {
 }
 
 interface Props {
-  /** Scalar by default; an array is used when multiple mode is enabled. */
-  modelValue: string | number | boolean | null | undefined | Array<string | number | boolean | null>
+  modelValue: string | number | boolean | null | undefined
   options: SelectOption[] | Array<Record<string, unknown>>
   placeholder?: string
   disabled?: boolean
@@ -154,11 +152,9 @@ interface Props {
   creatable?: boolean
   creatablePrefix?: string
   clearable?: boolean
-  multiple?: boolean
   id?: string
   ariaLabel?: string
   ariaDescribedby?: string
-  teleportTo?: string | HTMLElement
   /** 远程搜索模式：输入不在本地过滤 options，而是防抖后 emit('search', query)，由父组件请求数据更新 options */
   remote?: boolean
   /** 远程搜索模式下的加载态：options 为空时下拉显示 loading 文案 */
@@ -166,9 +162,8 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'open'): void
-  (e: 'update:modelValue', value: any): void
-  (e: 'change', value: any, option: SelectOption | null): void
+  (e: 'update:modelValue', value: string | number | boolean | null): void
+  (e: 'change', value: string | number | boolean | null, option: SelectOption | null): void
   (e: 'search', query: string): void
 }
 
@@ -179,7 +174,6 @@ const props = withDefaults(defineProps<Props>(), {
   creatable: false,
   creatablePrefix: '',
   clearable: false,
-  multiple: false,
   valueKey: 'value',
   labelKey: 'label',
   remote: false,
@@ -189,9 +183,6 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const isOpen = ref(false)
-const teleportTarget = computed(() => props.teleportTo
-  ?? (isOpen.value && typeof document !== 'undefined' ? document.fullscreenElement : null)
-  ?? 'body')
 const searchQuery = ref('')
 const focusedIndex = ref(-1)
 const containerRef = ref<HTMLElement | null>(null)
@@ -279,24 +270,10 @@ const isGroupHeaderOption = (option: any): boolean => {
 }
 
 const selectedOption = computed(() => {
-  if (props.multiple) return null
   return props.options.find((opt) => getOptionValue(opt) === props.modelValue) || null
 })
 
-const selectedOptions = computed(() => {
-  if (!props.multiple || !Array.isArray(props.modelValue)) return []
-  const selectedValues = new Set(props.modelValue)
-  return props.options.filter((option) => selectedValues.has(getOptionValue(option)))
-})
-
 const selectedLabel = computed(() => {
-  if (props.multiple) {
-    const options = selectedOptions.value
-    const selectedCount = Array.isArray(props.modelValue) ? props.modelValue.length : 0
-    if (selectedCount === 0) return placeholderText.value
-    if (selectedCount === 1 && options.length === 1) return getOptionLabel(options[0])
-    return t('common.selectedCount', { count: selectedCount })
-  }
   if (selectedOption.value) {
     return getOptionLabel(selectedOption.value)
   }
@@ -307,9 +284,9 @@ const selectedLabel = computed(() => {
   return placeholderText.value
 })
 
-const hasValue = computed(() => props.multiple
-  ? Array.isArray(props.modelValue) && props.modelValue.length > 0
-  : props.modelValue !== null && props.modelValue !== undefined && props.modelValue !== '')
+const hasValue = computed(
+  () => props.modelValue !== null && props.modelValue !== undefined && props.modelValue !== ''
+)
 
 const filteredOptions = computed(() => {
   let opts = props.options as any[]
@@ -334,9 +311,6 @@ const filteredOptions = computed(() => {
 })
 
 const isSelected = (option: any): boolean => {
-  if (props.multiple && Array.isArray(props.modelValue)) {
-    return props.modelValue.includes(getOptionValue(option))
-  }
   return getOptionValue(option) === props.modelValue
 }
 
@@ -407,7 +381,6 @@ watch(() => props.disabled, (disabled) => {
 
 watch(isOpen, (open) => {
   if (open) {
-    emit('open')
     calculateDropdownPosition()
     // Reset focused index to current selection or first item
     if (filteredOptions.value.length === 0) {
@@ -453,15 +426,6 @@ watch(searchQuery, (query) => {
 
 const selectOption = (option: any) => {
   const value = getOptionValue(option) ?? null
-  if (props.multiple) {
-    const current = Array.isArray(props.modelValue) ? [...props.modelValue] : []
-    const index = current.indexOf(value)
-    if (index >= 0) current.splice(index, 1)
-    else current.push(value)
-    emit('update:modelValue', current)
-    emit('change', current, option)
-    return
-  }
   emit('update:modelValue', value)
   emit('change', value, option)
   isOpen.value = false
@@ -470,9 +434,8 @@ const selectOption = (option: any) => {
 
 const clearSelection = () => {
   if (props.disabled) return
-  const value = props.multiple ? [] : null
-  emit('update:modelValue', value)
-  emit('change', value, null)
+  emit('update:modelValue', null)
+  emit('change', null, null)
 }
 
 // Keyboards

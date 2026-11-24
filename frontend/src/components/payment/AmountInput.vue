@@ -75,7 +75,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { RechargeBonusTier } from '@/types/payment'
 import { formatRechargeBonusNumber, quoteRechargeBonus, type RechargeBonusMode } from '@/utils/rechargeBonus'
-import { formatPaymentAmount, paymentCurrencyFractionDigits } from './currency'
+import { formatPaymentAmount } from './currency'
 
 const props = withDefaults(defineProps<{
   amounts?: number[]
@@ -116,7 +116,12 @@ const filteredAmounts = computed(() =>
 const showSecondLine = computed(() => props.bonusTiers.length > 0)
 
 function currencyDigits(): number {
-  return paymentCurrencyFractionDigits(props.currency)
+  if (!props.currency) return 2
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: props.currency }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    return 2
+  }
 }
 
 function quoteFor(amt: number) {
@@ -148,10 +153,7 @@ const placeholderText = computed(() => {
   return t('payment.enterAmount')
 })
 
-const amountPattern = computed(() => {
-  const digits = currencyDigits()
-  return digits === 0 ? /^\d*$/ : new RegExp(`^\\d*(\\.\\d{0,${digits}})?$`)
-})
+const AMOUNT_PATTERN = /^\d*(\.\d{0,2})?$/
 
 function selectAmount(amt: number) {
   customText.value = String(amt)
@@ -161,13 +163,7 @@ function selectAmount(amt: number) {
 function handleInput(e: Event) {
   const input = e.target as HTMLInputElement
   const val = input.value
-  if (!amountPattern.value.test(val)) {
-    // Let users delete an amount that became invalid after switching currencies.
-    if (customText.value.startsWith(val) && val.length < customText.value.length) {
-      customText.value = val
-      emit('update:modelValue', null)
-      return
-    }
+  if (!AMOUNT_PATTERN.test(val)) {
     input.value = customText.value
     return
   }

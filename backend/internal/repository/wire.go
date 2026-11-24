@@ -15,7 +15,7 @@ import (
 
 // ProvideConcurrencyCache 创建并发控制缓存，从配置读取 TTL 参数
 // 性能优化：TTL 可配置，支持长时间运行的 LLM 请求场景
-func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config, db *sql.DB) (service.ConcurrencyCache, error) {
+func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config) service.ConcurrencyCache {
 	waitTTLSeconds := int(cfg.Gateway.Scheduling.StickySessionWaitTimeout.Seconds())
 	if cfg.Gateway.Scheduling.FallbackWaitTimeout > cfg.Gateway.Scheduling.StickySessionWaitTimeout {
 		waitTTLSeconds = int(cfg.Gateway.Scheduling.FallbackWaitTimeout.Seconds())
@@ -23,18 +23,7 @@ func ProvideConcurrencyCache(rdb *redis.Client, cfg *config.Config, db *sql.DB) 
 	if waitTTLSeconds <= 0 {
 		waitTTLSeconds = cfg.Gateway.ConcurrencySlotTTLMinutes * 60
 	}
-	// 专用 API Key 短租约只作用于普通共享 Redis 实现。regional authority 的
-	// base 缓存仍按旧的三参语义构造（专用值传 0 = 继承共享 slot TTL），其
-	// 统计/续租委托 base 的行为保持不变。
-	apiKeySlotTTLSeconds := 0
-	if cfg.Runtime.RegionalConcurrencyFile == "" {
-		apiKeySlotTTLSeconds = cfg.Gateway.APIKeySlotTTLSeconds
-	}
-	base := NewConcurrencyCacheWithAPIKeyTTL(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds, apiKeySlotTTLSeconds)
-	if cfg.Runtime.RegionalConcurrencyFile == "" {
-		return base, nil
-	}
-	return provideRegionalConcurrencyCache(base, rdb, db, cfg)
+	return NewConcurrencyCache(rdb, cfg.Gateway.ConcurrencySlotTTLMinutes, waitTTLSeconds)
 }
 
 // ProvideGitHubReleaseClient 创建 GitHub Release 客户端
@@ -76,38 +65,22 @@ func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.Schedu
 
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
-	NewFeishuSetupStore,
-	ProvideAutoCreditEmailOutboxRepository,
-	ProvideRegionalMetering,
-	NewRegionalSchedulerAuthority,
-	NewRegionalAuthAuthority,
 	NewUserRepository,
+	NewMCPOAuthRepository,
 	NewAPIKeyRepository,
 	NewGroupRepository,
-	NewGroupAntiDistillationCache,
 	NewAdminGroupRepository,
 	NewCompositeModelRouteRepository,
 	NewAccountRepository,
-	NewAccountPerformanceRepository,
 	NewAdminAccountRepository,
-	NewAccountOpsRepository,
-	NewAccountTokenGuardRepository,
-	NewOpenAIOAuthReauthRepository,
-	NewOpenAISessionExportRepository,
-	NewAccountTokenGuardV2Repository,
 	NewScheduledTestPlanRepository,   // 定时测试计划仓储
 	NewScheduledTestResultRepository, // 定时测试结果仓储
-	NewQualityRuleTemplateRepository, // 质量运维分组规则仓储
-	NewPelicanShowcaseRepository,     // 鹈鹕测智用户展示快照仓储
-	NewPelicanGroupTestRepository,    // 鹈鹕测智分组测试计划与结果仓储
-	NewControlledExperimentRepository,
 	NewProxyRepository,
 	NewRedeemCodeRepository,
 	NewPromoCodeRepository,
 	NewAnnouncementRepository,
 	NewAnnouncementReadRepository,
 	NewUsageLogRepository,
-	NewConversationLogRepository,
 	NewUsageBillingRepository,
 	NewBatchImageRepository,
 	NewGeminiCachedContentRepository,
@@ -115,8 +88,6 @@ var ProviderSet = wire.NewSet(
 	NewUsageCleanupRepository,
 	NewDashboardAggregationRepository,
 	NewSettingRepository,
-	NewCodexHarvestNodeRepository,
-	NewCodexHarvestFlowRepository,
 	NewScopedAdminKeyRepository,
 	NewOpsRepository,
 	NewAuditLogRepository,
@@ -133,8 +104,6 @@ var ProviderSet = wire.NewSet(
 	NewChannelRepository,
 	NewChannelMonitorRepository,
 	NewChannelMonitorV2Repository,
-	NewChannelMonitorV3Repository,
-	NewSupportTicketRepository,
 	NewChannelMonitorRequestTemplateRepository,
 	NewContentModerationRepository,
 	NewAffiliateRepository,
@@ -146,7 +115,6 @@ var ProviderSet = wire.NewSet(
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,
-	NewTempUnschedTriggerCounter,
 	NewTimeoutCounterCache,
 	NewOpenAI403CounterCache,
 	NewInternal500CounterCache,
@@ -178,8 +146,6 @@ var ProviderSet = wire.NewSet(
 
 	// Encryptors
 	NewAESEncryptor,
-	NewNewAPIAuthorizationRepository,
-	NewOpenAICredentialEncryptor,
 
 	// Backup infrastructure
 	NewPgDumper,
@@ -197,7 +163,7 @@ var ProviderSet = wire.NewSet(
 	NewProxyExitInfoProber,
 	NewClaudeUsageFetcher,
 	NewClaudeOAuthClient,
-	ProvideHTTPUpstream,
+	NewHTTPUpstream,
 	NewOpenAIOAuthClient,
 	NewOpenAIReferralClient,
 	NewGrokOAuthClient,
@@ -207,7 +173,6 @@ var ProviderSet = wire.NewSet(
 
 	ProvideEnt,
 	ProvideSQLDB,
-	NewAutoCreditRepository,
 	ProvideRedis,
 )
 

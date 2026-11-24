@@ -85,7 +85,8 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	if isReservedEmail(email) {
 		return nil, nil, ErrEmailReserved
 	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+	// 精确黑名单只拦新建账号（见 createEmailOAuthUser），已有账号能否登录由账号状态决定。
+	if err := s.validateRegistrationEmailSuffixPolicy(ctx, email); err != nil {
 		return nil, nil, err
 	}
 
@@ -115,11 +116,6 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 		}
 	}
 
-	if identityUser == nil {
-		if err := s.requireEmailAuthentication(ctx, user); err != nil {
-			return nil, nil, infraerrors.Conflict("OAUTH_EMAIL_REQUIRES_BINDING", "Sign in to the existing account and bind this sign-in method first")
-		}
-	}
 	if !user.IsActive() {
 		return nil, nil, ErrUserNotActive
 	}
@@ -163,8 +159,8 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return nil, ErrRegDisabled
 	}
-	if err := s.validateRegistrationEmailAlias(ctx, email); err != nil {
-		return nil, err
+	if s.settingService.IsRegistrationEmailBlacklisted(ctx, email) {
+		return nil, ErrEmailBlocked
 	}
 	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
 	if err != nil {
@@ -199,9 +195,6 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 		SignupSource: providerType,
 	}
 	if err := s.userRepo.Create(ctx, user); err != nil {
-		if errors.Is(err, ErrRegistrationIPLimit) {
-			return nil, ErrRegistrationIPLimit
-		}
 		if errors.Is(err, ErrEmailExists) {
 			existing, loadErr := s.userRepo.GetByEmail(ctx, email)
 			if loadErr != nil {

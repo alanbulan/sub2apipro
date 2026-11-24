@@ -14,7 +14,7 @@ function paramsFromDeeplink(deeplink: string): URLSearchParams {
 
 describe('ccswitchImport utils', () => {
   it('defaults OpenAI CC Switch imports to the current Codex model', () => {
-    expect(OPENAI_CC_SWITCH_CODEX_MODEL).toBe('gpt-5.5')
+    expect(OPENAI_CC_SWITCH_CODEX_MODEL).toBe('gpt-6.1-sol')
   })
 
   it('defaults Grok Build imports to the current Grok model', () => {
@@ -47,16 +47,33 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe('codex')
     expect(params.get('endpoint')).toBe(endpoint)
     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
-    const embedded = JSON.parse(atob(params.get('config')!)) as {
-      auth: { OPENAI_API_KEY: string }
-      config: string
-    }
-    expect(params.get('configFormat')).toBe('json')
-    expect(embedded.auth.OPENAI_API_KEY).toBe(baseInput.apiKey)
-    expect(embedded.config.split('\n[')[0]).toContain('service_tier = "fast"')
-    expect(embedded.config.match(/^service_tier = /gm)).toHaveLength(1)
-    expect(embedded.config).toContain(`base_url = "${endpoint}"`)
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
+    const payload = JSON.parse(atob(params.get('config') || '')) as { config: string }
+    expect(params.get('configFormat')).toBe('json')
+    expect(payload.config).toContain(`base_url = "${endpoint}"`)
+    expect(payload.config).toContain(`model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(payload.config.split('[model_providers.')[0]).toContain('web_search = "live"')
+    expect(payload.config).toContain('requires_openai_auth = false')
+    expect(payload.config).toContain('experimental_bearer_token = "sk-test"')
+    expect(payload.config).toContain('"x-openai-actor-authorization" = "local-image-extension"')
+    // Global feature choices are preserved by CC Switch, not imported per provider.
+    expect(payload.config).not.toContain('[features]')
+  })
+
+  it('encodes embedded Codex configuration as UTF-8 and escapes TOML strings', () => {
+    const apiKey = 'sk-"test\\key'
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({
+      ...baseInput,
+      apiKey,
+      baseUrl: 'https://example.com/网关',
+      platform: 'openai',
+      clientType: 'claude'
+    }))
+    const bytes = Uint8Array.from(atob(params.get('config') || ''), (char) => char.charCodeAt(0))
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as { config: string }
+    expect(payload.config).toContain('base_url = "https://example.com/网关"')
+    expect(payload.config).toContain(`experimental_bearer_token = ${JSON.stringify(apiKey)}`)
+    expect(params.get('apiKey')).toBe(apiKey)
   })
 
   it.each([
@@ -110,17 +127,7 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe('gemini')
     expect(params.get('endpoint')).toBe(`${baseInput.baseUrl}/antigravity`)
     expect(params.has('model')).toBe(false)
-  })
-
-  it('encodes Unicode provider names and TOML string escapes in Codex config', () => {
-    const providerName = '中文 "Fast" \\ provider'
-    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({
-      ...baseInput, platform: 'openai', clientType: 'claude', providerName
-    }))
-    const bytes = Uint8Array.from(atob(params.get('config')!), (character) => character.charCodeAt(0))
-    const embedded = JSON.parse(new TextDecoder().decode(bytes)) as { config: string }
-    expect(embedded.config).toContain(`name = ${JSON.stringify(providerName)}`)
-    expect(embedded.config.split('\n[')[0]).toContain('service_tier = "fast"')
+    expect(params.has('config')).toBe(false)
   })
 })
 

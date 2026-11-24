@@ -155,14 +155,14 @@ export default {
     // Admin tour steps
     admin: {
       welcome: {
-        title: '👋 Welcome',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">This platform is a powerful AI service gateway platform that helps you easily manage and distribute AI services.</p><p style="margin-bottom: 12px;"><b>🎯 Core Features:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>Group Management</b> - Create service tiers (VIP, Free Trial, etc.)</li><li>🔗 <b>Account Pool</b> - Connect multiple upstream AI service accounts</li><li>🔑 <b>Key Distribution</b> - Generate independent API Keys for users</li><li>💰 <b>Billing Control</b> - Flexible rate and quota management</li></ul><p style="color: #10b981; font-weight: 600;">Let\'s complete the initial setup in 3 minutes →</p></div>',
+        title: '👋 Welcome to Sub2API',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API is a powerful AI service gateway platform that helps you easily manage and distribute AI services.</p><p style="margin-bottom: 12px;"><b>🎯 Core Features:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>Group Management</b> - Create service tiers (VIP, Free Trial, etc.)</li><li>🔗 <b>Account Pool</b> - Connect multiple upstream AI service accounts</li><li>🔑 <b>Key Distribution</b> - Generate independent API Keys for users</li><li>💰 <b>Billing Control</b> - Flexible rate and quota management</li></ul><p style="color: #10b981; font-weight: 600;">Let\'s complete the initial setup in 3 minutes →</p></div>',
         nextBtn: 'Start Setup 🚀',
         prevBtn: 'Skip'
       },
       groupManage: {
         title: '📦 Step 1: Group Management',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>What is a Group?</b></p><p style="margin-bottom: 12px;">Groups are the core concept of this platform, like a "service package":</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 Each group can contain multiple upstream accounts</li><li>💰 Each group has independent billing multiplier</li><li>👥 Can be set as public or exclusive</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 Example:</b> You can create "VIP Premium" (high rate) and "Free Trial" (low rate) groups</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 Click "Group Management" on the left sidebar</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>What is a Group?</b></p><p style="margin-bottom: 12px;">Groups are the core concept of Sub2API, like a "service package":</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 Each group can contain multiple upstream accounts</li><li>💰 Each group has independent billing multiplier</li><li>👥 Can be set as public or exclusive</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 Example:</b> You can create "VIP Premium" (high rate) and "Free Trial" (low rate) groups</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 Click "Group Management" on the left sidebar</p></div>'
       },
       createGroup: {
         title: '➕ Create New Group',
@@ -255,8 +255,8 @@ export default {
     // User tour steps
     user: {
       welcome: {
-        title: '👋 Welcome',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Hello! Welcome to the AI gateway platform.</p><p style="margin-bottom: 12px;"><b>🎯 Quick Start:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 Create API Key</li><li>📋 Copy key to your application</li><li>🚀 Start using AI services</li></ul><p style="color: #10b981; font-weight: 600;">Just 1 minute, let\'s get started →</p></div>',
+        title: '👋 Welcome to Sub2API',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Hello! Welcome to the Sub2API AI service platform.</p><p style="margin-bottom: 12px;"><b>🎯 Quick Start:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 Create API Key</li><li>📋 Copy key to your application</li><li>🚀 Start using AI services</li></ul><p style="color: #10b981; font-weight: 600;">Just 1 minute, let\'s get started →</p></div>',
         nextBtn: 'Start 🚀',
         prevBtn: 'Skip'
       },
@@ -287,17 +287,6 @@ export default {
 
   // Payment System
   payment: {
-    cryptoCheckout: {
-      networkDelayed: 'Payment confirmation is delayed',
-      networkDelayHint: 'The payment network is unavailable. We are retrying and checking earlier transfers. Please wait before sending funds. If you have already paid, do not pay again; the order will update after confirmation.',
-      title: 'Crypto payment', back: 'Back to billing', address: 'Receiving address', addressQR: 'Receiving address QR code',
-      instruction: 'Send the exact amount below using {network}. Transfers on another network cannot pay this order.',
-      exactAmount: 'Exact transfer amount', copyAmount: 'Copy amount', copyAddress: 'Copy address', copied: 'Copied',
-      remaining: 'Time remaining: {time}', waiting: 'Waiting for transfer', confirming: 'Transfer detected, waiting for network confirmation',
-      paid: 'Payment completed', fulfillment: 'Payment received, completing your order', cancelled: 'Order cancelled', failed: 'Payment failed', expired: 'Order expired',
-      check: 'Check payment', viewResult: 'View result', cancelConfirm: 'Cancel this order? Do not cancel after sending a transfer.', keepWaiting: 'Keep waiting',
-      loadError: 'Unable to load payment details.', copyError: 'Copy failed. Select and copy the value manually.',
-    },
     title: 'Recharge / Subscription',
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',
@@ -314,28 +303,9 @@ export default {
     enterAmount: 'Enter amount',
     paymentMethod: 'Payment Method',
     fee: 'Fee',
-    estimatedPay: 'Estimated total',
-    feeRangeHint: 'Fees vary between payment providers. The order determines the final fee and total.',
-    stripePaymentMethod: 'Stripe payment method',
-    providerFeeEstimateHint: 'Estimated using the global default fee. The actual total depends on the provider and payment method.',
     actualPay: 'Actual Payment',
     createOrder: 'Confirm Payment',
     methods: {
-      bepusdt: 'BEpusdt Crypto',
-      usdt: {
-        trc20: 'USDT (TRC20)', erc20: 'USDT (ERC20)', bep20: 'USDT (BEP20)',
-        polygon: 'USDT (Polygon)', aptos: 'USDT (Aptos)', solana: 'USDT (Solana)',
-        xlayer: 'USDT (X-Layer)', arbitrum: 'USDT (Arbitrum)', plasma: 'USDT (Plasma)', ton: 'USDT (TON)',
-      },
-      usdc: {
-        trc20: 'USDC (TRC20)', erc20: 'USDC (ERC20)', bep20: 'USDC (BEP20)',
-        polygon: 'USDC (Polygon)', aptos: 'USDC (Aptos)', solana: 'USDC (Solana)',
-        xlayer: 'USDC (X-Layer)', arbitrum: 'USDC (Arbitrum)', base: 'USDC (Base)',
-      },
-      tron: { trx: 'TRX (Tron)' },
-      ethereum: { eth: 'ETH (Ethereum)' },
-      bsc: { bnb: 'BNB (BSC)' },
-      ton: { gram: 'TON (TON)' },
       easypay: 'EasyPay',
       alipay: 'Alipay',
       wxpay: 'WeChat Pay',
@@ -431,7 +401,6 @@ export default {
     confirmCancel: 'Are you sure you want to cancel this order?',
     amountTooLow: 'Minimum amount is {min}',
     amountTooHigh: 'Maximum amount is {max}',
-		amountPrecision: 'Enter an amount with no more than {digits} decimal places for {currency}.',
     amountNoMethod: 'No payment method available for this amount',
     rechargeRatePreview: 'Current rate: 1 {currency} = {usd} USD',
     refundReason: 'Refund Reason',
@@ -469,10 +438,6 @@ export default {
       TOO_MANY_PENDING: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',
       DAILY_LIMIT_EXCEEDED: 'Daily recharge limit reached. Remaining: {remaining}.',
       PAYMENT_GATEWAY_ERROR: 'Payment method is unavailable.',
-      INVALID_PROVIDER_FEE_RATE: 'Fee rates must be between 0 and 100%, with at most two decimal places.',
-      INVALID_PROVIDER_FEE_METHOD: 'Enable the payment method before configuring its fee.',
-      INVALID_PAYMENT_SUBTYPE: 'Choose a payment method supported by this Stripe provider.',
-      PAYMENT_SUBTYPE_REQUIRED: 'Choose a Stripe payment method before creating an order.',
       NO_AVAILABLE_INSTANCE: 'No payment channel available right now.',
       PAYMENT_PROVIDER_MISCONFIGURED: 'Payment provider misconfigured. Please contact an administrator.',
       WXPAY_CONFIG_MISSING_KEY: 'WeChat Pay config missing required key: {key}.',
@@ -502,14 +467,6 @@ export default {
     subscribeNow: 'Subscribe Now',
     renewNow: 'Renew',
     selectPlan: 'Select Plan',
-    renewalMode: {
-      title: 'Renewal method',
-      currentExpiry: 'Current subscription expires: {date}',
-      restart: 'Restart cycle',
-      extend: 'Extend cycle',
-      restartHint: 'Refill daily, weekly, and monthly quota immediately and start a new plan term when payment completes. Remaining time is replaced.',
-      extendHint: 'Keep current quota usage and add this plan term after the existing expiration time.',
-    },
     planFeatures: 'Features',
     planCard: {
       rate: 'Rate',

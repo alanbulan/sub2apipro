@@ -115,36 +115,14 @@ func isClientCanceledTransportError(ctx context.Context, err error) bool {
 //
 // passthrough tags the Ops error event for the OpenAI passthrough forward path.
 func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, passthrough bool) error {
-	var phaseTimeout *openAIHTTPPhaseTimeout
-	if errors.As(err, &phaseTimeout) {
-		return handleOpenAIHTTPPhaseError(c, account, err)
-	}
-	// A peer reset can arrive after the POST was consumed but before headers.
-	// Absence of response headers is not evidence that replay is safe.
-	if resetErr, handled := handleOpenAIHTTP2PeerReset(c, account, "", err); handled {
-		return resetErr
-	}
-	if routeErr, ok := s.astraRouteFailover(ctx, account, err).(*UpstreamFailoverError); ok {
-		return routeErr
-	}
-	if IsOpenAITurnAdmissionError(err) || IsOpenAIRPMError(err) {
-		return err
-	}
-	if errors.Is(err, ErrCodexTicketResponseRejected) {
-		if c != nil && !c.Writer.Written() {
-			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"type": "ticket_response_rejected", "message": err.Error()}})
-		}
-		return err // terminal: never convert an already-sent request into failover
-	}
 	if isClientCanceledTransportError(ctx, err) {
 		return err
 	}
 	safeErr := sanitizeUpstreamErrorMessage(err.Error())
 	setOpsUpstreamError(c, 0, safeErr, "")
-	proxyID, proxyName := runtimeProxyErrorAttribution(account, err)
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-		ProxyID:            proxyID,
-		ProxyName:          proxyName,
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           account.Platform,
 		AccountID:          account.ID,
 		AccountName:        account.Name,
@@ -195,6 +173,9 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 //     but returned an error.
 func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Context, account *Account, safeErr string) {
 	if s == nil || account == nil {
+		return
+	}
+	if s.cfg != nil && s.cfg.Gateway.DisableOpenAITransportErrorCooldown {
 		return
 	}
 	until := time.Now().Add(openAITransportErrorTempUnschedDuration)

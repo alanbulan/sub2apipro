@@ -278,44 +278,6 @@
           }
         ]
       }
-    },
-    {
-      "id": "mistral",
-      "display_name": "Mistral",
-      "gateway": "openai",
-      "cn_provider": false,
-      "litellm_provider": "mistral",
-      "multi_protocol": {
-        "default_mode": "payg",
-        "routing": "by_inbound",
-        "modes": [
-          {
-            "mode": "payg",
-            "base_urls": {
-              "chat_completions": "https://api.mistral.ai/v1"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "id": "qwen",
-      "display_name": "Qwen",
-      "gateway": "openai",
-      "cn_provider": false,
-      "litellm_provider": "dashscope",
-      "multi_protocol": {
-        "default_mode": "payg",
-        "routing": "by_inbound",
-        "modes": [
-          {
-            "mode": "payg",
-            "base_urls": {
-              "chat_completions": "https://dashscope.aliyuncs.com/compatible-mode/v1"
-            }
-          }
-        ]
-      }
     }
   ],
   "composite_precedence": [
@@ -331,8 +293,6 @@
     "opencode_go",
     "typesafe",
     "command_code",
-    "cline",
-    "mistral",
-    "qwen"
+    "cline"
   ]
 }

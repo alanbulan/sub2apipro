@@ -5,14 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/requestcapture"
-	"github.com/Wei-Shaw/sub2api/internal/serverless"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/iprisk"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
@@ -72,18 +68,6 @@ func (s *SettingService) GetGrokDefaultBaseURLMode(ctx context.Context) string {
 	return normalizeGrokDefaultBaseURLMode(raw)
 }
 
-// IsGrokVideoSourceURLEnabled fails closed: lookup errors keep the xAI media
-// URL hidden behind the authenticated content proxy.
-func (s *SettingService) IsGrokVideoSourceURLEnabled(ctx context.Context) bool {
-	if s == nil || s.settingRepo == nil {
-		return false
-	}
-	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayForwardingDBTimeout)
-	defer cancel()
-	raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyGrokVideoSourceURLEnabled)
-	return err == nil && strings.TrimSpace(raw) == "true"
-}
-
 func (s *SettingService) GetGrokDefaultBaseURL(ctx context.Context) string {
 	return GrokBaseURLForMode(s.GetGrokDefaultBaseURLMode(ctx))
 }
@@ -133,57 +117,41 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	scopedAdminKeyRepo                 ScopedAdminKeyRepository
-	IPRisk                             *iprisk.Manager     // Initialized before requests start.
-	Serverless                         *serverless.Manager // Initialized before requests start.
-	modelBillingCache                  modelBillingConfigCache
-	prioritySchedulingConfig           priorityConfigCache
-	requestCapture                     *requestcapture.Manager
-	astraRoutingMu                     sync.Mutex
-	astraRoutingOnSaved                func(config.AstraRoutingSettings)
-	astraRoutingCache                  *config.AstraRoutingSettings
-	astraRoutingExpires                time.Time
-	settingRepo                        SettingRepository
-	defaultSubGroupReader              DefaultSubscriptionGroupReader
-	proxyRepo                          ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                                *config.Config
-	onUpdate                           func() // Callback when settings are updated (for cache invalidation)
-	version                            string // Application version
-	webSearchManagerBuilder            WebSearchManagerBuilder
-	antigravityUAVersionCache          atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF             singleflight.Group
-	openAICodexUACache                 atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF                    singleflight.Group
-	openAICodexVersionCache            atomic.Value // *cachedOpenAICodexClientVersion
-	openAICodexVersionSF               singleflight.Group
-	openAICodexTicketEnabledCache      atomic.Value // *cachedOpenAICodexTicketEnabled
-	openAIRequestTimezoneEnabledCache  atomic.Value // *cachedOpenAIRequestTimezoneEnabled
-	openAIRequestTimezoneAutoCache     atomic.Value // *cachedOpenAIRequestTimezoneAuto
-	openAIRequestTimezoneEnabledSF     singleflight.Group
-	openAIRequestTimezoneAutoSF        singleflight.Group
-	openAICodexTicketEnabledSF         singleflight.Group
-	openAICodexTicketFailClosedCache   atomic.Value // *cachedOpenAICodexTicketFailClosed
-	openAICodexTicketFailClosedSF      singleflight.Group
-	openAICodexTicketModelsCache       atomic.Value // *cachedOpenAICodexTicketModels
-	openAICodexTicketModelsSF          singleflight.Group
-	openAICodexTicketHarvestProxyCache atomic.Value // *cachedOpenAICodexTicketHarvestProxy
-	openAICodexTicketHarvestProxySF    singleflight.Group
-	openAICodexTicketHarvestScopeCache atomic.Value // *cachedOpenAICodexTicketHarvestScope
-	openAICodexTicketHarvestScopeSF    singleflight.Group
-	codexRestrictionPolicyCache        atomic.Value // *cachedCodexRestrictionPolicy
-	codexRestrictionPolicySF           singleflight.Group
-	claudeCodeVersionCache             atomic.Value // *cachedClaudeCodeClientVersion
-	claudeCodeVersionSF                singleflight.Group
+	scopedAdminKeyRepo          ScopedAdminKeyRepository
+	settingRepo                 SettingRepository
+	defaultSubGroupReader       DefaultSubscriptionGroupReader
+	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                         *config.Config
+	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
+	version                     string // Application version
+	webSearchManagerBuilder     WebSearchManagerBuilder
+	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF      singleflight.Group
+	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF             singleflight.Group
+	openAICodexVersionCache     atomic.Value // *cachedOpenAICodexClientVersion
+	openAICodexVersionSF        singleflight.Group
+	claudeCodeVersionCache      atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF         singleflight.Group
+	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
+	codexRestrictionPolicySF    singleflight.Group
 
 	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
-	safetyPromptRuntimeCache      atomic.Value // *cachedSafetyPromptRuntime
 
 	// panelRateLimitCache 面板 API 限流配置进程内缓存（*cachedPanelRateLimitSettings）。
 	// 面板每个认证请求都会读取，禁止在热路径上直接访问 DB。
 	panelRateLimitCache atomic.Value
 	panelRateLimitSF    singleflight.Group
+
+	// registrationEmailBlacklistCache 精确邮箱黑名单进程内缓存（*registrationEmailBlacklistIndex，60s TTL）。
+	// 公开的注册与发码接口每次请求都会读取，禁止在热路径上直接访问 DB。
+	// registrationEmailBlacklistMu 串行化刷新时的「读 DB + 写缓存」与保存后的写缓存，
+	// 避免进行中的刷新用旧名单覆盖刚保存的名单。
+	registrationEmailBlacklistMu    sync.Mutex
+	registrationEmailBlacklistCache atomic.Value
+	registrationEmailBlacklistSF    singleflight.Group
 
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
@@ -195,18 +163,8 @@ type SettingService struct {
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
 	openAIAPIKeyHealthBreakerCache    atomic.Value // *cachedOpenAIAPIKeyHealthBreakerSettings
 
-	// openAIResponseHeaderTimeoutCache lets the HTTP upstream client read the
-	// admin-configurable OpenAI response-header timeout without a DB hit per
-	// request. SetOpenAIResponseHeaderTimeoutSettings refreshes it immediately.
-	openAIResponseHeaderTimeoutCache atomic.Value // *cachedOpenAIResponseHeaderTimeoutSettings
-	openAIResponseHeaderTimeoutSF    singleflight.Group
-	openAIResponseHeaderTimeoutMu    sync.Mutex
-	openAIResponseHeaderTimeoutGen   uint64 // guarded by Mu; successful saves supersede in-flight reads
-
 	channelMonitorRuntimeListenersMu sync.Mutex
 	channelMonitorRuntimeListeners   []func()
-	codexHarvestWakeOnce             sync.Once
-	codexHarvestWake                 chan struct{}
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
@@ -342,11 +300,10 @@ const (
 
 // NewSettingService 创建系统设置服务实例
 func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
-	s := &SettingService{settingRepo: settingRepo, cfg: cfg}
-	if cfg != nil {
-		cfg.SetAstraRoutingLoader(s.astraRoutingRuntime)
+	return &SettingService{
+		settingRepo: settingRepo,
+		cfg:         cfg,
 	}
-	return s
 }
 
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.

@@ -55,7 +55,6 @@ describe('useAuthStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
-    sessionStorage.clear()
     vi.useFakeTimers()
     vi.clearAllMocks()
   })
@@ -93,22 +92,6 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(false)
     })
 
-    it('未勾选记住我时仅保存到当前浏览器会话', async () => {
-      mockLogin.mockResolvedValue(fakeAuthResponse)
-      const store = useAuthStore()
-
-      await store.login({ email: 'test@example.com', password: '123456' }, false)
-
-      expect(mockLogin).toHaveBeenCalledWith(
-        { email: 'test@example.com', password: '123456' },
-        false
-      )
-      expect(sessionStorage.getItem('auth_token')).toBe('test-token-123')
-      expect(sessionStorage.getItem('auth_user')).toBe(JSON.stringify(fakeUser))
-      expect(localStorage.getItem('auth_token')).toBeNull()
-      expect(localStorage.getItem('auth_user')).toBeNull()
-    })
-
     it('需要 2FA 时返回响应但不设置认证状态', async () => {
       const twoFAResponse = { requires_2fa: true, temp_token: 'temp-123' }
       mockLogin.mockResolvedValue(twoFAResponse)
@@ -134,13 +117,10 @@ describe('useAuthStore', () => {
       expect(store.token).toBe('test-token-123')
       expect(store.user).toEqual(fakeUser)
       expect(user).toEqual(fakeUser)
-      expect(mockLogin2FA).toHaveBeenCalledWith(
-        {
-          temp_token: 'temp-123',
-          totp_code: '654321',
-        },
-        true
-      )
+      expect(mockLogin2FA).toHaveBeenCalledWith({
+        temp_token: 'temp-123',
+        totp_code: '654321',
+      })
     })
 
     it('2FA 验证失败时清除状态并抛出错误', async () => {
@@ -150,27 +130,6 @@ describe('useAuthStore', () => {
       await expect(store.login2FA('temp-123', '000000')).rejects.toThrow('Invalid TOTP')
       expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
-    })
-
-    it('未勾选记住我时 2FA 完成后仍仅保存到当前浏览器会话', async () => {
-      mockLogin.mockResolvedValue({ requires_2fa: true, temp_token: 'temp-123' })
-      mockLogin2FA.mockResolvedValue(fakeAuthResponse)
-      const store = useAuthStore()
-
-      await store.login({ email: 'test@example.com', password: '123456' }, false)
-      await store.login2FA('temp-123', '654321')
-
-      expect(mockLogin2FA).toHaveBeenCalledWith(
-        {
-          temp_token: 'temp-123',
-          totp_code: '654321',
-        },
-        false
-      )
-      expect(sessionStorage.getItem('auth_token')).toBe('test-token-123')
-      expect(sessionStorage.getItem('auth_user')).toBe(JSON.stringify(fakeUser))
-      expect(localStorage.getItem('auth_token')).toBeNull()
-      expect(localStorage.getItem('auth_user')).toBeNull()
     })
   })
 
@@ -250,20 +209,6 @@ describe('useAuthStore', () => {
       const store = useAuthStore()
       store.checkAuth()
 
-      expect(store.isAuthenticated).toBe(true)
-    })
-
-    it('从 sessionStorage 恢复未勾选记住我的会话', () => {
-      sessionStorage.setItem('auth_storage_mode', 'session')
-      sessionStorage.setItem('auth_token', 'session-token')
-      sessionStorage.setItem('auth_user', JSON.stringify(fakeUser))
-      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
-
-      const store = useAuthStore()
-      store.checkAuth()
-
-      expect(store.token).toBe('session-token')
-      expect(store.user).toEqual(fakeUser)
       expect(store.isAuthenticated).toBe(true)
     })
 
@@ -366,92 +311,6 @@ describe('useAuthStore', () => {
         provider: 'oidc',
         redirect: '/register',
       })
-    })
-  })
-
-  describe.each(['persistent', 'session'] as const)('token refresh (%s)', (mode) => {
-    const storage = mode === 'session' ? sessionStorage : localStorage
-
-    beforeEach(() => {
-      storage.setItem('auth_storage_mode', mode)
-    })
-    it('刷新后持久化新的 access token 和 refresh token', async () => {
-      storage.setItem('auth_token', 'old-access-token')
-      storage.setItem('auth_user', JSON.stringify(fakeUser))
-      storage.setItem('refresh_token', 'old-refresh-token')
-      storage.setItem('token_expires_at', String(Date.now() + 121_000))
-      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
-      const refreshedTokens = {
-        access_token: 'new-access-token',
-        refresh_token: 'new-refresh-token',
-        expires_in: 3600,
-        token_type: 'Bearer',
-      }
-      mockRefreshToken.mockImplementation(async () => {
-        storage.setItem('auth_token', refreshedTokens.access_token)
-        storage.setItem('refresh_token', refreshedTokens.refresh_token)
-        storage.setItem('token_expires_at', String(Date.now() + 3_600_000))
-        return refreshedTokens
-      })
-
-      const store = useAuthStore()
-      store.checkAuth()
-      await vi.advanceTimersByTimeAsync(1_000)
-
-      expect(store.token).toBe('new-access-token')
-      expect(storage.getItem('auth_token')).toBe('new-access-token')
-      expect(storage.getItem('refresh_token')).toBe('new-refresh-token')
-      expect(storage.getItem('token_expires_at')).toBe(String(Date.now() + 3_600_000))
-      const otherStorage = mode === 'session' ? localStorage : sessionStorage
-      for (const key of ['auth_token', 'auth_user', 'refresh_token', 'token_expires_at']) {
-        expect(otherStorage.getItem(key)).toBeNull()
-      }
-    })
-
-    it('忽略已切换会话的过期刷新结果', async () => {
-      storage.setItem('auth_token', 'old-access-token')
-      storage.setItem('auth_user', JSON.stringify(fakeUser))
-      storage.setItem('refresh_token', 'old-refresh-token')
-      storage.setItem('token_expires_at', String(Date.now() + 121_000))
-      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
-
-      let resolveRefresh!: (tokens: {
-        access_token: string
-        refresh_token: string
-        expires_in: number
-        token_type: string
-      }) => void
-      mockRefreshToken.mockImplementation(() => new Promise((resolve) => {
-        resolveRefresh = resolve
-      }))
-
-      const store = useAuthStore()
-      store.checkAuth()
-      await vi.advanceTimersByTimeAsync(1_000)
-      expect(mockRefreshToken).toHaveBeenCalledOnce()
-
-      const staleTokens = {
-        access_token: 'stale-access-token',
-        refresh_token: 'stale-refresh-token',
-        expires_in: 3600,
-        token_type: 'Bearer',
-      }
-      // Simulate the refresh coordinator committing its response before another tab changes sessions.
-      storage.setItem('auth_token', staleTokens.access_token)
-      storage.setItem('refresh_token', staleTokens.refresh_token)
-      storage.setItem('token_expires_at', String(Date.now() + 3_600_000))
-      storage.setItem('auth_token', 'new-session-access-token')
-      storage.setItem('refresh_token', 'new-session-refresh-token')
-      storage.setItem('token_expires_at', String(Date.now() + 7_200_000))
-      storage.setItem('auth_user', JSON.stringify(fakeAdminUser))
-
-      resolveRefresh(staleTokens)
-      await vi.advanceTimersByTimeAsync(0)
-
-      expect(store.token).toBe('old-access-token')
-      expect(storage.getItem('auth_token')).toBe('new-session-access-token')
-      expect(storage.getItem('refresh_token')).toBe('new-session-refresh-token')
-      expect(JSON.parse(storage.getItem('auth_user')!)).toEqual(fakeAdminUser)
     })
   })
 

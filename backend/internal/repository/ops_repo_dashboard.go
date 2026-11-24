@@ -29,7 +29,7 @@ func (r *opsRepository) GetDashboardOverview(ctx context.Context, filter *servic
 	}
 
 	mode := filter.QueryMode
-	if !mode.IsValid() || filter.OpenAIOAuthOnly {
+	if !mode.IsValid() {
 		mode = service.OpsQueryModeRaw
 	}
 
@@ -925,13 +925,14 @@ func (r *opsRepository) queryErrorCounts(ctx context.Context, filter *service.Op
 
 	q := `
 SELECT
-  COALESCE(COUNT(*) FILTER (WHERE (COALESCE(status_code, 0) >= 400 OR error_type = 'transport_error')), 0) AS error_total,
-  COALESCE(COUNT(*) FILTER (WHERE (COALESCE(status_code, 0) >= 400 OR error_type = 'transport_error') AND effective_business_limited), 0) AS business_limited,
-  COALESCE(COUNT(*) FILTER (WHERE (COALESCE(status_code, 0) >= 400 OR error_type = 'transport_error') AND NOT effective_business_limited AND error_type <> 'client_canceled'), 0) AS error_sla,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT effective_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT effective_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT effective_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
-FROM ` + opsMetricErrorRowsForFilterSQL(where, filter)
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400), 0) AS error_total,
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND is_business_limited), 0) AS business_limited,
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND NOT is_business_limited), 0) AS error_sla,
+  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
+  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
+  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
+FROM ops_error_logs
+` + where
 
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(
 		&errorTotal,
@@ -967,11 +968,6 @@ func (r *opsRepository) queryPeakRates(ctx context.Context, filter *service.OpsD
 	usageJoin, usageWhere, usageArgs, next := buildUsageWhere(filter, start, end, 1)
 	errorWhere, errorArgs, _ := buildErrorWhere(filter, start, end, next)
 
-	errorSource := "ops_error_logs " + errorWhere
-	if filter != nil && filter.OpenAIOAuthOnly {
-		errorSource = opsMetricErrorRowsForFilterSQL(errorWhere, filter) + " WHERE TRUE"
-	}
-
 	q := `
 WITH usage_buckets AS (
   SELECT
@@ -985,8 +981,9 @@ WITH usage_buckets AS (
 ),
 error_buckets AS (
   SELECT date_trunc('minute', created_at) AS bucket, COUNT(*) AS err_cnt
-  FROM ` + errorSource + `
-    AND (COALESCE(status_code, 0) >= 400 OR error_type = 'transport_error')
+  FROM ops_error_logs
+  ` + errorWhere + `
+    AND COALESCE(status_code, 0) >= 400
   GROUP BY 1
 ),
 combined AS (
@@ -1044,9 +1041,7 @@ func buildUsageWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 		clauses = append(clauses, fmt.Sprintf("ul.group_id = $%d", idx))
 		idx++
 	}
-	if filter != nil && filter.OpenAIOAuthOnly {
-		clauses = append(clauses, openAIOAuthAccountSQL("ul.account_id"))
-	} else if platform != "" {
+	if platform != "" {
 		// Prefer group.platform when available; fall back to account.platform so we don't
 		// drop rows where group_id is NULL.
 		join = "LEFT JOIN groups g ON g.id = ul.group_id LEFT JOIN accounts a ON a.id = ul.account_id"
@@ -1085,7 +1080,7 @@ func buildErrorWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 		clauses = append(clauses, fmt.Sprintf("group_id = $%d", idx))
 		idx++
 	}
-	if platform != "" && !filter.OpenAIOAuthOnly {
+	if platform != "" {
 		args = append(args, platform)
 		clauses = append(clauses, fmt.Sprintf("platform = $%d", idx))
 		idx++

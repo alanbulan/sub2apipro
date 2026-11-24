@@ -26,8 +26,7 @@ type upstreamBillingRatesResponse struct {
 
 // GetUpstreamBillingRates returns persisted upstream billing snapshots for the
 // current account-list page. It never probes an upstream and never loads
-// today-stats, usage, or credentials for the response. Current-concurrency sorting
-// reads the same runtime snapshot as the account list to preserve page semantics.
+// today-stats, usage, concurrency, or credentials for the response.
 //
 // GET /api/v1/admin/accounts/upstream-billing-rates
 func (h *AccountHandler) GetUpstreamBillingRates(c *gin.Context) {
@@ -62,17 +61,10 @@ func (h *AccountHandler) GetUpstreamBillingRates(c *gin.Context) {
 		}
 	}
 
-	var accounts []service.Account
-	var total int64
-	var err error
-	if strings.EqualFold(strings.TrimSpace(sortBy), "current_concurrency") {
-		accounts, total, _, err = h.listAccountsByCurrentConcurrency(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortOrder)
-	} else {
-		accounts, total, err = h.adminService.ListAccounts(
-			c.Request.Context(), page, pageSize, platform, accountType, status,
-			search, groupID, privacyMode, sortBy, sortOrder,
-		)
-	}
+	accounts, total, err := h.adminService.ListAccounts(
+		c.Request.Context(), page, pageSize, platform, accountType, status,
+		search, groupID, privacyMode, sortBy, sortOrder,
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

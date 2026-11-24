@@ -77,14 +77,12 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
-		if middleware2.RejectRequestBodyReadError(c, err) {
+		bodyLog := requestLogger(c, "handler.image_task.create")
+		if handleRequestBodyReadError(c, bodyLog, err) {
 			return
 		}
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
-			return
-		}
-		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		status, message := requestBodyReadFailure(bodyLog, c.Request, err)
+		imageTaskJSONError(c, status, "invalid_request_error", message)
 		return
 	}
 	if len(body) == 0 {
@@ -96,7 +94,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		return
 	}
 	if err := h.validateRequest(c, platform, body); err != nil {
-		imageTaskValidationError(c, err)
+		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, body) {
@@ -151,7 +149,7 @@ func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKe
 	} else if h.openAI.gatewayService != nil {
 		parsed, err := h.openAI.gatewayService.ParseOpenAIImagesRequest(c, body)
 		if err != nil {
-			imageTaskValidationError(c, err)
+			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 			return false
 		}
 		model, moderationBody = parsed.Model, parsed.ModerationBody()
@@ -243,14 +241,6 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 	if err := taskCtx.Request.Context().Err(); err != nil && len(body) == 0 {
 		h.failTask(taskID, http.StatusGatewayTimeout, imageTaskErrorPayload("timeout_error", "image generation task timed out"))
 		return
-	}
-	// JSON whitespace keepalives may commit 200 before a local policy denial.
-	// The worker's semantic result is independent of that transport status.
-	if status, ok := taskCtx.Get(upstreamAuditFailureStatusKey); ok {
-		if code, ok := status.(int); ok && code >= 400 {
-			h.failTask(taskID, code, extractImageTaskError(body))
-			return
-		}
 	}
 	statusCode := recorder.Code
 	if statusCode == 0 {
@@ -355,13 +345,4 @@ func imageTaskError(c *gin.Context, err error) {
 func imageTaskJSONError(c *gin.Context, status int, code, message string) {
 	c.Header("Cache-Control", "no-store")
 	c.JSON(status, gin.H{"error": gin.H{"type": code, "code": code, "message": message}})
-}
-
-// Authorization storage failure is temporary, not an invalid image request.
-func imageTaskValidationError(c *gin.Context, err error) {
-	if errors.Is(err, service.ErrImageModelAuthorizationUnavailable) {
-		imageTaskJSONError(c, http.StatusServiceUnavailable, "api_error", err.Error())
-		return
-	}
-	imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 }

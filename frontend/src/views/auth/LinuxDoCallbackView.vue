@@ -3,18 +3,11 @@
     <div class="space-y-6">
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
-          {{ t(authKey('callbackTitle')) }}
+          {{ t('auth.linuxdo.callbackTitle') }}
         </h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-          {{ isProcessing ? t(authKey('callbackProcessing')) : t(authKey('callbackHint')) }}
+          {{ isProcessing ? t('auth.linuxdo.callbackProcessing') : t('auth.linuxdo.callbackHint') }}
         </p>
-      </div>
-
-      <div v-if="errorMessage" role="alert" class="space-y-4">
-        <p class="text-sm text-red-600 dark:text-red-400">{{ errorMessage }}</p>
-        <RouterLink to="/login" class="btn btn-primary block w-full text-center">
-          {{ t(authKey('backToLogin')) }}
-        </RouterLink>
       </div>
 
       <transition name="fade">
@@ -82,7 +75,7 @@
 
           <template v-if="needsInvitation">
             <p class="text-sm text-gray-700 dark:text-gray-300">
-              {{ t(authKey('invitationRequired')) }}
+              {{ t('auth.linuxdo.invitationRequired') }}
             </p>
             <div>
               <input
@@ -99,7 +92,7 @@
               :disabled="isSubmitting || !invitationCode.trim()"
               @click="handleSubmitInvitation"
             >
-              {{ isSubmitting ? t(authKey('completing')) : t(authKey('completeRegistration')) }}
+              {{ isSubmitting ? t('auth.linuxdo.completing') : t('auth.linuxdo.completeRegistration') }}
             </button>
           </template>
 
@@ -137,7 +130,6 @@
                     {{ t('auth.oauthFlow.bindExistingAccount') }}
                   </button>
                   <button
-                    v-if="createAccountAllowed"
                     class="btn btn-primary w-full"
                     :disabled="isSubmitting"
                     @click="switchToCreateAccountMode"
@@ -304,10 +296,7 @@ const totpTempToken = ref('')
 const totpCode = ref('')
 const totpError = ref('')
 const totpUserEmailMasked = ref('')
-const props = withDefaults(defineProps<{ provider?: 'linuxdo' | 'feishu' }>(), { provider: 'linuxdo' })
-const providerName = props.provider === 'feishu' ? t('profile.authBindings.providers.feishu') : 'LinuxDo'
-const authKey = (key: string) => `auth.${props.provider}.${key}`
-const createAccountAllowed = ref(true)
+const providerName = 'LinuxDo'
 
 const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
 const needsChooser = computed(() => pendingAccountAction.value === 'choose_account_action')
@@ -338,7 +327,6 @@ watch(errorMessage, value => {
 })
 
 type LinuxDoPendingActionResponse = PendingOAuthExchangeResponse & {
-  create_account_allowed?: boolean
   step?: string
   intent?: string
   email?: string
@@ -352,7 +340,7 @@ function persistPendingAuthSession(redirect?: string) {
   authStore.setPendingAuthSession({
     token: '',
     token_field: 'pending_oauth_token',
-    provider: props.provider,
+    provider: 'linuxdo',
     redirect: sanitizeRedirectPath(redirect || redirectTo.value)
   })
 }
@@ -487,7 +475,6 @@ function resolvePendingAccountAction(
 }
 
 function applyPendingAccountAction(completion: LinuxDoPendingActionResponse) {
-  createAccountAllowed.value = completion.create_account_allowed !== false
   const action = resolvePendingAccountAction(completion)
   pendingAccountAction.value = action
   accountActionError.value = ''
@@ -508,7 +495,7 @@ function applyPendingAccountAction(completion: LinuxDoPendingActionResponse) {
 
   if (action === 'create_account') {
     pendingAccountEmail.value = email
-    canReturnToCreateAccount.value = createAccountAllowed.value
+    canReturnToCreateAccount.value = true
     return
   }
 
@@ -544,7 +531,7 @@ function switchToBindLoginMode(nextEmail?: string) {
   bindLoginEmail.value = bindLoginEmail.value.trim() || nextEmail?.trim() || pendingAccountEmail.value.trim()
   bindLoginPassword.value = ''
   accountActionError.value = ''
-  canReturnToCreateAccount.value = createAccountAllowed.value
+  canReturnToCreateAccount.value = true
 }
 
 function switchToCreateAccountMode() {
@@ -565,8 +552,7 @@ function isCreateAccountRecoveryError(error: unknown): boolean {
         reason?: string
         error?: string
         code?: string
-        create_account_allowed?: boolean
-  step?: string
+        step?: string
         intent?: string
       }
     }
@@ -594,7 +580,7 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
   }
 
   if (!isOAuthLoginCompletion(completion)) {
-    throw new Error(t(authKey('callbackMissingToken')))
+    throw new Error(t('auth.linuxdo.callbackMissingToken'))
   }
 
   persistOAuthTokenContext(completion)
@@ -666,7 +652,7 @@ async function handleSubmitInvitation() {
   } catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string } } }
     invitationError.value =
-      err.response?.data?.message || err.message || t(authKey('completeRegistrationFailed'))
+      err.response?.data?.message || err.message || t('auth.linuxdo.completeRegistrationFailed')
   } finally {
     isSubmitting.value = false
   }
@@ -763,7 +749,7 @@ async function handleSubmitTotpChallenge() {
 
 onMounted(async () => {
   const params = parseFragmentParams()
-  const legacyLogin = props.provider === 'linuxdo' ? readLegacyFragmentLogin(params) : null
+  const legacyLogin = readLegacyFragmentLogin(params)
   const legacyPendingToken = params.get('pending_oauth_token')?.trim() || ''
   const error = params.get('error')
   const errorDesc = params.get('error_description') || params.get('error_message') || ''
@@ -781,7 +767,7 @@ onMounted(async () => {
       return
     }
 
-    if (props.provider === 'linuxdo' && error === 'invitation_required' && legacyPendingToken) {
+    if (error === 'invitation_required' && legacyPendingToken) {
       legacyPendingOAuthToken.value = legacyPendingToken
       redirectTo.value = redirect
       needsInvitation.value = true
@@ -790,9 +776,7 @@ onMounted(async () => {
     }
 
     if (error) {
-      errorMessage.value = props.provider === 'feishu' && error === 'invalid_state'
-        ? t('auth.feishu.invalidState')
-        : errorDesc || error
+      errorMessage.value = errorDesc || error
       isProcessing.value = false
       return
     }

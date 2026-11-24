@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
-import TrafficPanel from '@/components/usage/TrafficPanel.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'
@@ -54,10 +53,6 @@ const messages: Record<string, string> = {
   'admin.usage.allModels': 'All models',
   'usage.allApiKeys': 'All API Keys',
   'usage.errors.allKeys': 'All API Keys',
-  'usage.errors.allStatuses': 'All status codes',
-  'usage.errors.allCategories': 'All categories',
-  'usage.errors.categories.transport_error': 'Transport error',
-  'usage.errors.http200StreamFailure': '200 — Stream failed after headers',
   'usage.tabs.usage': 'Usage records',
   'usage.tabs.errors': 'Error records',
   'usage.apiKeyFilter': 'API Key',
@@ -76,6 +71,7 @@ const messages: Record<string, string> = {
   'usage.preparingExport': 'Preparing export',
   'usage.exportSuccess': 'Export success',
   'usage.exportFailed': 'Export failed',
+  'usage.exportRateLimited': 'Rate limited',
   'common.refresh': 'Refresh',
   'common.reset': 'Reset',
 }
@@ -154,20 +150,18 @@ const usageLog = {
   native_compaction_v2: false,
 }
 
-function mountUsageView(realSelect = false) {
+function mountUsageView() {
   return mount(UsageView, {
-    attachTo: realSelect ? document.body : undefined,
     global: {
       stubs: {
         AppLayout: simpleStub,
         Pagination: true,
-        Select: !realSelect,
+        Select: true,
         DateRangePicker: true,
         Icon: true,
         UsageStatsCards: chartStub,
         UsageTable: { ...chartStub, props: ['columns'] },
         UserErrorRequestsTable: chartStub,
-        TrafficPanel: true,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
         EndpointDistributionChart: chartStub,
@@ -179,7 +173,6 @@ function mountUsageView(realSelect = false) {
 
 describe('user UsageView', () => {
   beforeEach(() => {
-    appStoreState.cachedPublicSettings = { allow_user_view_error_requests: true }
     query.mockReset()
     getStats.mockReset()
     getDashboardModels.mockReset()
@@ -224,62 +217,11 @@ describe('user UsageView', () => {
     getAvailable.mockResolvedValue([{ id: 1, name: 'default' }])
   })
 
-  it('selects HTTP200 transport errors through the actual error-tab controls and submits both API filters', async () => {
-    const wrapper = mountUsageView(true)
-    try {
-      await flushPromises()
-      await wrapper.findAll('button').find(button => button.text() === 'Error records')!.trigger('click')
-      await flushPromises()
-      const selects = wrapper.findAllComponents(Select)
-      const category = selects.find(select => (select.props('options') as SelectOption[]).some(option => option.value === 'transport_error'))!
-      await category.get('button').trigger('click')
-      await flushPromises()
-      const transport = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(option => option.textContent?.trim() === 'Transport error')!
-      transport.click()
-      await flushPromises()
-
-      const status = selects.find(select => (select.props('options') as SelectOption[]).some(option => option.value === 502))!
-      expect(status.props('options'), 'HTTP200 must be selectable from the real error status control').toContainEqual({ value: 200, label: '200 — Stream failed after headers' })
-      await status.get('button').trigger('click')
-      await flushPromises()
-      const http200 = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(option => option.textContent?.trim() === '200 — Stream failed after headers')!
-      http200.click()
-      await flushPromises()
-      expect(listMyErrorRequests).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'transport_error', status_code: 200, page: 1 }))
-
-      await status.get('button').trigger('click')
-      await flushPromises()
-      Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(option => option.textContent?.trim() === '502')!.click()
-      await flushPromises()
-      expect(listMyErrorRequests).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'transport_error', status_code: 502 }))
-      await wrapper.findAll('button').find(button => button.text() === 'Usage records')!.trigger('click')
-      expect(query.mock.calls.every(([params]) => params.status_code === undefined && params.category === undefined)).toBe(true)
-    } finally {
-      wrapper.unmount()
-    }
-  })
-
-  it('passes the same own API key choices to traffic and usage details', async () => {
-    const wrapper = mountUsageView(); await flushPromises()
-    const usageOptions = wrapper.findAllComponents(Select).find(select =>
-      (select.props('options') as SelectOption[]).some(option => option.label === 'demo-key')
-    )!.props('options')
-    await wrapper.findAll('button').find(button => button.text() === 'traffic.title')!.trigger('click')
-    expect(wrapper.getComponent(TrafficPanel).props('apiKeyOptions')).toEqual(usageOptions)
-    wrapper.unmount()
-  })
-
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
     const wrapper = mountUsageView()
     await flushPromises()
 
-    const usageColumnKeys = wrapper.findComponent(UsageTable).props('columns').map((column: { key: string }) => column.key)
-    expect(usageColumnKeys).toContain('latency')
-    expect(usageColumnKeys).not.toEqual(expect.arrayContaining([
-      'content_reasoning_first_ms',
-      'content_visible_text_first_ms',
-      'content_response_byte_first_ms',
-    ]))
+    expect(wrapper.findComponent(UsageTable).props('columns').map((column: { key: string }) => column.key)).toContain('latency')
     expect(query).toHaveBeenCalled()
     expect(getStats).toHaveBeenCalled()
     expect(getDashboardModels).toHaveBeenCalled()
@@ -449,7 +391,7 @@ describe('user UsageView', () => {
 
     expect(exportedBlob).not.toBeNull()
     expect(query).toHaveBeenCalledWith(expect.objectContaining({
-      page_size: 100,
+      page_size: 1000,
       sort_by: 'created_at',
       sort_order: 'desc',
       native_compaction_v2: true,
@@ -461,7 +403,6 @@ describe('user UsageView', () => {
       'Time,API Key Name,Model,Reasoning Effort,Inbound Endpoint,IP Address,Type,Billing Mode,Input Tokens,Output Tokens,Cache Read Tokens,Cache Creation Tokens,Rate Multiplier,Billed Cost,Original Cost,First Token (ms),Duration (ms)',
       '2026-03-08T00:00:00Z,demo-key,gpt-5.4,-,,203.0.113.10,Sync,Token,4057,101,278272,4,1,0.09288300,0.09288300,12,345',
     ].join('\n'))
-    expect(csvContent).not.toContain('Cache Rate')
     expect(csvContent).toContain('IP Address')
     expect(csvContent).toContain('203.0.113.10')
     expect(csvContent).toContain('Billed Cost')
@@ -474,71 +415,6 @@ describe('user UsageView', () => {
     window.URL.revokeObjectURL = originalRevokeObjectURL
     vi.unstubAllGlobals()
     clickSpy.mockRestore()
-  })
-
-  it('includes cache rate in csv only when users are allowed to see it', async () => {
-    appStoreState.cachedPublicSettings = { allow_user_view_error_requests: true, usage_show_cache_rate_to_users: true }
-    const wrapper = mountUsageView()
-    await flushPromises()
-
-    let csvContent = ''
-    const OriginalBlob = globalThis.Blob
-    vi.stubGlobal('Blob', vi.fn((parts: BlobPart[], options?: BlobPropertyBag) => {
-      csvContent = parts.map((part) => String(part)).join('')
-      return new OriginalBlob(parts, options)
-    }))
-    const originalCreateObjectURL = window.URL.createObjectURL
-    const originalRevokeObjectURL = window.URL.revokeObjectURL
-    window.URL.createObjectURL = vi.fn(() => 'blob:usage-export') as typeof window.URL.createObjectURL
-    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-
-    await (wrapper.vm as any).exportToCSV()
-
-    expect(csvContent).toContain('Cache Rate')
-    expect(csvContent).toContain('98.6%')
-    expect(csvContent).not.toContain('Upstream Response Model')
-    appStoreState.cachedPublicSettings = { allow_user_view_error_requests: true }
-    window.URL.createObjectURL = originalCreateObjectURL
-    window.URL.revokeObjectURL = originalRevokeObjectURL
-    vi.unstubAllGlobals()
-    clickSpy.mockRestore()
-    wrapper.unmount()
-  })
-
-  it('includes the upstream response model in csv only when users are allowed to see it', async () => {
-    query.mockResolvedValue({
-      items: [{ ...usageLog, upstream_response_model: 'gpt-5.4-actual' }],
-      total: 1,
-      pages: 1,
-    })
-    appStoreState.cachedPublicSettings = { usage_show_upstream_response_model_to_users: true }
-    const wrapper = mountUsageView()
-    await flushPromises()
-
-    let csvContent = ''
-    const OriginalBlob = globalThis.Blob
-    vi.stubGlobal('Blob', vi.fn((parts: BlobPart[], options?: BlobPropertyBag) => {
-      csvContent = parts.map((part) => String(part)).join('')
-      return new OriginalBlob(parts, options)
-    }))
-    const originalCreateObjectURL = window.URL.createObjectURL
-    const originalRevokeObjectURL = window.URL.revokeObjectURL
-    window.URL.createObjectURL = vi.fn(() => 'blob:usage-export') as typeof window.URL.createObjectURL
-    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-
-    await (wrapper.vm as any).exportToCSV()
-
-    expect(csvContent).toContain('Upstream Response Model')
-    expect(csvContent).toContain('gpt-5.4,gpt-5.4-actual,')
-    expect(csvContent).not.toContain('upstream_model')
-    appStoreState.cachedPublicSettings = { allow_user_view_error_requests: true }
-    window.URL.createObjectURL = originalCreateObjectURL
-    window.URL.revokeObjectURL = originalRevokeObjectURL
-    vi.unstubAllGlobals()
-    clickSpy.mockRestore()
-    wrapper.unmount()
   })
 
   it('keeps formula-injection protection for dangerous exported values', async () => {
@@ -575,7 +451,7 @@ describe('user UsageView', () => {
   })
 
   it('keeps the initial filters, sort, and filename while exporting multiple pages', async () => {
-    const pageResponse = { items: [usageLog], total: 101, pages: 2 }
+    const pageResponse = { items: [usageLog], total: 1001, pages: 2 }
     query.mockResolvedValue(pageResponse)
     const wrapper = mountUsageView()
     await flushPromises()
@@ -603,7 +479,7 @@ describe('user UsageView', () => {
       await wrapper.findAll('button').find((button) => button.text() === 'Export CSV')!.trigger('click')
       const initialParams = { ...query.mock.calls[0][0] }
       expect(initialParams).toMatchObject({
-        page: 1, page_size: 100, start_date: '2026-03-01', end_date: '2026-03-08',
+        page: 1, page_size: 1000, start_date: '2026-03-01', end_date: '2026-03-08',
         sort_by: 'created_at', sort_order: 'desc',
       })
 
@@ -631,6 +507,65 @@ describe('user UsageView', () => {
     } finally {
       window.URL.createObjectURL = originalCreateObjectURL
       window.URL.revokeObjectURL = originalRevokeObjectURL
+      clickSpy.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it('waits for Retry-After and retries the same page when export is rate limited', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    query.mockClear()
+    query.mockRejectedValueOnce({ status: 429, code: 'RATE_LIMITED', retry_after_seconds: 2 })
+    const originalCreateObjectURL = window.URL.createObjectURL
+    const originalRevokeObjectURL = window.URL.revokeObjectURL
+    window.URL.createObjectURL = vi.fn(() => 'blob:usage-export') as typeof window.URL.createObjectURL
+    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.useFakeTimers()
+
+    try {
+      const exporting = (wrapper.vm as any).exportToCSV()
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(query).toHaveBeenCalledTimes(1)
+      expect(showInfo).toHaveBeenCalledWith('Rate limited')
+
+      await vi.advanceTimersByTimeAsync(1)
+      await exporting
+      expect(query).toHaveBeenCalledTimes(2)
+      expect(query.mock.calls[1]).toEqual(query.mock.calls[0])
+      expect(clickSpy).toHaveBeenCalled()
+      expect(showSuccess).toHaveBeenCalledWith('Export success')
+      expect(showError).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+      window.URL.createObjectURL = originalCreateObjectURL
+      window.URL.revokeObjectURL = originalRevokeObjectURL
+      clickSpy.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it('fails the export after repeated rate limiting', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    query.mockClear()
+    query.mockRejectedValue({ status: 429, code: 'RATE_LIMITED', retry_after_seconds: 1 })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers()
+
+    try {
+      const exporting = (wrapper.vm as any).exportToCSV()
+      await vi.advanceTimersByTimeAsync(3000)
+      await exporting
+      expect(query).toHaveBeenCalledTimes(4)
+      expect(clickSpy).not.toHaveBeenCalled()
+      expect(showError).toHaveBeenCalledWith('Export failed')
+      expect((wrapper.vm as any).exporting).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      vi.mocked(console.error).mockRestore()
       clickSpy.mockRestore()
       wrapper.unmount()
     }

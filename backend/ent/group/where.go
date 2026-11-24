@@ -270,21 +270,6 @@ func FallbackGroupIDOnInvalidRequest(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnInvalidRequest, v))
 }
 
-// BlockSubagents applies equality check predicate on the "block_subagents" field. It's identical to BlockSubagentsEQ.
-func BlockSubagents(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldBlockSubagents, v))
-}
-
-// CodexCliOnly applies equality check predicate on the "codex_cli_only" field. It's identical to CodexCliOnlyEQ.
-func CodexCliOnly(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldCodexCliOnly, v))
-}
-
-// StreamOnly applies equality check predicate on the "stream_only" field. It's identical to StreamOnlyEQ.
-func StreamOnly(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldStreamOnly, v))
-}
-
 // ModelRoutingEnabled applies equality check predicate on the "model_routing_enabled" field. It's identical to ModelRoutingEnabledEQ.
 func ModelRoutingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldModelRoutingEnabled, v))
@@ -315,14 +300,14 @@ func ForceOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldForceOpenaiFast, v))
 }
 
+// ForceOpenaiUltrafast applies equality check predicate on the "force_openai_ultrafast" field. It's identical to ForceOpenaiUltrafastEQ.
+func ForceOpenaiUltrafast(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldForceOpenaiUltrafast, v))
+}
+
 // FreeOpenaiFast applies equality check predicate on the "free_openai_fast" field. It's identical to FreeOpenaiFastEQ.
 func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
-}
-
-// FreeOpenaiUltrafast applies equality check predicate on the "free_openai_ultrafast" field. It's identical to FreeOpenaiUltrafastEQ.
-func FreeOpenaiUltrafast(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiUltrafast, v))
 }
 
 // RequireOauthOnly applies equality check predicate on the "require_oauth_only" field. It's identical to RequireOauthOnlyEQ.
@@ -2230,36 +2215,6 @@ func FallbackGroupIDOnInvalidRequestNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldFallbackGroupIDOnInvalidRequest))
 }
 
-// BlockSubagentsEQ applies the EQ predicate on the "block_subagents" field.
-func BlockSubagentsEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldBlockSubagents, v))
-}
-
-// BlockSubagentsNEQ applies the NEQ predicate on the "block_subagents" field.
-func BlockSubagentsNEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldNEQ(FieldBlockSubagents, v))
-}
-
-// CodexCliOnlyEQ applies the EQ predicate on the "codex_cli_only" field.
-func CodexCliOnlyEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldCodexCliOnly, v))
-}
-
-// CodexCliOnlyNEQ applies the NEQ predicate on the "codex_cli_only" field.
-func CodexCliOnlyNEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldNEQ(FieldCodexCliOnly, v))
-}
-
-// StreamOnlyEQ applies the EQ predicate on the "stream_only" field.
-func StreamOnlyEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldStreamOnly, v))
-}
-
-// StreamOnlyNEQ applies the NEQ predicate on the "stream_only" field.
-func StreamOnlyNEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldNEQ(FieldStreamOnly, v))
-}
-
 // ModelRoutingIsNil applies the IsNil predicate on the "model_routing" field.
 func ModelRoutingIsNil() predicate.Group {
 	return predicate.Group(sql.FieldIsNull(FieldModelRouting))
@@ -2360,6 +2315,16 @@ func ForceOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldForceOpenaiFast, v))
 }
 
+// ForceOpenaiUltrafastEQ applies the EQ predicate on the "force_openai_ultrafast" field.
+func ForceOpenaiUltrafastEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldForceOpenaiUltrafast, v))
+}
+
+// ForceOpenaiUltrafastNEQ applies the NEQ predicate on the "force_openai_ultrafast" field.
+func ForceOpenaiUltrafastNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldForceOpenaiUltrafast, v))
+}
+
 // FreeOpenaiFastEQ applies the EQ predicate on the "free_openai_fast" field.
 func FreeOpenaiFastEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
@@ -2368,16 +2333,6 @@ func FreeOpenaiFastEQ(v bool) predicate.Group {
 // FreeOpenaiFastNEQ applies the NEQ predicate on the "free_openai_fast" field.
 func FreeOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldFreeOpenaiFast, v))
-}
-
-// FreeOpenaiUltrafastEQ applies the EQ predicate on the "free_openai_ultrafast" field.
-func FreeOpenaiUltrafastEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiUltrafast, v))
-}
-
-// FreeOpenaiUltrafastNEQ applies the NEQ predicate on the "free_openai_ultrafast" field.
-func FreeOpenaiUltrafastNEQ(v bool) predicate.Group {
-	return predicate.Group(sql.FieldNEQ(FieldFreeOpenaiUltrafast, v))
 }
 
 // RequireOauthOnlyEQ applies the EQ predicate on the "require_oauth_only" field.

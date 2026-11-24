@@ -20,7 +20,6 @@ import (
 )
 
 type CRSSyncService struct {
-	autoConfigure      func(context.Context, *CreateAccountInput) error
 	accountRepo        AccountRepository
 	proxyRepo          ProxyRepository
 	oauthService       *OAuthService
@@ -391,7 +390,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.createSyncedAccount(ctx, account); err != nil {
+			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -527,7 +526,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.createSyncedAccount(ctx, account); err != nil {
+			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -682,7 +681,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.createSyncedAccount(ctx, account); err != nil {
+			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -833,7 +832,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
-			if err := s.createSyncedAccount(ctx, account); err != nil {
+			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -963,7 +962,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      mapCRSStatus(src.IsActive, src.Status),
 				Schedulable: src.Schedulable,
 			}
-			if err := s.createSyncedAccount(ctx, account); err != nil {
+			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -1093,7 +1092,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      mapCRSStatus(src.IsActive, src.Status),
 				Schedulable: src.Schedulable,
 			}
-			if err := s.createSyncedAccount(ctx, account); err != nil {
+			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
 				result.Failed++
@@ -1164,6 +1163,7 @@ func reconcileCRSUpstreamBillingProbeExtra(
 	for _, key := range []string{
 		UpstreamBillingProbeEnabledExtraKey,
 		UpstreamBillingRateSyncEnabledExtraKey,
+		UpstreamBillingGroupSyncEnabledExtraKey,
 		UpstreamBillingProbeExtraKey,
 		OllamaCloudUsageSessionExtraKey,
 		OllamaCloudUsageAutoRefreshExtraKey,
@@ -1181,8 +1181,10 @@ func reconcileCRSUpstreamBillingProbeExtra(
 			extra[UpstreamBillingProbeEnabledExtraKey] = enabled
 			probeEnabled, _ = enabled.(bool)
 		}
-		if enabled, ok := existing.Extra[UpstreamBillingRateSyncEnabledExtraKey].(bool); ok {
-			extra[UpstreamBillingRateSyncEnabledExtraKey] = enabled && probeEnabled
+		for _, key := range []string{UpstreamBillingRateSyncEnabledExtraKey, UpstreamBillingGroupSyncEnabledExtraKey} {
+			if enabled, ok := existing.Extra[key].(bool); ok {
+				extra[key] = enabled && probeEnabled
+			}
 		}
 		if reflect.DeepEqual(upstreamBillingProbeIdentity(existing), upstreamBillingProbeIdentity(target)) {
 			if snapshot, ok := existing.Extra[UpstreamBillingProbeExtraKey]; ok {
@@ -1586,33 +1588,4 @@ func (s *CRSSyncService) PreviewFromCRS(ctx context.Context, input SyncFromCRSIn
 	}
 
 	return result, nil
-}
-
-func (s *CRSSyncService) createSyncedAccount(ctx context.Context, a *Account) error {
-	var groups []int64
-	if s.autoConfigure != nil {
-		input := &CreateAccountInput{Platform: a.Platform, Type: a.Type, Priority: a.Priority, Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Extra: a.Extra, Credentials: a.Credentials}
-		if err := s.autoConfigure(ctx, input); err != nil {
-			return err
-		}
-		a.InitialAPIKeyDisposition = input.InitialAPIKeyDisposition
-		a.GroupIDs = append([]int64(nil), input.GroupIDs...)
-		a.InitialQualityPlan = input.InitialQualityPlan
-		a.Priority = input.Priority
-		a.Concurrency = input.Concurrency
-		a.LoadFactor = input.LoadFactor
-		a.Extra = input.Extra
-		a.Credentials = input.Credentials
-		groups = input.GroupIDs
-	}
-	if err := s.accountRepo.Create(ctx, a); err != nil {
-		return err
-	}
-	if len(groups) > 0 && a.InitialAPIKeyDisposition == nil {
-		if err := s.accountRepo.BindGroups(ctx, a.ID, groups); err != nil {
-			return err
-		}
-	}
-	recordAutoConfigInitial(ctx, s.accountRepo, a, groups)
-	return nil
 }

@@ -19,7 +19,6 @@ type Proxy struct {
 	Protocol       string
 	Host           string
 	Port           int
-	MihomoNodeID   string
 	Username       string
 	Password       string
 	Status         string

@@ -4,19 +4,13 @@
     <button
       @click="openModal"
       class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:bg-gray-100 hover:scale-105 dark:text-gray-400 dark:hover:bg-dark-800"
-      :class="{ 'text-blue-600 dark:text-blue-400': unreadCount > 0 || lottery.available > 0 }"
-      :aria-label="bellLabel"
-      :title="bellLabel"
+      :class="{ 'text-blue-600 dark:text-blue-400': unreadCount > 0 }"
+      :aria-label="t('announcements.title')"
     >
       <Icon name="bell" size="md" />
-      <span
-        v-if="lottery.available > 0"
-        data-testid="lottery-notification-badge"
-        class="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white dark:ring-dark-900"
-      >{{ lottery.available > 99 ? '99+' : lottery.available }}</span>
       <!-- 未读红点 -->
       <span
-        v-else-if="unreadCount > 0"
+        v-if="unreadCount > 0"
         class="absolute right-1 top-1 flex h-2 w-2"
       >
         <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75"></span>
@@ -45,7 +39,7 @@
                       <Icon name="bell" size="sm" />
                     </div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                      {{ t('lottery.notifications') }}
+                      {{ t('announcements.title') }}
                     </h2>
                   </div>
                   <p v-if="unreadCount > 0" class="mt-2 text-sm text-gray-600 dark:text-gray-400">
@@ -77,26 +71,6 @@
 
             <!-- Body -->
             <div class="max-h-[65vh] overflow-y-auto">
-              <section v-if="lottery.pendingPools.length" class="border-b border-gray-100 px-5 py-4 dark:border-dark-700" data-testid="lottery-notifications">
-                <div class="mb-2 flex items-center justify-between gap-2">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('lottery.pendingDraws') }}</h3>
-                  <span class="text-xs font-medium text-emerald-700 dark:text-emerald-400">{{ t('lottery.drawCount', { count: lottery.available }) }}</span>
-                </div>
-                <router-link
-                  v-for="pool in lottery.pendingPools"
-                  :key="pool.id"
-                  :to="{ path: '/lottery', query: { pool: pool.id } }"
-                  class="flex min-w-0 items-center gap-3 rounded-lg py-3 transition-colors hover:bg-gray-50 dark:hover:bg-dark-700"
-                  @click="closeModal"
-                >
-                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"><Icon name="gift" /></span>
-                  <span class="min-w-0 flex-1">
-                    <span class="block break-words text-sm font-medium text-gray-900 dark:text-white">{{ pool.name }}</span>
-                    <span class="mt-1 block text-xs text-gray-500">{{ t('lottery.pendingPool', { count: pool.available }) }}<span v-if="!pool.draw_enabled"> · {{ t('lottery.paused') }}</span></span>
-                  </span>
-                  <Icon name="chevronRight" size="sm" class="shrink-0 text-gray-400" />
-                </router-link>
-              </section>
               <!-- Loading -->
               <div v-if="loading" class="flex items-center justify-center py-16">
                 <div class="relative">
@@ -184,7 +158,7 @@
               </div>
 
               <!-- Empty State -->
-              <div v-else-if="!lottery.available" class="flex flex-col items-center justify-center py-16">
+              <div v-else class="flex flex-col items-center justify-center py-16">
                 <div class="relative mb-4">
                   <div class="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600">
                     <Icon name="inbox" size="xl" class="text-gray-400 dark:text-gray-500" />
@@ -241,8 +215,8 @@
                         class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-2.5 py-1 text-xs font-medium text-white shadow-lg shadow-blue-500/30"
                       >
                         <span class="relative flex h-2 w-2">
-                          <span class="theme-preserve-white absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
-                          <span class="theme-preserve-white relative inline-flex h-2 w-2 rounded-full bg-white"></span>
+                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
+                          <span class="relative inline-flex h-2 w-2 rounded-full bg-white"></span>
                         </span>
                         {{ t('announcements.unread') }}
                       </span>
@@ -345,7 +319,6 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useAppStore } from '@/stores/app'
 import { useAnnouncementStore } from '@/stores/announcements'
-import { useLotteryStore } from '@/stores/lottery'
 import { formatRelativeTime, formatRelativeWithDateTime } from '@/utils/format'
 import type { UserAnnouncement } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
@@ -354,11 +327,6 @@ import '@/styles/announcement-markdown.css'
 const { t } = useI18n()
 const appStore = useAppStore()
 const announcementStore = useAnnouncementStore()
-const lottery = useLotteryStore()
-const bellLabel = computed(() => lottery.available > 0
-  ? t('lottery.notificationsWithDraws', { count: lottery.available })
-  : t('lottery.notifications'))
-let lotteryTimer: ReturnType<typeof setInterval> | undefined
 
 // Configure marked
 marked.setOptions({
@@ -384,12 +352,6 @@ function renderMarkdown(content: string): string {
 
 function openModal() {
   isModalOpen.value = true
-  void lottery.refresh(true)
-}
-
-function refreshLottery() {
-  if (document.visibilityState === 'hidden') return
-  void appStore.fetchPublicSettings(true).then(() => lottery.refresh(true)).catch(() => {})
 }
 
 function closeModal() {
@@ -447,16 +409,10 @@ function handleEscape(e: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleEscape)
-  window.addEventListener('focus', refreshLottery)
-  document.addEventListener('visibilitychange', refreshLottery)
-  lotteryTimer = setInterval(refreshLottery, 60_000)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleEscape)
-  window.removeEventListener('focus', refreshLottery)
-  document.removeEventListener('visibilitychange', refreshLottery)
-  clearInterval(lotteryTimer)
   document.body.style.overflow = ''
 })
 

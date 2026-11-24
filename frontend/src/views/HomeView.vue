@@ -30,7 +30,6 @@
         </div>
         <div class="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
           <LocaleSwitcher />
-          <ThemeSwitcher />
           <a
             v-if="docUrl"
             :href="docUrl"
@@ -50,6 +49,14 @@
             <Icon name="grid" size="md" />
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
+          <button
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800"
+            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
+            @click="toggleTheme"
+          >
+            <Icon v-if="isDark" name="sun" size="md" />
+            <Icon v-else name="moon" size="md" />
+          </button>
           <router-link
             :to="isAuthenticated ? dashboardPath : '/login'"
             class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
@@ -103,7 +110,7 @@
         class="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-primary-400/10 blur-3xl"
       ></div>
       <div
-            class="theme-grid-pattern absolute inset-0 bg-[size:64px_64px]"
+        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
       ></div>
     </div>
 
@@ -121,7 +128,6 @@
         <div class="flex items-center gap-3">
           <!-- Language Switcher -->
           <LocaleSwitcher />
-          <ThemeSwitcher />
 
           <!-- Doc Link -->
           <a
@@ -146,6 +152,15 @@
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
 
+          <!-- Theme Toggle -->
+          <button
+            @click="toggleTheme"
+            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
+          >
+            <Icon v-if="isDark" name="sun" size="md" />
+            <Icon v-else name="moon" size="md" />
+          </button>
 
           <!-- Login / Dashboard Button -->
           <router-link
@@ -464,6 +479,14 @@
           >
             {{ t('home.docs') }}
           </a>
+          <a
+            :href="githubUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+          >
+            GitHub
+          </a>
         </div>
       </div>
     </footer>
@@ -471,11 +494,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
-import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
@@ -486,9 +508,9 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 // Site settings - directly from appStore (already initialized from injected config)
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName)
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'API Gateway Platform')
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
@@ -500,6 +522,12 @@ const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
   return content.startsWith('http://') || content.startsWith('https://')
 })
+
+// Theme
+const isDark = ref(document.documentElement.classList.contains('dark'))
+
+// GitHub URL
+const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -520,7 +548,28 @@ const userInitial = computed(() => {
 // Current year for footer
 const currentYear = computed(() => new Date().getFullYear())
 
+// Toggle theme
+function toggleTheme() {
+  isDark.value = !isDark.value
+  document.documentElement.classList.toggle('dark', isDark.value)
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
+
+// Initialize theme
+function initTheme() {
+  const savedTheme = localStorage.getItem('theme')
+  if (
+    savedTheme === 'dark' ||
+    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  ) {
+    isDark.value = true
+    document.documentElement.classList.add('dark')
+  }
+}
+
 onMounted(() => {
+  initTheme()
+
   // Check auth state
   authStore.checkAuth()
 
@@ -541,12 +590,12 @@ onMounted(() => {
 /* Terminal Window */
 .terminal-window {
   width: 420px;
-  background: linear-gradient(145deg, var(--dark-800) 0%, var(--dark-950) 100%);
+  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
   border-radius: 14px;
   box-shadow:
-    var(--shadow-card-hover),
-    var(--inner-glow),
-    var(--inner-glow);
+    0 25px 50px -12px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   overflow: hidden;
   transform: perspective(1000px) rotateX(2deg) rotateY(-2deg);
   transition: transform 0.3s ease;
@@ -561,8 +610,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  background: color-mix(in srgb, var(--dark-800) 80%, transparent);
-  border-bottom: 1px solid var(--glass-tint-strong);
+  background: rgba(30, 41, 59, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .terminal-buttons {
@@ -577,13 +626,13 @@ onMounted(() => {
 }
 
 .btn-close {
-  background: var(--color-danger, currentColor);
+  background: #ef4444;
 }
 .btn-minimize {
-  background: var(--color-warning, currentColor);
+  background: #eab308;
 }
 .btn-maximize {
-  background: var(--color-success, currentColor);
+  background: #22c55e;
 }
 
 .terminal-title {
@@ -591,7 +640,7 @@ onMounted(() => {
   text-align: center;
   font-size: 12px;
   font-family: ui-monospace, monospace;
-  color: var(--muted);
+  color: #64748b;
   margin-right: 52px;
 }
 
@@ -637,31 +686,31 @@ onMounted(() => {
 }
 
 .code-prompt {
-  color: var(--color-success, var(--primary-500));
+  color: #22c55e;
   font-weight: bold;
 }
 .code-cmd {
-  color: var(--accent-base);
+  color: #38bdf8;
 }
 .code-flag {
-  color: var(--primary-300);
+  color: #a78bfa;
 }
 .code-url {
-  color: var(--primary-500);
+  color: #14b8a6;
 }
 .code-comment {
-  color: var(--muted);
+  color: #64748b;
   font-style: italic;
 }
 .code-success {
-  color: var(--color-success, var(--primary-500));
-  background: color-mix(in srgb, var(--color-success, var(--primary-500)) 15%, transparent);
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
   padding: 2px 8px;
   border-radius: 4px;
   font-weight: 600;
 }
 .code-response {
-  color: var(--color-warning, var(--primary-400));
+  color: #fbbf24;
 }
 
 /* Blinking Cursor */
@@ -669,7 +718,7 @@ onMounted(() => {
   display: inline-block;
   width: 8px;
   height: 16px;
-  background: var(--color-success, var(--primary-500));
+  background: #22c55e;
   animation: blink 1s step-end infinite;
 }
 
@@ -687,9 +736,9 @@ onMounted(() => {
 /* Dark mode adjustments */
 :deep(.dark) .terminal-window {
   box-shadow:
-    var(--shadow-card-hover),
-    var(--glow-sm),
-    var(--glow-lg),
-    var(--inner-glow);
+    0 25px 50px -12px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(20, 184, 166, 0.2),
+    0 0 40px rgba(20, 184, 166, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 </style>

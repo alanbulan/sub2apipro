@@ -12,10 +12,6 @@
     </div>
 
     <div v-else class="space-y-6 p-6">
-      <div v-if="balanceSource" class="rounded-xl bg-amber-50 p-4 dark:bg-amber-900/10" data-testid="balance-source">
-        <div class="font-semibold text-amber-900 dark:text-amber-200">{{ t(`admin.ops.balanceError.${balanceSource}`) }}</div>
-        <p class="mt-1 text-sm text-amber-800 dark:text-amber-100">{{ t(`admin.ops.balanceError.${balanceSource}Hint`) }}</p>
-      </div>
       <!-- Summary -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
@@ -89,15 +85,12 @@
         </div>
 
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
-          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t(detail.type === 'transport_error' ? 'usage.errors.detail.clientHttpStatus' : 'admin.ops.errorDetail.status') }}</div>
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.status') }}</div>
           <div class="mt-1">
             <span :class="['inline-flex items-center rounded-lg px-2 py-1 text-xs font-black ring-1 ring-inset shadow-sm', statusClass]">
               {{ detail.status_code }}
             </span>
           </div>
-          <p v-if="detail.type === 'transport_error' && detail.status_code >= 200 && detail.status_code < 300" class="mt-1 text-xs text-amber-700 dark:text-amber-300">
-            {{ t('usage.errors.detail.streamFailedAfterHeaders') }}
-          </p>
         </div>
 
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
@@ -135,6 +128,49 @@
       <div v-if="rootCauseMessage" class="rounded-xl bg-amber-50 p-6 dark:bg-amber-900/10">
         <h3 class="text-sm font-black uppercase tracking-wider text-amber-900 dark:text-amber-200">{{ t('admin.ops.errorDetail.rootCause') }}</h3>
         <div class="mt-3 break-words text-sm font-medium text-amber-900 dark:text-amber-100">{{ rootCauseMessage }}</div>
+      </div>
+
+      <!-- 身份上报请求头：账号请求头覆写变量实际发给上游的值 -->
+      <div
+        v-if="reportedHeaderGroups.length"
+        class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900"
+        data-testid="error-detail-reported-headers"
+      >
+        <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.reportedHeaders.title') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.reportedHeaders.hint') }}</p>
+        <div class="mt-4 space-y-3">
+          <div
+            v-for="group in reportedHeaderGroups"
+            :key="group.key"
+            class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+          >
+            <div
+              v-if="group.accountName || group.accountId != null"
+              class="flex items-center gap-2 border-b border-gray-100 px-4 py-2 text-xs dark:border-dark-700"
+            >
+              <span class="text-gray-400">{{ t('admin.ops.errorDetail.account') }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ group.accountName || '—' }}</span>
+              <span v-if="group.accountId != null" class="font-mono text-gray-400">#{{ group.accountId }}</span>
+            </div>
+            <div class="divide-y divide-gray-100 dark:divide-dark-700">
+              <div
+                v-for="header in group.headers"
+                :key="header.name"
+                class="flex items-center gap-3 px-4 py-2"
+              >
+                <span class="w-2/5 min-w-0 flex-shrink-0 break-all font-mono text-xs text-gray-500 dark:text-gray-400 sm:w-1/3">{{ header.name }}</span>
+                <span class="min-w-0 flex-1 break-all font-mono text-sm font-medium text-gray-900 dark:text-white">{{ header.value }}</span>
+                <button
+                  type="button"
+                  class="flex-shrink-0 rounded-md px-2 py-1 text-[10px] font-bold text-primary-700 transition-colors hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-dark-700"
+                  @click="copyReportedHeader(header.name, header.value)"
+                >
+                  {{ t('admin.ops.errorDetail.reportedHeaders.copy') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
@@ -232,17 +268,15 @@
 </template>
 
 <script setup lang="ts">
-import { balanceErrorSource } from '../utils/balanceError'
-import { computed, ref, watch, inject } from 'vue'
-import { observerUsageAPI } from '@/api/observerUsage'
-import { observerUsageContext } from '@/components/admin/usage/observerUsageContext'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
-import { resolveUpstreamPayload } from '../utils/errorDetailResponse'
+import { useClipboard } from '@/composables/useClipboard'
+import { extractReportedHeaderGroups, resolveUpstreamPayload } from '../utils/errorDetailResponse'
 
 interface Props {
   show: boolean
@@ -256,8 +290,6 @@ interface Emits {
   (e: 'back'): void
 }
 
-const observerMode = inject(observerUsageContext, false)
-
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
@@ -267,9 +299,7 @@ const appStore = useAppStore()
 const loading = ref(false)
 const detail = ref<OpsErrorDetail | null>(null)
 
-const showUpstreamList = computed(() => !observerMode && props.errorType === 'request')
-
-const balanceSource = computed(() => balanceErrorSource(detail.value))
+const showUpstreamList = computed(() => props.errorType === 'request')
 
 const requestId = computed(() => detail.value?.request_id || detail.value?.client_request_id || '')
 
@@ -299,6 +329,14 @@ const diagnosticPayloadSections = computed(() => {
   })
 })
 
+const { copyToClipboard } = useClipboard()
+
+const reportedHeaderGroups = computed(() => extractReportedHeaderGroups(detail.value?.upstream_errors))
+
+function copyReportedHeader(name: string, value: string) {
+  void copyToClipboard(`${name}: ${value}`, t('admin.ops.errorDetail.reportedHeaders.copied'))
+}
+
 function meaningfulPayload(candidate: unknown): string {
   const value = String(candidate || '').trim()
   if (!value || value === '[]' || value === '{}' || value.toLowerCase() === 'null') return ''
@@ -320,7 +358,7 @@ function isUpstreamError(d: OpsErrorDetail | null): boolean {
   if (!d) return false
   const phase = String(d.phase || '').toLowerCase()
   const owner = String(d.error_owner || '').toLowerCase()
-  return balanceErrorSource(d) === 'upstream' || (phase === 'upstream' && owner === 'provider')
+  return phase === 'upstream' && owner === 'provider'
 }
 
 function formatRequestTypeLabel(type: number | null | undefined): string {
@@ -369,7 +407,6 @@ function toggleUpstreamDetail(id: number) {
 }
 
 async function fetchCorrelatedUpstreamErrors(requestErrorId: number) {
-  if (observerMode) return
   correlatedUpstreamLoading.value = true
   try {
     const res = await opsAPI.listRequestErrorUpstreamErrors(
@@ -408,7 +445,7 @@ async function fetchDetail(id: number) {
   loading.value = true
   try {
     const kind = props.errorType || (detail.value?.phase === 'upstream' ? 'upstream' : 'request')
-    const d = observerMode ? await observerUsageAPI.getErrorDetail(id) : kind === 'upstream' ? await opsAPI.getUpstreamErrorDetail(id) : await opsAPI.getRequestErrorDetail(id)
+    const d = kind === 'upstream' ? await opsAPI.getUpstreamErrorDetail(id) : await opsAPI.getRequestErrorDetail(id)
     detail.value = d
   } catch (err: any) {
     detail.value = null
@@ -428,7 +465,7 @@ watch(
     if (typeof id === 'number' && id > 0) {
       expandedUpstreamDetailIds.value = new Set()
       fetchDetail(id)
-      if (!observerMode && props.errorType === 'request') {
+      if (props.errorType === 'request') {
         fetchCorrelatedUpstreamErrors(id)
       } else {
         correlatedUpstream.value = []

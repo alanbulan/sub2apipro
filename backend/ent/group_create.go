@@ -642,48 +642,6 @@ func (_c *GroupCreate) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *Gro
 	return _c
 }
 
-// SetBlockSubagents sets the "block_subagents" field.
-func (_c *GroupCreate) SetBlockSubagents(v bool) *GroupCreate {
-	_c.mutation.SetBlockSubagents(v)
-	return _c
-}
-
-// SetNillableBlockSubagents sets the "block_subagents" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableBlockSubagents(v *bool) *GroupCreate {
-	if v != nil {
-		_c.SetBlockSubagents(*v)
-	}
-	return _c
-}
-
-// SetCodexCliOnly sets the "codex_cli_only" field.
-func (_c *GroupCreate) SetCodexCliOnly(v bool) *GroupCreate {
-	_c.mutation.SetCodexCliOnly(v)
-	return _c
-}
-
-// SetNillableCodexCliOnly sets the "codex_cli_only" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableCodexCliOnly(v *bool) *GroupCreate {
-	if v != nil {
-		_c.SetCodexCliOnly(*v)
-	}
-	return _c
-}
-
-// SetStreamOnly sets the "stream_only" field.
-func (_c *GroupCreate) SetStreamOnly(v bool) *GroupCreate {
-	_c.mutation.SetStreamOnly(v)
-	return _c
-}
-
-// SetNillableStreamOnly sets the "stream_only" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableStreamOnly(v *bool) *GroupCreate {
-	if v != nil {
-		_c.SetStreamOnly(*v)
-	}
-	return _c
-}
-
 // SetModelRouting sets the "model_routing" field.
 func (_c *GroupCreate) SetModelRouting(v map[string][]int64) *GroupCreate {
 	_c.mutation.SetModelRouting(v)
@@ -780,6 +738,20 @@ func (_c *GroupCreate) SetNillableForceOpenaiFast(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (_c *GroupCreate) SetForceOpenaiUltrafast(v bool) *GroupCreate {
+	_c.mutation.SetForceOpenaiUltrafast(v)
+	return _c
+}
+
+// SetNillableForceOpenaiUltrafast sets the "force_openai_ultrafast" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableForceOpenaiUltrafast(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetForceOpenaiUltrafast(*v)
+	}
+	return _c
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_c *GroupCreate) SetFreeOpenaiFast(v bool) *GroupCreate {
 	_c.mutation.SetFreeOpenaiFast(v)
@@ -790,20 +762,6 @@ func (_c *GroupCreate) SetFreeOpenaiFast(v bool) *GroupCreate {
 func (_c *GroupCreate) SetNillableFreeOpenaiFast(v *bool) *GroupCreate {
 	if v != nil {
 		_c.SetFreeOpenaiFast(*v)
-	}
-	return _c
-}
-
-// SetFreeOpenaiUltrafast sets the "free_openai_ultrafast" field.
-func (_c *GroupCreate) SetFreeOpenaiUltrafast(v bool) *GroupCreate {
-	_c.mutation.SetFreeOpenaiUltrafast(v)
-	return _c
-}
-
-// SetNillableFreeOpenaiUltrafast sets the "free_openai_ultrafast" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableFreeOpenaiUltrafast(v *bool) *GroupCreate {
-	if v != nil {
-		_c.SetFreeOpenaiUltrafast(*v)
 	}
 	return _c
 }
@@ -1211,18 +1169,6 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
 	}
-	if _, ok := _c.mutation.BlockSubagents(); !ok {
-		v := group.DefaultBlockSubagents
-		_c.mutation.SetBlockSubagents(v)
-	}
-	if _, ok := _c.mutation.CodexCliOnly(); !ok {
-		v := group.DefaultCodexCliOnly
-		_c.mutation.SetCodexCliOnly(v)
-	}
-	if _, ok := _c.mutation.StreamOnly(); !ok {
-		v := group.DefaultStreamOnly
-		_c.mutation.SetStreamOnly(v)
-	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		v := group.DefaultModelRoutingEnabled
 		_c.mutation.SetModelRoutingEnabled(v)
@@ -1251,13 +1197,13 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultForceOpenaiFast
 		_c.mutation.SetForceOpenaiFast(v)
 	}
+	if _, ok := _c.mutation.ForceOpenaiUltrafast(); !ok {
+		v := group.DefaultForceOpenaiUltrafast
+		_c.mutation.SetForceOpenaiUltrafast(v)
+	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		v := group.DefaultFreeOpenaiFast
 		_c.mutation.SetFreeOpenaiFast(v)
-	}
-	if _, ok := _c.mutation.FreeOpenaiUltrafast(); !ok {
-		v := group.DefaultFreeOpenaiUltrafast
-		_c.mutation.SetFreeOpenaiUltrafast(v)
 	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		v := group.DefaultRequireOauthOnly
@@ -1446,15 +1392,6 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
 	}
-	if _, ok := _c.mutation.BlockSubagents(); !ok {
-		return &ValidationError{Name: "block_subagents", err: errors.New(`ent: missing required field "Group.block_subagents"`)}
-	}
-	if _, ok := _c.mutation.CodexCliOnly(); !ok {
-		return &ValidationError{Name: "codex_cli_only", err: errors.New(`ent: missing required field "Group.codex_cli_only"`)}
-	}
-	if _, ok := _c.mutation.StreamOnly(); !ok {
-		return &ValidationError{Name: "stream_only", err: errors.New(`ent: missing required field "Group.stream_only"`)}
-	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		return &ValidationError{Name: "model_routing_enabled", err: errors.New(`ent: missing required field "Group.model_routing_enabled"`)}
 	}
@@ -1476,11 +1413,11 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
 		return &ValidationError{Name: "force_openai_fast", err: errors.New(`ent: missing required field "Group.force_openai_fast"`)}
 	}
+	if _, ok := _c.mutation.ForceOpenaiUltrafast(); !ok {
+		return &ValidationError{Name: "force_openai_ultrafast", err: errors.New(`ent: missing required field "Group.force_openai_ultrafast"`)}
+	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
-	}
-	if _, ok := _c.mutation.FreeOpenaiUltrafast(); !ok {
-		return &ValidationError{Name: "free_openai_ultrafast", err: errors.New(`ent: missing required field "Group.free_openai_ultrafast"`)}
 	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
@@ -1747,18 +1684,6 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
 		_node.FallbackGroupIDOnInvalidRequest = &value
 	}
-	if value, ok := _c.mutation.BlockSubagents(); ok {
-		_spec.SetField(group.FieldBlockSubagents, field.TypeBool, value)
-		_node.BlockSubagents = value
-	}
-	if value, ok := _c.mutation.CodexCliOnly(); ok {
-		_spec.SetField(group.FieldCodexCliOnly, field.TypeBool, value)
-		_node.CodexCliOnly = value
-	}
-	if value, ok := _c.mutation.StreamOnly(); ok {
-		_spec.SetField(group.FieldStreamOnly, field.TypeBool, value)
-		_node.StreamOnly = value
-	}
 	if value, ok := _c.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
 		_node.ModelRouting = value
@@ -1791,13 +1716,13 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
 		_node.ForceOpenaiFast = value
 	}
+	if value, ok := _c.mutation.ForceOpenaiUltrafast(); ok {
+		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
+		_node.ForceOpenaiUltrafast = value
+	}
 	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
 		_node.FreeOpenaiFast = value
-	}
-	if value, ok := _c.mutation.FreeOpenaiUltrafast(); ok {
-		_spec.SetField(group.FieldFreeOpenaiUltrafast, field.TypeBool, value)
-		_node.FreeOpenaiUltrafast = value
 	}
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
@@ -2793,42 +2718,6 @@ func (u *GroupUpsert) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsert {
 	return u
 }
 
-// SetBlockSubagents sets the "block_subagents" field.
-func (u *GroupUpsert) SetBlockSubagents(v bool) *GroupUpsert {
-	u.Set(group.FieldBlockSubagents, v)
-	return u
-}
-
-// UpdateBlockSubagents sets the "block_subagents" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateBlockSubagents() *GroupUpsert {
-	u.SetExcluded(group.FieldBlockSubagents)
-	return u
-}
-
-// SetCodexCliOnly sets the "codex_cli_only" field.
-func (u *GroupUpsert) SetCodexCliOnly(v bool) *GroupUpsert {
-	u.Set(group.FieldCodexCliOnly, v)
-	return u
-}
-
-// UpdateCodexCliOnly sets the "codex_cli_only" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateCodexCliOnly() *GroupUpsert {
-	u.SetExcluded(group.FieldCodexCliOnly)
-	return u
-}
-
-// SetStreamOnly sets the "stream_only" field.
-func (u *GroupUpsert) SetStreamOnly(v bool) *GroupUpsert {
-	u.Set(group.FieldStreamOnly, v)
-	return u
-}
-
-// UpdateStreamOnly sets the "stream_only" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateStreamOnly() *GroupUpsert {
-	u.SetExcluded(group.FieldStreamOnly)
-	return u
-}
-
 // SetModelRouting sets the "model_routing" field.
 func (u *GroupUpsert) SetModelRouting(v map[string][]int64) *GroupUpsert {
 	u.Set(group.FieldModelRouting, v)
@@ -2937,6 +2826,18 @@ func (u *GroupUpsert) UpdateForceOpenaiFast() *GroupUpsert {
 	return u
 }
 
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsert) SetForceOpenaiUltrafast(v bool) *GroupUpsert {
+	u.Set(group.FieldForceOpenaiUltrafast, v)
+	return u
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateForceOpenaiUltrafast() *GroupUpsert {
+	u.SetExcluded(group.FieldForceOpenaiUltrafast)
+	return u
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (u *GroupUpsert) SetFreeOpenaiFast(v bool) *GroupUpsert {
 	u.Set(group.FieldFreeOpenaiFast, v)
@@ -2946,18 +2847,6 @@ func (u *GroupUpsert) SetFreeOpenaiFast(v bool) *GroupUpsert {
 // UpdateFreeOpenaiFast sets the "free_openai_fast" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateFreeOpenaiFast() *GroupUpsert {
 	u.SetExcluded(group.FieldFreeOpenaiFast)
-	return u
-}
-
-// SetFreeOpenaiUltrafast sets the "free_openai_ultrafast" field.
-func (u *GroupUpsert) SetFreeOpenaiUltrafast(v bool) *GroupUpsert {
-	u.Set(group.FieldFreeOpenaiUltrafast, v)
-	return u
-}
-
-// UpdateFreeOpenaiUltrafast sets the "free_openai_ultrafast" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateFreeOpenaiUltrafast() *GroupUpsert {
-	u.SetExcluded(group.FieldFreeOpenaiUltrafast)
 	return u
 }
 
@@ -4100,48 +3989,6 @@ func (u *GroupUpsertOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertOne 
 	})
 }
 
-// SetBlockSubagents sets the "block_subagents" field.
-func (u *GroupUpsertOne) SetBlockSubagents(v bool) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetBlockSubagents(v)
-	})
-}
-
-// UpdateBlockSubagents sets the "block_subagents" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateBlockSubagents() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateBlockSubagents()
-	})
-}
-
-// SetCodexCliOnly sets the "codex_cli_only" field.
-func (u *GroupUpsertOne) SetCodexCliOnly(v bool) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetCodexCliOnly(v)
-	})
-}
-
-// UpdateCodexCliOnly sets the "codex_cli_only" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateCodexCliOnly() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateCodexCliOnly()
-	})
-}
-
-// SetStreamOnly sets the "stream_only" field.
-func (u *GroupUpsertOne) SetStreamOnly(v bool) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetStreamOnly(v)
-	})
-}
-
-// UpdateStreamOnly sets the "stream_only" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateStreamOnly() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateStreamOnly()
-	})
-}
-
 // SetModelRouting sets the "model_routing" field.
 func (u *GroupUpsertOne) SetModelRouting(v map[string][]int64) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -4268,6 +4115,20 @@ func (u *GroupUpsertOne) UpdateForceOpenaiFast() *GroupUpsertOne {
 	})
 }
 
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsertOne) SetForceOpenaiUltrafast(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiUltrafast(v)
+	})
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateForceOpenaiUltrafast() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiUltrafast()
+	})
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (u *GroupUpsertOne) SetFreeOpenaiFast(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -4279,20 +4140,6 @@ func (u *GroupUpsertOne) SetFreeOpenaiFast(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateFreeOpenaiFast() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
-	})
-}
-
-// SetFreeOpenaiUltrafast sets the "free_openai_ultrafast" field.
-func (u *GroupUpsertOne) SetFreeOpenaiUltrafast(v bool) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetFreeOpenaiUltrafast(v)
-	})
-}
-
-// UpdateFreeOpenaiUltrafast sets the "free_openai_ultrafast" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateFreeOpenaiUltrafast() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateFreeOpenaiUltrafast()
 	})
 }
 
@@ -5630,48 +5477,6 @@ func (u *GroupUpsertBulk) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertBul
 	})
 }
 
-// SetBlockSubagents sets the "block_subagents" field.
-func (u *GroupUpsertBulk) SetBlockSubagents(v bool) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetBlockSubagents(v)
-	})
-}
-
-// UpdateBlockSubagents sets the "block_subagents" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateBlockSubagents() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateBlockSubagents()
-	})
-}
-
-// SetCodexCliOnly sets the "codex_cli_only" field.
-func (u *GroupUpsertBulk) SetCodexCliOnly(v bool) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetCodexCliOnly(v)
-	})
-}
-
-// UpdateCodexCliOnly sets the "codex_cli_only" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateCodexCliOnly() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateCodexCliOnly()
-	})
-}
-
-// SetStreamOnly sets the "stream_only" field.
-func (u *GroupUpsertBulk) SetStreamOnly(v bool) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetStreamOnly(v)
-	})
-}
-
-// UpdateStreamOnly sets the "stream_only" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateStreamOnly() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateStreamOnly()
-	})
-}
-
 // SetModelRouting sets the "model_routing" field.
 func (u *GroupUpsertBulk) SetModelRouting(v map[string][]int64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -5798,6 +5603,20 @@ func (u *GroupUpsertBulk) UpdateForceOpenaiFast() *GroupUpsertBulk {
 	})
 }
 
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsertBulk) SetForceOpenaiUltrafast(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiUltrafast(v)
+	})
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateForceOpenaiUltrafast() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiUltrafast()
+	})
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (u *GroupUpsertBulk) SetFreeOpenaiFast(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -5809,20 +5628,6 @@ func (u *GroupUpsertBulk) SetFreeOpenaiFast(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateFreeOpenaiFast() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
-	})
-}
-
-// SetFreeOpenaiUltrafast sets the "free_openai_ultrafast" field.
-func (u *GroupUpsertBulk) SetFreeOpenaiUltrafast(v bool) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetFreeOpenaiUltrafast(v)
-	})
-}
-
-// UpdateFreeOpenaiUltrafast sets the "free_openai_ultrafast" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateFreeOpenaiUltrafast() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateFreeOpenaiUltrafast()
 	})
 }
 
