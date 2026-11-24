@@ -14,8 +14,11 @@
   },
   "deployment": {
     "migration_requires_owner_review": true,
-    "status": "in_progress",
-    "local_builds_and_tests": false
+    "status": "approved",
+    "local_builds_and_tests": false,
+    "approved_candidate": "8de6d2b56367fab073e5f9ad4067da415b4fcfa1",
+    "candidate_ci_run": "https://github.com/alanbulan/sub2apipro/actions/runs/45328422507",
+    "approved_at": "2026-11-24T06:14:17.581794+00:00"
   },
   "preserve": [
     "pro_white_label_and_24_themes",
