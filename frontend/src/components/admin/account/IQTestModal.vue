@@ -36,6 +36,12 @@
         </div>
         <p v-if="plans.length === 0" class="text-sm text-gray-500">{{ t('intelligence.noPlans') }}</p>
       </div>
+      <div v-if="!poolContext && manualHistory.length" class="space-y-2" data-testid="manual-history">
+        <p class="text-sm font-semibold">{{ t('intelligence.manualHistory') }}</p>
+        <button v-for="(record, index) in manualHistory" :key="index" type="button" class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-left text-sm dark:border-dark-600" @click="runs = record.runs.map(run => ({...run}))">
+          <span>{{ record.createdAt ? new Date(record.createdAt).toLocaleString() : '—' }} · {{ record.modelId }}</span><span>{{ record.runs.length }}</span>
+        </button>
+      </div>
       <div v-if="history.length" class="space-y-2">
         <p class="text-sm font-semibold">{{ t('intelligence.history') }}</p>
         <button v-for="result in history" :key="result.id" type="button" class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-left text-sm dark:border-dark-600" @click="previewResult(result)">
@@ -66,6 +72,7 @@ import { streamIntelligence } from '@/api/intelligence'
 import { getPoolDiagnosticModels, getPoolDiagnosticReasoning, poolDiagnosticPath, type PoolDiagnosticContext, type PoolDiagnosticAccount } from '@/api/poolDashboard'
 import { authorizePelicanInlineScripts, extractPelicanHtml, readPelicanPreviewNonce } from '@/utils/pelicanHtml'
 import { isTextAnswerKind, questionPrompt } from '@/utils/intelligenceTest'
+import { readIntelligenceHistory, saveIntelligenceHistory, type IntelligenceHistoryRecord } from '@/utils/intelligenceHistory'
 import type { Account, ScheduledTestPlan, ScheduledTestResult } from '@/types'
 const props = defineProps<{ show: boolean; account?: Account | null; accounts?: Account[]; poolContext?: PoolDiagnosticContext }>()
 const emit = defineEmits<{ close: [] }>()
@@ -77,6 +84,7 @@ const loadingModels = ref(false), running = ref(false), error = ref(''), saving 
 const cron = ref('0 */6 * * *'), keepCount = ref<number | string>(50), plans = ref<ScheduledTestPlan[]>([]), history = ref<ScheduledTestResult[]>([]), pendingDelete = ref<ScheduledTestPlan | null>(null)
 interface Run { model: string; kind: string; output: string; error: string; status: string }
 const runs = ref<Run[]>([])
+const manualHistory = ref<IntelligenceHistoryRecord[]>([])
 let controller: AbortController | null = null
 let generation = 0
 const questionOptions = computed(() => [{value:'candy',label:t('intelligence.candy')},{value:'pelican',label:t('intelligence.pelican')},...(!props.poolContext && currentAccount.value?.platform === 'openai' && currentAccount.value.type === 'oauth' ? [{value:'state_probe',label:t('intelligence.probe')}] : [])])
@@ -112,9 +120,12 @@ async function startTest() {
   error.value = ''; running.value = true; controller = new AbortController()
   const count = props.poolContext || questionKind.value === 'state_probe' ? 1 : Math.max(1, Math.min(4, Number(parallelCount.value) || 1))
   const signal = controller.signal
+  const submittedPrompt = prompt.value
+  const submittedKind = questionKind.value
   runs.value = Array.from({length:count},()=>({model:modelId.value,kind:questionKind.value,output:'',error:'',status:'running'}))
+  const submittedRuns = runs.value
   try {
-    await Promise.all(runs.value.map(async run => {
+    await Promise.all(submittedRuns.map(async run => {
       try {
         if (run.kind === 'state_probe') {
           const result = await apiClient.post(`/admin/accounts/${account.id}/probe-state`, {model_id:run.model},{signal,timeout:105000})
@@ -127,7 +138,13 @@ async function startTest() {
         run.status='success'
       } catch (err) { run.status='failed';run.error=message(err) }
     }))
-  } finally { running.value=false;controller=null }
+  } finally {
+    if (!props.poolContext) {
+      const records = saveIntelligenceHistory(account.id, {createdAt:new Date().toISOString(),modelId:submittedRuns[0]?.model||'',questionKind:submittedKind,prompt:submittedPrompt.slice(0,4096),runs:submittedRuns.map(run=>({...run,output:run.output.slice(0,64*1024),error:run.error.slice(0,2048)}))})
+      if (currentAccount.value?.id === account.id) manualHistory.value = records
+    }
+    running.value=false;controller=null
+  }
 }
 async function loadPlans() {
   if (props.poolContext || !currentAccount.value) return
@@ -147,7 +164,7 @@ async function confirmDelete(){const plan=pendingDelete.value;if(!plan)return;sa
 async function loadHistory(plan:ScheduledTestPlan){try{history.value=await adminAPI.scheduledTests.listResults(plan.id,plan.max_results)}catch(err){error.value=message(err)}}
 function previewResult(result:ScheduledTestResult){runs.value=[{model:result.pelican_config?.model_id||'',kind:result.pelican_config?.question_kind||'pelican',output:result.response_text,error:result.error_message,status:result.status}]}
 function close(){controller?.abort();generation++;emit('close')}
-watch(()=>[props.show,currentAccount.value?.id],()=>{if(props.show){history.value=[];plans.value=[];runs.value=[];scheduleOpen.value=false;void loadModels()}else{controller?.abort();generation++}},{immediate:true})
+watch(()=>[props.show,currentAccount.value?.id],()=>{if(props.show){manualHistory.value=props.poolContext||!currentAccount.value?[]:readIntelligenceHistory(currentAccount.value.id);history.value=[];plans.value=[];runs.value=[];scheduleOpen.value=false;void loadModels()}else{controller?.abort();generation++}},{immediate:true})
 watch(modelId,()=>{if(props.show && !loadingModels.value)void loadReasoning().catch(err=>{error.value=message(err)})})
 onBeforeUnmount(()=>{controller?.abort();generation++})
 </script>

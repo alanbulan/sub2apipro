@@ -80,7 +80,6 @@ type OpenAICodexStateProbeResult struct {
 }
 
 type openAICodexStateShot struct {
-	answer  string
 	status  int
 	state   string
 	cookies []string

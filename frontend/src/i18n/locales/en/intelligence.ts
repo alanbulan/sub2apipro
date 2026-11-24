@@ -15,6 +15,7 @@ export default {
     "createSchedule": "Create schedule",
     "pause": "Pause",
     "resume": "Enable",
+    "manualHistory": "Recent manual runs (8 on this browser; first 64 KB of long output)",
     "history": "Test history",
     "deleteConfirm": "Delete this schedule and its test history?",
     "noPlans": "No scheduled intelligence tests",

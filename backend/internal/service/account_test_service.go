@@ -742,7 +742,13 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	c.Writer.Flush()
 
 	// Create a minimal Bedrock-compatible payload (no stream, no cache_control)
-	bedrockBody, _ := json.Marshal(buildBedrockTestPayload(testModelID))
+	bedrockPayload := buildBedrockTestPayload(testModelID)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		bedrockPayload["max_tokens"] = pelicanClaudeMaxTokens
+		messages := bedrockPayload["messages"].([]map[string]any)
+		messages[0]["content"].([]map[string]any)[0]["text"] = options.prompt
+	}
+	bedrockBody, _ := json.Marshal(bedrockPayload)
 
 	// Use non-streaming endpoint (response is standard Claude JSON)
 	apiURL := BuildBedrockURL(region, testModelID, false)
@@ -791,7 +797,8 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 
 	// Bedrock non-streaming response is standard Claude JSON, extract the text
 	var result struct {
-		Content []struct {
+		StopReason string `json:"stop_reason"`
+		Content    []struct {
 			Text string `json:"text"`
 		} `json:"content"`
 	}
@@ -799,6 +806,11 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse response: %s", err.Error()))
 	}
 
+	if pelicanTestRequested(c) {
+		if failure := pelicanClaudeStopFailure(result.StopReason, ""); failure != "" {
+			return s.sendErrorAndEnd(c, failure)
+		}
+	}
 	text := ""
 	if len(result.Content) > 0 {
 		text = result.Content[0].Text
@@ -2855,6 +2867,9 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
+				if pelicanTestRequested(c) {
+					return s.sendErrorAndEnd(c, "Intelligence stream ended before message_stop")
+				}
 				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 				return nil
 			}
@@ -2884,6 +2899,16 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 			if delta, ok := data["delta"].(map[string]any); ok {
 				if text, ok := delta["text"].(string); ok {
 					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+				}
+			}
+		case "message_delta":
+			if pelicanTestRequested(c) {
+				if delta, ok := data["delta"].(map[string]any); ok {
+					stopReason, _ := delta["stop_reason"].(string)
+					category, _ := delta["refusal"].(string)
+					if failure := pelicanClaudeStopFailure(stopReason, category); failure != "" {
+						return s.sendErrorAndEnd(c, failure)
+					}
 				}
 			}
 		case "message_stop":

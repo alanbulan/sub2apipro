@@ -1,6 +1,10 @@
 package service
 
 import (
+	"context"
+	"github.com/gin-gonic/gin"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,4 +45,19 @@ func TestPelicanPayloadsDoNotChangeDefaultAccountTestPayloads(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "draw the pelican animation", pelicanOpenAIContent[0]["text"])
 	require.Equal(t, map[string]any{"effort": "medium"}, pelicanOpenAI["reasoning"])
+}
+
+func TestIntelligenceClaudeStreamRejectsTruncatedAndRefusedAnswers(t *testing.T) {
+	for _, body := range []string{
+		"data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"partial\"}}\n\n",
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n",
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n",
+	} {
+		writer := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(writer)
+		c.Request = httptest.NewRequest("POST", "/iq", nil).WithContext(withPelicanTestOptions(context.Background(), pelicanTestOptions{}))
+		svc := &AccountTestService{}
+		require.Error(t, svc.processClaudeStream(c, strings.NewReader(body)))
+		require.NotContains(t, writer.Body.String(), `"success":true`)
+	}
 }

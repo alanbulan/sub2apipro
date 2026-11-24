@@ -46,6 +46,17 @@ func (s *AccountTestService) TestPelicanAccountConnection(c *gin.Context, accoun
 	options.reasoningEffort = normalizePelicanReasoningEffort(reasoningEffort)
 	ctx := withPelicanTestOptions(c.Request.Context(), options)
 	c.Request = c.Request.WithContext(ctx)
+	// Adaptive connectivity verifies several endpoints. A question is a single
+	// generation, so select its canonical Chat Completions transport once.
+	if s.accountRepo != nil {
+		account, err := s.accountRepo.GetByID(ctx, accountID)
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Account not found")
+		}
+		if account != nil && account.RoutesProtocolByInbound() && account.GetAPIProtocol() == APIProtocolAdaptive {
+			return s.testCNProviderChatCompletionsConnection(c, account, modelID, options.prompt)
+		}
+	}
 	return s.TestAccountConnection(c, accountID, modelID, options.prompt, AccountTestModeDefault)
 }
 

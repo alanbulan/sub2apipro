@@ -89,7 +89,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: canonical-pro-frontend
-          path: frontend/dist
+          path: backend/internal/web/dist
+          if-no-files-found: error
           retention-days: 7
 
   backend-build:

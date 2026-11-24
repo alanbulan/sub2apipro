@@ -17,5 +17,4 @@ for filename in sys.argv[1:]:
             if reported >= 15:
                 break
     if not reported:
-        message = '\n'.join(lines[-65:])[:10000]
-        print('::error::' + message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
+        print('No failure markers in ' + path.name)

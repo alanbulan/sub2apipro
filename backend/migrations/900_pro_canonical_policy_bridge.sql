@@ -34,6 +34,31 @@ BEGIN
             RAISE EXCEPTION 'Pro canonical migration requires review: retired per-user-group model restrictions';
         END IF;
     END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='api_keys' AND column_name='concurrency_limit') THEN
+        IF EXISTS (SELECT 1 FROM api_keys WHERE deleted_at IS NULL AND concurrency_limit <> 0) THEN
+            RAISE EXCEPTION 'Pro canonical migration requires review: retired API key concurrency_limit policy';
+        END IF;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='api_keys' AND column_name='model_mapping') THEN
+        IF EXISTS (SELECT 1 FROM api_keys WHERE deleted_at IS NULL AND model_mapping NOT IN ('{}'::jsonb, 'null'::jsonb)) THEN
+            RAISE EXCEPTION 'Pro canonical migration requires review: retired API key model_mapping policy';
+        END IF;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='api_keys' AND column_name='reasoning_effort') THEN
+        IF EXISTS (SELECT 1 FROM api_keys WHERE deleted_at IS NULL AND reasoning_effort <> '') THEN
+            RAISE EXCEPTION 'Pro canonical migration requires review: retired API key reasoning_effort policy';
+        END IF;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='api_keys' AND column_name='allow_long_context') THEN
+        IF EXISTS (SELECT 1 FROM api_keys WHERE deleted_at IS NULL AND allow_long_context = false) THEN
+            RAISE EXCEPTION 'Pro canonical migration requires review: retired API key allow_long_context policy';
+        END IF;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='api_keys' AND column_name='context_token_limit') THEN
+        IF EXISTS (SELECT 1 FROM api_keys WHERE deleted_at IS NULL AND context_token_limit <> 0) THEN
+            RAISE EXCEPTION 'Pro canonical migration requires review: retired API key context_token_limit policy';
+        END IF;
+    END IF;
     IF to_regclass('public.auto_credit_config') IS NOT NULL THEN
         IF EXISTS (SELECT 1 FROM auto_credit_config WHERE enabled) THEN
             RAISE EXCEPTION 'Pro canonical migration requires review: enabled retired automatic-credit policies';

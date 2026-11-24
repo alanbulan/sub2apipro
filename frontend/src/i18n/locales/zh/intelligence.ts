@@ -15,6 +15,7 @@ export default {
     "createSchedule": "创建定时检测",
     "pause": "暂停",
     "resume": "启用",
+    "manualHistory": "最近手动记录（本机保存8次，长输出保留前64KB）",
     "history": "检测记录",
     "deleteConfirm": "确认删除这个计划及其检测记录？",
     "noPlans": "暂无定时智商检测计划",

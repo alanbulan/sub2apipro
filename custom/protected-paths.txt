@@ -150,3 +150,5 @@ backend/internal/service/pool_balance_test.go
 backend/internal/service/pelican_test_service_test.go
 backend/internal/service/account_test_reasoning.go
 backend/internal/service/account_test_reasoning_test.go
+frontend/src/utils/intelligenceHistory.ts
+docs/canonical-upstream-migration.md

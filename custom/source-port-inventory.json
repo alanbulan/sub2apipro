@@ -340,7 +340,6 @@
     "backend/internal/service/basispoints/image_policy_stream.go",
     "frontend/src/api/admin/__tests__/modelTrace.spec.ts",
     "frontend/src/api/admin/modelTrace.ts",
-    "frontend/src/components/admin/account/IQTestModal.vue",
     "frontend/src/components/admin/account/TestModelSelect.vue",
     "frontend/src/components/admin/operations/MatureProvidersPanel.vue",
     "frontend/src/features/channel-monitor-v3/StatusDot.vue",
@@ -351,5 +350,11 @@
     "frontend/src/utils/codexQuickConfig.ts",
     "frontend/src/utils/magpieImport.ts"
   ],
-  "conflict_resolution": "Canonical implementations retained; own feature hooks require individual review before candidate readiness."
+  "conflict_resolution": "Shared canonical entry points individually reviewed and adapted for Pro dependency injection, authentication storage, WS/HTTP capture, theme/branding hooks, Feishu settings, employee keys, scoped pool and IQ. Runtime validation is performed by GitHub Actions; see docs/canonical-upstream-migration.md.",
+  "rewritten_retained": [
+    "backend/internal/repository/canonical_upgrade_test.go",
+    "frontend/src/components/admin/account/IQTestModal.vue",
+    "backend/internal/service/intelligence_schedule.go",
+    "backend/internal/service/pool_balance_refresh.go"
+  ]
 }

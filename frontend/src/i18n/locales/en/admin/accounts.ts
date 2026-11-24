@@ -344,7 +344,7 @@ export default {
         groupUnavailable: 'The upstream returned no group name or description to sync.',
         groupFailed: 'Failed to sync upstream group details',
         groupSynced: 'Account name and notes synced',
-        trustWarning: 'This rate is declared by the upstream site for the current API key. Sub2API cannot verify that it matches actual charges. The upstream site or an intermediary may return forged, stale, or modified data. Verify it against bills, balance changes, and actual usage.',
+        trustWarning: 'This rate is declared by the upstream site for the current API key. the platform cannot verify that it matches actual charges. The upstream site or an intermediary may return forged, stale, or modified data. Verify it against bills, balance changes, and actual usage.',
         autoProbe: 'Automatically probe upstream declared rate',
         autoProbeHint: 'Refresh the upstream declared rate on the global interval. This switch alone does not change the account rate.',
         syncRate: 'Sync upstream declared rate',

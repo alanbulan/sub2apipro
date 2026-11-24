@@ -222,6 +222,26 @@ INSERT INTO user_group_rate_multipliers(user_id,group_id,denied_models) VALUES(6
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, string(bridge))
 	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `ALTER TABLE api_keys ADD COLUMN concurrency_limit BIGINT DEFAULT 0;
+ALTER TABLE api_keys ADD COLUMN model_mapping JSONB DEFAULT '{}';
+ALTER TABLE api_keys ADD COLUMN reasoning_effort VARCHAR(16) DEFAULT '';
+ALTER TABLE api_keys ADD COLUMN allow_long_context BOOLEAN DEFAULT true;
+ALTER TABLE api_keys ADD COLUMN context_token_limit INTEGER DEFAULT 0;`)
+	require.NoError(t, err)
+	for _, policy := range []struct{ column, value, reset string }{
+		{"concurrency_limit", "2", "0"}, {"model_mapping", `'{"from":"to"}'::jsonb`, `'{}'::jsonb`},
+		{"reasoning_effort", "'high'", "''"}, {"allow_long_context", "false", "true"}, {"context_token_limit", "4096", "0"},
+	} {
+		_, err = db.ExecContext(ctx, "UPDATE api_keys SET "+policy.column+"="+policy.value+" WHERE id=68001")
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, string(bridge))
+		require.ErrorContains(t, err, "retired API key "+policy.column+" policy")
+		_, err = db.ExecContext(ctx, "UPDATE api_keys SET "+policy.column+"="+policy.reset+" WHERE id=68001")
+		require.NoError(t, err)
+	}
+	_, err = db.ExecContext(ctx, string(bridge))
+	require.NoError(t, err)
+
 }
 
 func testCanonicalIntelligenceLease(t *testing.T, ctx context.Context, db *sql.DB) {

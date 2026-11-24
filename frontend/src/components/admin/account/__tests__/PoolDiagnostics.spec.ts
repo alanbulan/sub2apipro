@@ -30,6 +30,7 @@ function streamResponse() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
   models.mockResolvedValue([{ id: 'gpt-6-astra', type: 'model', display_name: 'gpt-6-astra', created_at: '' }])
   reasoning.mockResolvedValue({ supported_reasoning_levels: ['low', 'medium'], default_reasoning_level: 'medium' })
   localStorage.setItem('auth_token', 'user-token')
@@ -84,4 +85,14 @@ describe('ordinary user diagnostics reuse existing modals', () => {
     expect(wrapper.text()).toContain('测试请求较多，请稍后再试')
     wrapper.unmount()
   })
+})
+
+it('retains administrator IQ history written by the previous upstream UI', async () => {
+  localStorage.setItem('sub2api-pelican-test:42', JSON.stringify([{createdAt:'2026-11-20T10:00:00Z',modelId:'gpt-6-astra',questionKind:'candy',runs:[{status:'success',output:'legacy answer',modelId:'gpt-6-astra'}]}]))
+  adminModels.mockResolvedValue([{id:'gpt-6-astra'}])
+  const wrapper = mount(IQTestModal, {props:{show:true,account:context.account as any},global:{stubs,plugins:[createPinia()]}})
+  await flushPromises()
+  await wrapper.get('[data-testid="manual-history"] button').trigger('click')
+  expect(wrapper.text()).toContain('legacy answer')
+  wrapper.unmount()
 })

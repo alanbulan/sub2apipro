@@ -132,11 +132,12 @@ func (s *AccountTestService) runIntelligenceOnce(parent context.Context, id int6
 			result.ErrorMessage = err.Error()
 		} else {
 			result.ResponseText = fmt.Sprintf("%s\n%s\n%s", probe.Verdict, probe.Reason, OpenAICodexStateProbeLimitation)
-			if probe.Verdict == OpenAICodexStateHealthy {
+			switch probe.Verdict {
+			case OpenAICodexStateHealthy:
 				result.Status = "success"
-			} else if probe.Verdict == OpenAICodexStateDegraded {
+			case OpenAICodexStateDegraded:
 				result.ErrorMessage = "state_degraded"
-			} else {
+			default:
 				result.ErrorMessage = "state_probe_inconclusive: " + probe.Failure
 			}
 		}
