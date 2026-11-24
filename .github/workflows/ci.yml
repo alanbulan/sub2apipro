@@ -7,6 +7,9 @@ on:
       # Dedicated repair rehearsals run their focused workflow; every candidate
       # and main promotion still executes the complete reusable CI gate.
       - diagnose/upgrade-20261117
+      # Dedicated Feishu checks cover this implementation branch. Main still
+      # runs the complete reusable gate before image publication and deployment.
+      - 'feat/feishu-key-delivery-*'
   pull_request:
 
 permissions:

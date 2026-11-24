@@ -1,4 +1,5 @@
 export default {
+  "retryStatus": "Reload progress",
   "action": "Send employee keys",
   "settings": "Key delivery settings",
   "settingsHint": "Settings apply to newly issued enterprise keys. Resends reuse the existing key, groups and limits. Saving does not send email or credit balances.",

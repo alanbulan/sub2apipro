@@ -4,7 +4,8 @@ import { defineComponent } from 'vue'
 import FeishuKeyDelivery from '../FeishuKeyDelivery.vue'
 
 const api = vi.hoisted(() => ({ config: vi.fn(), current: vi.fn(), preview: vi.fn(), start: vi.fn(), retry: vi.fn(), error: vi.fn() }))
-vi.mock('@/api/admin/feishuKeyDelivery', () => ({ getFeishuKeyConfig: api.config, currentFeishuKeyJob: api.current, previewFeishuKeys: api.preview, startFeishuKeys: api.start, retryFeishuKeys: api.retry }))
+vi.mock('@/api/admin/feishuKeyDelivery', () => ({ getFeishuKeyConfig: api.config, currentFeishuKeyJob: api.current, previewFeishuKeys: api.preview, startFeishuKeys: api.start, retryFeishuKeys: api.retry, saveFeishuKeyConfig: vi.fn() }))
+vi.mock('@/api/admin/groups', () => ({ getAll: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: api.error }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const Dialog = defineComponent({ props: ['show'], template: '<section v-if="show"><slot/><slot name="footer"/></section>' })

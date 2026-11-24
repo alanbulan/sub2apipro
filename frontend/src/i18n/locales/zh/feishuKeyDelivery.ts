@@ -1,4 +1,5 @@
 export default {
+  "retryStatus": "重新读取进度",
   "action": "一键发送 Key",
   "settings": "Key 发放设置",
   "settingsHint": "参数只作用于首次创建的企业专用 Key。补发沿用原 Key、分组及额度；保存设置不会发信或充值。",

@@ -130,7 +130,7 @@ func NewFeishuKeyDeliveryService(directory *FeishuDirectoryService, keys *APIKey
 }
 
 func (s *FeishuKeyDeliveryService) available() bool {
-	return s != nil && s.client != nil && s.directory != nil && s.directory.setup != nil && s.keys != nil && s.email != nil
+	return s != nil && s.client != nil && s.directory != nil && s.directory.setup != nil && s.keys != nil && s.email != nil && s.workerID != ""
 }
 
 func feishuReadJSON(ctx context.Context, client *dbent.Client, key string, dst any) (bool, error) {

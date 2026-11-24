@@ -46,7 +46,7 @@
         </template>
         <p v-if="preview" class="text-xs text-gray-500">{{ t('feishuKeyDelivery.previewHint') }}</p>
         <p v-if="display && display.status !== 'preview'" class="text-xs text-gray-500">{{ t('feishuKeyDelivery.acceptedHint') }}</p>
-        <p v-if="pollFailed" class="text-sm text-amber-600">{{ t('feishuKeyDelivery.pollFailed') }} <button class="underline" @click="poll">{{ t('common.retry') }}</button></p>
+        <p v-if="pollFailed" class="text-sm text-amber-600">{{ t('feishuKeyDelivery.pollFailed') }} <button class="underline" @click="poll">{{ t('feishuKeyDelivery.retryStatus') }}</button></p>
         <label v-if="job?.uncertain && !running" class="flex items-center gap-2 text-sm"><Toggle v-model="retryUncertain" />{{ t('feishuKeyDelivery.retryUncertain') }}</label>
       </div>
       <template #footer>

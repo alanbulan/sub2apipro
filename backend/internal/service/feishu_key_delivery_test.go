@@ -345,3 +345,64 @@ func TestFeishuKeyDeliveryEnterpriseMailboxIsDefault(t *testing.T) {
 	m.EnterpriseEmail = "STAFF@company.example"
 	require.Equal(t, "staff@company.example", feishuRecipientEmail(m, true))
 }
+
+func TestFeishuKeyDeliveryPreflightRejectsUnusableAccounts(t *testing.T) {
+	for _, scenario := range []string{"missing_email", "subscription", "balance", "other_tenant", "email_owner"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newFeishuKeyFixture(t)
+			ctx := context.Background()
+			switch scenario {
+			case "missing_email":
+				f.members["ou_employee"].EnterpriseEmail = ""
+			case "subscription":
+				f.client.Group.UpdateOneID(f.groupID).SetSubscriptionType(SubscriptionTypeSubscription).ExecX(ctx)
+			case "balance":
+				settings, err := f.service.Config(ctx)
+				require.NoError(t, err)
+				settings.Config.InitialBalance = 0
+				_, err = f.service.SaveConfig(ctx, settings.Config)
+				require.NoError(t, err)
+			case "other_tenant":
+				f.client.AuthIdentity.Update().SetProviderKey("feishu:cli_employee:other_tenant").ExecX(ctx)
+			case "email_owner":
+				f.client.User.Create().SetEmail("employee@company.example").SetPasswordHash("other-user").SaveX(ctx)
+			}
+			p, err := f.service.Preview(ctx, 1, nil, true)
+			require.NoError(t, err)
+			require.Zero(t, p.Ready)
+			require.Equal(t, 1, p.Skipped)
+			require.Zero(t, f.client.APIKey.Query().CountX(ctx))
+			require.Zero(t, f.client.RedeemCode.Query().CountX(ctx))
+			require.Empty(t, f.mails)
+		})
+	}
+}
+
+func TestFeishuKeyDeliverySMTPUncertainRequiresExplicitRetry(t *testing.T) {
+	f := newFeishuKeyFixture(t)
+	ctx := context.Background()
+	s := f.service
+	p, err := s.Preview(ctx, 1, nil, true)
+	require.NoError(t, err)
+	_, err = s.Start(ctx, 1, p.ID)
+	require.NoError(t, err)
+	s.send = func(context.Context, string, string, string) error {
+		return errors.New("close writer: connection lost after DATA")
+	}
+	s.workOne(ctx)
+	s.workOne(ctx)
+	current, err := s.Current(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, current.Uncertain)
+	_, err = s.Retry(ctx, 1, p.ID, false)
+	require.Error(t, err)
+	key := f.client.APIKey.Query().OnlyX(ctx)
+	s.send = func(_ context.Context, _, _, body string) error { require.Contains(t, body, key.Key); return nil }
+	_, err = s.Retry(ctx, 1, p.ID, true)
+	require.NoError(t, err)
+	s.workOne(ctx)
+	s.workOne(ctx)
+	require.Equal(t, 1, f.client.APIKey.Query().CountX(ctx))
+	require.Equal(t, 1, f.client.RedeemCode.Query().CountX(ctx))
+	require.Equal(t, 10.0, f.client.User.GetX(ctx, f.userID).Balance)
+}

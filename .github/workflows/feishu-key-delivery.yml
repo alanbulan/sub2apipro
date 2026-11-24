@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: feishu-key-delivery-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -24,6 +28,9 @@ jobs:
         run: |
           set -o pipefail
           go test -tags=unit -count=1 -timeout=10m -run '^(TestFeishu|TestDirectory|TestSMTP|TestEmailService|TestProvideCleanup)' ./internal/pkg/feishu ./internal/service ./internal/repository ./internal/handler ./internal/handler/admin ./internal/server/routes ./cmd/server 2>&1 | tee feishu-key-test.log
+      - name: Report backend failure
+        if: failure()
+        run: bash .github/scripts/report-ci-failure.sh backend/feishu-key-test.log
       - name: Save backend test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,11 +57,26 @@ jobs:
       - name: Lint and check frontend types
         working-directory: frontend
         run: |
-          pnpm run lint:check
-          pnpm run typecheck
+          set -o pipefail
+          pnpm run lint:check 2>&1 | tee lint.log
+          pnpm run typecheck 2>&1 | tee types.log
       - name: Feishu user interface regressions
         working-directory: frontend
-        run: pnpm exec vitest run src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/settings/FeishuSettings.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts
+        run: |
+          set -o pipefail
+          pnpm exec vitest run src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/settings/FeishuSettings.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee tests.log
       - name: Build frontend
         working-directory: frontend
-        run: pnpm run build
+        run: |
+          set -o pipefail
+          pnpm run build 2>&1 | tee build.log
+      - name: Report frontend failure
+        if: failure()
+        run: bash .github/scripts/report-ci-failure.sh frontend/lint.log frontend/types.log frontend/tests.log frontend/build.log
+      - name: Save frontend logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feishu-key-frontend
+          path: frontend/*.log
+          retention-days: 7
