@@ -1,8 +1,10 @@
-# 飞书员工 API Key 发放接口
+# 飞书员工 API Key 发放与余额充值接口
 
 站点：`https://api.beaconchip-token.com`。接口统一前缀：`/api/v1`。
 
 用途：外部系统查询员工、指定一个或多个本站用户，创建或获取各自的企业专用 Key，然后自行处理后续交付。**这两个新接口均不发送邮件，也不创建邮件任务，不需要配置 SMTP。**
+
+本文也补充了系统**已经上线的用户余额充值接口**，见第 6 节，无需增加后端接口。充值和发放 Key 使用同一个管理员登录 Token。
 
 每人只有一把企业发放专用 Key，与用户管理页「一键发送 Key」共用。首次调用创建，以后返回同一把；员工自己创建的其他 Key 不受影响。首次赠额只记一次，重试或换入口调用不重复赠额。
 
@@ -10,7 +12,8 @@
 
 1. 用管理员登录邮箱和密码登录，取得 `access_token`。
 2. 查员工列表，取得要发放的 `user_id`。
-3. 调用创建接口，传 `{"user_id":25}` 或 `{"user_ids":[25,26]}`，读取返回的 `items[].key`。
+3. 如果员工没有可用余额，且未配置首次赠额或有效订阅，先按第 6 节给用户账户充值。
+4. 调用创建接口，传 `{"user_id":25}` 或 `{"user_ids":[25,26]}`，读取返回的 `items[].key`。
 
 分组、首次赠额、Key 上限和有效期默认使用用户管理页「一键发送 Key」旁齿轮中的共享配置。也可以在请求里传一个 `group_id`，覆盖首次创建时的分组。
 
@@ -250,10 +253,12 @@ import urllib.request
 
 BASE = "https://api.beaconchip-token.com/api/v1"
 
-def request(path, token=None, body=None):
+def request(path, token=None, body=None, idempotency_key=None):
     headers = {"User-Agent": "Sub2API-KeyProvision/1.0"}
     if token:
         headers["Authorization"] = "Bearer " + token
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     data = None
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -290,8 +295,17 @@ def issue_keys(token, user_ids, group_id=None):
         body["group_id"] = group_id
     return request("/admin/users/feishu-key-delivery/issue", token, body)
 
+def recharge_users(token, user_ids, amount, request_id, notes=""):
+    # 单人同样传 [user_id]；amount 是每人的增加额，不是多人合计金额。
+    # 调用前保存 request_id 和请求体；同一笔业务重试必须复用它们。
+    return request("/admin/users/batch-recharge", token, {
+        "user_ids": list(user_ids), "amount": amount, "notes": notes
+    }, idempotency_key=request_id)
+
 # token = login(admin_email, admin_password)
 # employees = unissued_employees(token)
+# 需要充值时：每人增加 100；下一笔业务需换新 request_id。
+# recharge_users(token, [25, 26], 100, "employee-credit-20261124-001", "员工额度充值")
 # result = issue_keys(token, [25, 26])
 # for item in result["items"]:
 #     if item["status"] in ("created", "reused"):
@@ -300,6 +314,107 @@ def issue_keys(token, user_ids, group_id=None):
 #         your_failure_handler(item["user_id"], item["reason"])
 ```
 
+## 6. 用户余额充值（现有接口，可直接调用）
+
+充值增加的是指定用户的**账户余额**，不是管理员余额，也不是 Key 自身的消费上限。普通余额分组会按本站计费规则扣这个用户的余额；订阅分组仍按订阅规则计费。充值不会创建 Key、更改 Key 额度、绑定分组或发送邮件。
+
+沿用第 1 节的管理员登录 JWT，增加请求头 `Idempotency-Key`，用来识别同一笔充值业务。**单人和批量都推荐使用下面的批量接口，单人传一个用户 ID 即可**；它同时提交余额和充值记录，并提供独立于 HTTP 幂等缓存期限的防重记录。
+
+### 6.1 推荐：统一的单人／批量充值接口
+
+`POST /api/v1/admin/users/batch-recharge`
+
+```http
+Authorization: Bearer <access_token>
+Content-Type: application/json
+Idempotency-Key: employee-credit-20261124-001
+```
+
+```json
+{
+  "user_ids": [25, 26],
+  "amount": 100,
+  "notes": "员工额度充值"
+}
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `user_ids` | 是 | 1–500 个本站用户 ID，正整数；重复 ID 自动去重。单人填 `[25]` |
+| `amount` | 是 | **每个用户增加的余额**，单位与本站账户余额一致；范围 `0.00000001` 至 `1000000000`，服务端按 8 位小数舍入 |
+| `notes` | 否 | 充值备注，最多 1000 字节，进入管理员余额调整记录 |
+
+例如原余额分别是 20 和 5，给 `[25,26]` 充值 `amount:100` 后，各自余额变成 120 和 105，总计增加 200。**不会把每人的余额直接覆盖为 100。**
+
+成功响应：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "affected": 2,
+    "amount_per_user": 100,
+    "total_amount": 200
+  }
+}
+```
+
+`affected` 是该业务批次去重后的用户数。重放同一笔已成功的请求仍返回该批次结果，不表示又增加了一次余额。
+
+批量充值是**整批事务**：如果其中一个用户不存在、已删除或写入失败，整批余额和充值记录一同回滚；成功时每人都有一条余额调整记录。它与第 3 节 Key 发放的逐人成功／失败处理方式不同。不同用户需要不同金额时，拆成不同业务请求，分别使用唯一的幂等键。如启用了管理员充值返佣，沿用系统现有设置。
+
+沿用前面取得的 `$TOKEN`，调用示例：
+
+```bash
+# 这是同一笔充值的固定编号。第一次调用前生成并保存，重试时原样复用。
+RECHARGE_ID='employee-credit-20261124-001'
+
+curl --fail-with-body -sS --max-time 70 \
+  "$BASE/api/v1/admin/users/batch-recharge" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $RECHARGE_ID" \
+  -d '{"user_ids":[25,26],"amount":100,"notes":"员工额度充值"}'
+```
+
+同一笔业务重试，保持**管理员账号、接口、幂等键和完整请求体不变**；新一笔充值生成新的唯一幂等键，例如 UUID，并保存到调用方的业务记录。不要在每次网络重试时生成新键，否则会被视为新一笔充值。
+
+同一键配不同金额、名单或备注会返回 `IDEMPOTENCY_KEY_CONFLICT`。遇到网络超时或请求仍在处理中时，不要换键再次充值；先查询余额和充值记录，使用原键与原请求体重试。批量接口的成功防重记录独立于 HTTP 幂等缓存期限，保留期间可避免过期重试再次入账。
+
+### 6.2 原有单人余额调整接口（可选）
+
+`POST /api/v1/admin/users/25/balance`
+
+同样携带管理员 Token、`Content-Type: application/json` 和一个唯一的 `Idempotency-Key`。
+
+```json
+{
+  "balance": 100,
+  "operation": "add",
+  "notes": "员工额度充值"
+}
+```
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `balance` | 是 | 大于 0 的数值；`operation:add` 时表示**增加多少余额** |
+| `operation` | 是 | 充值使用 `add`；`set` 是覆盖余额，`subtract` 是减余额 |
+| `notes` | 否 | 管理员余额调整备注 |
+
+成功时 `data` 是更新后的用户对象，可从 `data.id` 和 `data.balance` 读取用户 ID、调整后的余额。该接口的请求幂等记录遵循系统配置的保存期限；需要长期重试防重时，优先用 6.1 的统一接口。
+
+### 6.3 查询余额与充值记录
+
+使用同一个管理员 Token：
+
+| 用途 | 请求 | 主要返回字段 |
+| --- | --- | --- |
+| 查询用户当前余额 | `GET /api/v1/admin/users/25` | `data.id`、`data.balance` |
+| 查询用户的管理员余额调整记录 | `GET /api/v1/admin/users/25/balance-history?type=admin_balance&page=1&page_size=20` | `data.items`、`data.total`、`data.page`、`data.pages` |
+
+余额调整记录中的 `value` 是该条调整金额，`notes` 是充值备注。按 `pages` 分页读取；查看是否完成充值时，把调用方保存的业务编号、请求体和备注一并用于对账。`Idempotency-Key` 不会作为独立字段出现在用户余额记录中，可以将业务编号写入 `notes` 便于查询。
+
 ## 错误与原有登录策略
 
 | 情况 | 处理 |
@@ -307,6 +422,10 @@ def issue_keys(token, user_ids, group_id=None):
 | HTTP 400 | 检查参数、ID、默认/指定分组与服务端发放配置 |
 | HTTP 401 | Token 缺失、失效或会话已撤销；重新登录或刷新 |
 | HTTP 403 | 需要管理员登录 JWT，或现有安全策略要求二次验证 |
+| 充值 HTTP 400，提示 `Idempotency-Key is required` 或 `IDEMPOTENCY_KEY_REQUIRED` | 补上 `Idempotency-Key`，检查正数金额和用户 ID；批量接口每次最多 500 个 ID |
+| 充值 HTTP 409 / `IDEMPOTENCY_KEY_CONFLICT` | 同一个幂等键对应了不同请求；核对业务记录，不要换键盲目重试 |
+| 充值 HTTP 409 / `IDEMPOTENCY_IN_PROGRESS`、`IDEMPOTENCY_RETRY_BACKOFF` | 原请求处理中或处于退避期，按 `Retry-After` 等待后复用原键与请求体重试 |
+| 充值 HTTP 503 / `IDEMPOTENCY_STORE_UNAVAILABLE` | 幂等存储暂不可用；保留原业务编号和请求体，恢复后再重试 |
 | HTTP 423 / `ADMIN_COMPLIANCE_ACK_REQUIRED` | 该管理员需先在现有管理页面完成一次站点确认，再重试；沿用全站管理接口策略 |
 | HTTP 429 | 触发站点现有限流，退避后重试 |
 | 批次内 `identity_mismatch` | 此 ID 没有当前应用/企业的唯一飞书绑定；从员工接口重新取 ID |
@@ -325,4 +444,4 @@ def issue_keys(token, user_ids, group_id=None):
 
 Token 刷新沿用 `POST /api/v1/auth/refresh`，请求体 `{"refresh_token":"登录返回的刷新Token"}`，随后使用新 `access_token`。具体会话策略沿用系统设置。
 
-接口返回 `Cache-Control: no-store`。完整 Key 只出现在明确的发放响应中，员工列表和任务记录不包含完整 Key；外部系统自行保管并交付这些凭证。
+员工列表和 Key 发放接口返回 `Cache-Control: no-store`。完整 Key 只出现在明确的发放响应中，员工列表和任务记录不包含完整 Key；外部系统自行保管并交付这些凭证。
