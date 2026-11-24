@@ -505,6 +505,15 @@ export default {
       failedToLoadUsages: '加载使用记录失败'
     },
 
+    conversationLogs: {
+      title: '会话记录', description: '查看每次用户对话请求及模型回复，便于问题排查与后续分析',
+      empty: '暂无会话记录', failedToLoad: '加载会话记录失败', detailTitle: '会话详情', request: '用户请求', response: '模型回复',
+      payloadSize: '请求 / 回复大小', truncated: '正文超过单条保存上限，当前展示内容已截断。',
+      filters: { sessionId: '会话 ID', sessionPlaceholder: '搜索会话 ID', requestId: '请求 ID', user: '用户', userId: '用户 ID', userPlaceholder: '按邮箱搜索用户', allUsers: '全部用户', deletedUser: '已删除', apiKeyId: 'API 密钥 ID', model: '模型', protocol: '协议', status: '状态', startTime: '开始时间', endTime: '结束时间' },
+      status: { pending: '记录中', completed: '已完成', failed: '失败', incomplete: '未完整' },
+      columns: { time: '时间', session: '会话', user: '用户 / 密钥', model: '模型', protocol: '协议', endpoint: '接口', status: '状态', httpStatus: 'HTTP 状态', duration: '耗时' }
+    },
+
     // Usage Records
     usage: {
       title: '使用记录',

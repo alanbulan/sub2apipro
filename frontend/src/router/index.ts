@@ -1,5 +1,5 @@
 /**
- * Vue Router configuration for Sub2API frontend
+ * Vue Router configuration for the frontend
  * Defines all application routes with lazy loading and navigation guards
  */
 
@@ -78,6 +78,12 @@ const routes: RouteRecordRaw[] = [
       title: 'OAuth Callback',
       titleKey: 'auth.oauthCallbackPageTitle'
     }
+  },
+  {
+    path: '/auth/feishu/callback',
+    name: 'FeishuOAuthCallback',
+    component: () => import('@/views/auth/FeishuCallbackView.vue'),
+    meta: { requiresAuth: false, title: 'Feishu Login', titleKey: 'auth.feishu.callbackTitle' }
   },
   {
     path: '/auth/linuxdo/callback',
@@ -514,6 +520,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/account-pool',
+    name: 'UserAccountPool',
+    component: () => import('@/views/user/PoolDashboardView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Account Pool', titleKey: 'nav.accountPool' }
+  },
+  {
     path: '/monitor',
     name: 'ChannelStatus',
     component: () => import('@/views/user/ChannelStatusView.vue'),
@@ -659,6 +671,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/conversation-logs',
+    name: 'AdminConversationLogs',
+    component: () => import('@/views/admin/ConversationLogsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Conversation Records',
+      titleKey: 'admin.conversationLogs.title',
+      descriptionKey: 'admin.conversationLogs.description'
+    }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },
@@ -777,6 +801,7 @@ let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
 const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
+  '/auth/feishu/callback',
   '/auth/linuxdo/callback',
   '/auth/dingtalk/callback',
   '/auth/dingtalk/email-completion',

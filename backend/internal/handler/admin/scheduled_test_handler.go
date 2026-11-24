@@ -20,20 +20,22 @@ func NewScheduledTestHandler(scheduledTestSvc *service.ScheduledTestService) *Sc
 }
 
 type createScheduledTestPlanRequest struct {
-	AccountID      int64  `json:"account_id" binding:"required"`
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression" binding:"required"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	AccountID      int64                      `json:"account_id" binding:"required"`
+	ModelID        string                     `json:"model_id"`
+	CronExpression string                     `json:"cron_expression" binding:"required"`
+	Enabled        *bool                      `json:"enabled"`
+	MaxResults     int                        `json:"max_results"`
+	AutoRecover    *bool                      `json:"auto_recover"`
+	PelicanConfig  *service.PelicanTestConfig `json:"pelican_config"`
 }
 
 type updateScheduledTestPlanRequest struct {
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	ModelID        string                     `json:"model_id"`
+	CronExpression string                     `json:"cron_expression"`
+	Enabled        *bool                      `json:"enabled"`
+	MaxResults     int                        `json:"max_results"`
+	AutoRecover    *bool                      `json:"auto_recover"`
+	PelicanConfig  *service.PelicanTestConfig `json:"pelican_config"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -62,6 +64,7 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 
 	plan := &service.ScheduledTestPlan{
 		AccountID:      req.AccountID,
+		PelicanConfig:  req.PelicanConfig,
 		ModelID:        req.ModelID,
 		CronExpression: req.CronExpression,
 		Enabled:        true,
@@ -118,6 +121,9 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 		existing.AutoRecover = *req.AutoRecover
 	}
 
+	if req.PelicanConfig != nil {
+		existing.PelicanConfig = req.PelicanConfig
+	}
 	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing)
 	if err != nil {
 		response.BadRequest(c, err.Error())

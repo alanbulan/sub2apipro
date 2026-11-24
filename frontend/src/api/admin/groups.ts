@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import { AUTH_USER_KEY, getAuthItem } from '@/utils/authStorage'
 import type {
   AdminGroup,
   GroupPlatform,
@@ -86,7 +87,7 @@ export async function getByPlatform(platform: GroupPlatform): Promise<AdminGroup
   return getAll(platform)
 }
 
-/** 获取当前 Sub2API 服务端的 Live 运行环境能力。 */
+/** 获取当前服务端的 Live 运行环境能力。 */
 export async function getLiveCapability(): Promise<LiveCapability> {
   const { data } = await apiClient.get<LiveCapability>('/admin/groups/live-capability')
   return data
@@ -143,7 +144,7 @@ interface DuplicateOperationScope {
 
 function getCurrentAdminID(): string | null {
   try {
-    const rawUser = globalThis.localStorage?.getItem('auth_user')
+    const rawUser = getAuthItem(AUTH_USER_KEY)
     if (!rawUser) return null
 
     const user: unknown = JSON.parse(rawUser)

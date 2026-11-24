@@ -4,7 +4,37 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sub2API - AI API Gateway</title>
+    <script nonce="__CSP_NONCE_VALUE__">
+      (() => {
+        try {
+          const root = document.documentElement;
+          const themes = [
+            'minimalism', 'apple', 'notion', 'bento', 'glass', 'neoBrutalism',
+            'swiss', 'editorial', 'skeuomorphism', 'flat', 'material',
+            'neumorphism', 'saas', 'enterprise', 'commerce', 'darkTech',
+            'playful', 'organic', 'y2k', 'memphis', 'terminal', 'wabiSabi',
+            'bauhaus', 'artDeco'
+          ];
+          const read = (key, values, fallback) => {
+            const value = localStorage.getItem(key);
+            return values.includes(value) ? value : fallback;
+          };
+          root.dataset.appTheme = read('app-theme', themes, 'minimalism');
+          const savedColorMode = localStorage.getItem('theme');
+          const resolvedColorMode = savedColorMode === 'dark' ||
+            (savedColorMode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          root.dataset.colorMode = ['system', 'light', 'dark'].includes(savedColorMode) ? savedColorMode : 'system';
+          root.dataset.fontPreset = read('font-preset', ['system', 'humanist', 'serif', 'mono'], 'system');
+          root.dataset.radius = read('radius-preset', ['sharp', 'soft', 'round'], 'soft');
+          root.dataset.density = read('density', ['compact', 'comfortable', 'spacious'], 'comfortable');
+          root.dataset.sidebarStyle = read('sidebar-style', ['default', 'floating', 'compact'], 'default');
+          root.dataset.layout = read('layout', ['default', 'wide', 'centered'], 'default');
+          root.dataset.contentWidth = read('content-width', ['standard', 'wide', 'full'], 'standard');
+          root.classList.toggle('dark', resolvedColorMode);
+        } catch {}
+      })();
+    </script>
+    <title></title>
   </head>
   <body>
     <div id="app"></div>

@@ -221,6 +221,7 @@ const props = withDefaults(
     user: User | null
     linuxdoEnabled?: boolean
     dingtalkEnabled?: boolean
+    feishuEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
@@ -232,6 +233,7 @@ const props = withDefaults(
   {
     linuxdoEnabled: false,
     dingtalkEnabled: false,
+    feishuEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,
@@ -418,6 +420,7 @@ function isProviderEnabledForBinding(provider: BindableProvider): boolean {
   if (provider === 'linuxdo') {
     return props.linuxdoEnabled
   }
+  if (provider === 'feishu') return props.feishuEnabled
   if (provider === 'dingtalk') {
     return props.dingtalkEnabled
   }
@@ -459,6 +462,17 @@ const providerItems = computed(() => [
     details: getBindingDetails('dingtalk'),
   },
   {
+    provider: 'feishu' as const,
+    label: t('profile.authBindings.providers.feishu'),
+    bound: getBindingStatus('feishu'),
+    canBind:
+      !getBindingStatus('feishu') &&
+      isProviderEnabledForBinding('feishu') &&
+      (getBindingDetails('feishu')?.can_bind ?? true),
+    canUnbind: Boolean(getBindingStatus('feishu') && getBindingDetails('feishu')?.can_unbind),
+    details: getBindingDetails('feishu'),
+  },
+  {
     provider: 'oidc' as const,
     label: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName }),
     bound: getBindingStatus('oidc'),
@@ -483,6 +497,7 @@ const providerItems = computed(() => [
 ])
 
 function providerInitial(provider: UserAuthProvider): string {
+  if (provider === 'feishu') return 'F'
   if (provider === 'linuxdo') {
     return 'L'
   }

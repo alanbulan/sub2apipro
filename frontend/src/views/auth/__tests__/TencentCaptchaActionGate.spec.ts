@@ -5,6 +5,7 @@ import LoginView from '@/views/auth/LoginView.vue'
 
 const loginMock = vi.fn()
 const loginWithPasskeyMock = vi.fn()
+const setLoginPersistenceMock = vi.fn()
 const getPublicSettingsMock = vi.fn()
 const startOAuthLoginMock = vi.fn()
 const verifyActionMock = vi.fn()
@@ -31,6 +32,7 @@ vi.mock('vue-i18n', async () => {
 vi.mock('@/stores', () => ({
   useAuthStore: () => ({
     login: (...args: unknown[]) => loginMock(...args),
+    setLoginPersistence: (...args: unknown[]) => setLoginPersistenceMock(...args),
     loginWithPasskey: (...args: unknown[]) => loginWithPasskeyMock(...args)
   }),
   useAppStore: () => ({
@@ -103,6 +105,9 @@ describe('Tencent captcha action gate', () => {
     startOAuthLoginMock.mockReset()
     verifyActionMock.mockReset()
     captchaResetMock.mockReset()
+    setLoginPersistenceMock.mockReset()
+    localStorage.clear()
+    sessionStorage.clear()
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
@@ -142,7 +147,7 @@ describe('Tencent captcha action gate', () => {
     expect(loginMock).toHaveBeenCalledWith(expect.objectContaining({
       tencent_captcha_ticket: 'ticket-1',
       tencent_captcha_randstr: '@rand-1'
-    }))
+    }), false)
   })
 
   it('does not call login when Tencent captcha is closed', async () => {
@@ -178,6 +183,7 @@ describe('Tencent captcha action gate', () => {
     await flushPromises()
 
     expect(verifyActionMock).toHaveBeenCalledOnce()
+    expect(setLoginPersistenceMock).toHaveBeenCalledWith(false)
     expect(startOAuthLoginMock).toHaveBeenCalledWith(
       { provider: 'github', params: { redirect: '/dashboard' } },
       {
@@ -212,7 +218,7 @@ describe('Tencent captcha action gate', () => {
     expect(loginWithPasskeyMock).toHaveBeenCalledWith({
       tencent_captcha_ticket: 'ticket-1',
       tencent_captcha_randstr: '@rand-1'
-    })
+    }, false)
     expect(captchaResetMock).toHaveBeenCalledOnce()
   })
 

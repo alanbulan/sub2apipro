@@ -343,7 +343,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 	}
 
 	// 获取网站名称
-	siteName := "Sub2API"
+	siteName := defaultSiteName
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -385,7 +385,7 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 	}
 
 	// 获取网站名称
-	siteName := "Sub2API"
+	siteName := defaultSiteName
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -555,6 +555,9 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	}
 
 	// 验证密码
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return "", nil, err
+	}
 	if !s.CheckPassword(password, user.PasswordHash) {
 		return "", nil, ErrInvalidCredentials
 	}
@@ -659,6 +662,9 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 		return "", nil, ErrUserNotActive
 	}
 
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return "", nil, err
+	}
 	// 尽力补全：当用户名为空时，使用第三方返回的用户名回填。
 	if user.Username == "" && username != "" {
 		user.Username = username
@@ -857,6 +863,9 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Username: true}); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
 		}
+	}
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return nil, nil, err
 	}
 	if created {
 		user = s.applyOAuthSignupPromoCode(ctx, user, promoCode)
@@ -1150,6 +1159,9 @@ func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User, s
 	}
 
 	if !existed {
+		if user.SignupSource == "feishu" {
+			return nil, false
+		}
 		if err = client.AuthIdentity.Create().
 			SetUserID(user.ID).
 			SetProviderType("email").
@@ -1192,6 +1204,8 @@ func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User, s
 func inferLegacySignupSource(email string) string {
 	normalized := strings.ToLower(strings.TrimSpace(email))
 	switch {
+	case strings.HasSuffix(normalized, FeishuConnectSyntheticEmailDomain):
+		return "feishu"
 	case strings.HasSuffix(normalized, DingTalkConnectSyntheticEmailDomain):
 		return "dingtalk"
 	case strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain):
@@ -1430,7 +1444,8 @@ func isReservedEmail(email string) bool {
 	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, OIDCConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, WeChatConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(normalized, DingTalkConnectSyntheticEmailDomain)
+		strings.HasSuffix(normalized, DingTalkConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, FeishuConnectSyntheticEmailDomain)
 }
 
 // GenerateToken 生成JWT access token
@@ -1573,13 +1588,16 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	}
 
 	// Check if user is active
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return "", "", false
+	}
 	if !user.IsActive() {
 		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user: %s", email)
 		return "", "", false
 	}
 
 	// Get site name
-	siteName := "Sub2API"
+	siteName := defaultSiteName
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -1671,6 +1689,9 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	}
 
 	// Hash new password
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return ErrInvalidResetToken
+	}
 	hashedPassword, err := s.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)

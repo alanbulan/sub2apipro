@@ -63,7 +63,8 @@ func parseOAuthRedirectFragment(t *testing.T, location string) url.Values {
 
 	rawValues := parsed.RawQuery
 	if rawValues == "" {
-		rawValues = parsed.Fragment
+		// Browsers expose the encoded fragment through location.hash.
+		rawValues = parsed.EscapedFragment()
 	}
 	values, err := url.ParseQuery(rawValues)
 	require.NoError(t, err)

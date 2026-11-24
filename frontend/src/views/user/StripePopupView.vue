@@ -58,6 +58,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
+import { AUTH_TOKEN_KEY, getAuthItem } from '@/utils/authStorage'
 import { buildApiUrl } from '@/api/client'
 
 interface StripeWithWechatPay {
@@ -175,9 +176,9 @@ function startPolling() {
     if (inFlight) return
     inFlight = true
     try {
-      // access token 存储在 localStorage 的 'auth_token' 键下（见 api/client.ts），
-      // 之前误读 'token' 导致轮询请求不带认证、永远 401，支付成功无法被检测到。
-      const token = localStorage.getItem('auth_token') || ''
+      // Access tokens use the shared auth storage selected at login (see api/client.ts).
+      // Reading the old 'token' key here caused polling to omit authentication and stay at 401.
+      const token = getAuthItem(AUTH_TOKEN_KEY) || ''
       const res = await fetch(buildApiUrl(`/payment/orders/${orderId}`), {
         headers: token ? { Authorization: 'Bearer ' + token } : {},
         credentials: 'include',

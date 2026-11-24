@@ -77,6 +77,7 @@ func RegisterAdminRoutes(
 
 		// 系统设置
 		registerSettingsRoutes(admin, h, stepUpAuth)
+		registerFeishuSettingsRoutes(admin, h, stepUpAuth)
 
 		// 数据管理
 		registerDataManagementRoutes(admin, h, stepUpAuth)
@@ -95,6 +96,12 @@ func RegisterAdminRoutes(
 
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
+
+		conversationLogs := admin.Group("/conversation-logs")
+		{
+			conversationLogs.GET("", h.Admin.ConversationLog.List)
+			conversationLogs.GET("/:id", h.Admin.ConversationLog.Get)
+		}
 
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
@@ -316,6 +323,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.GET("/:id/rpm-status", h.Admin.User.GetUserRPMStatus)
 		users.POST("/batch-concurrency", h.Admin.User.BatchUpdateConcurrency)
 		users.POST("/batch-limits", h.Admin.User.BatchUpdateLimits)
+		users.POST("/batch-recharge", h.Admin.User.BatchRecharge)
 		users.POST("/batch-disable", h.Admin.User.BatchDisable)
 		users.POST("/blacklist-matches", h.Admin.User.FindBlacklistedEmailUsers)
 		users.GET("/:id/platform-quotas", h.Admin.User.GetUserPlatformQuotas)
@@ -397,6 +405,8 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/:id/opencode-go-usage/refresh", h.Admin.Account.RefreshOpenCodeGoUsage)
 		accounts.DELETE("/:id", h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)
+		accounts.POST("/:id/test-pelican", h.Admin.Account.TestPelicanAccount)
+		accounts.POST("/:id/probe-state", h.Admin.Account.ProbeIntelligenceState)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
 		accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
 		accounts.POST("/:id/apply-oauth-credentials", h.Admin.Account.ApplyOAuthCredentials)

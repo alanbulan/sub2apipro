@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="teleportTarget">
     <Transition name="modal">
       <div
         v-if="show"
@@ -84,6 +84,9 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+const teleportTarget = computed(() => props.teleportTo
+  ?? (props.show && typeof document !== 'undefined' ? document.fullscreenElement : null)
+  ?? 'body')
 
 // Custom z-index style (overrides the default z-50 from CSS)
 const zIndexStyle = computed(() => {

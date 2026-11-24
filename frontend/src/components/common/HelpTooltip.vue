@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
     <!-- Trigger Icon -->
     <slot name="trigger">
       <svg
-        class="h-4 w-4 cursor-help text-gray-400 transition-colors hover:text-primary-600 dark:text-gray-500 dark:hover:text-primary-400"
+        class="app-theme-readable-muted h-4 w-4 cursor-help transition-colors hover:text-primary-600 dark:hover:text-primary-400"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -143,7 +143,7 @@ onBeforeUnmount(() => {
         <button
           v-if="props.trigger === 'click'"
           type="button"
-          class="absolute right-1.5 top-1.5 rounded p-1 text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+          class="app-theme-tooltip-close absolute right-1.5 top-1.5 rounded p-1 transition-colors"
           aria-label="Close"
           @click.stop="closeTooltip"
         >

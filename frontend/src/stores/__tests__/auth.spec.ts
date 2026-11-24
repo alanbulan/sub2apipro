@@ -55,6 +55,7 @@ describe('useAuthStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    sessionStorage.clear()
     vi.useFakeTimers()
     vi.clearAllMocks()
   })
@@ -92,6 +93,22 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(false)
     })
 
+    it('未勾选记住我时仅保存到当前浏览器会话', async () => {
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      await store.login({ email: 'test@example.com', password: '123456' }, false)
+
+      expect(mockLogin).toHaveBeenCalledWith(
+        { email: 'test@example.com', password: '123456' },
+        false
+      )
+      expect(sessionStorage.getItem('auth_token')).toBe('test-token-123')
+      expect(sessionStorage.getItem('auth_user')).toBe(JSON.stringify(fakeUser))
+      expect(localStorage.getItem('auth_token')).toBeNull()
+      expect(localStorage.getItem('auth_user')).toBeNull()
+    })
+
     it('需要 2FA 时返回响应但不设置认证状态', async () => {
       const twoFAResponse = { requires_2fa: true, temp_token: 'temp-123' }
       mockLogin.mockResolvedValue(twoFAResponse)
@@ -117,10 +134,13 @@ describe('useAuthStore', () => {
       expect(store.token).toBe('test-token-123')
       expect(store.user).toEqual(fakeUser)
       expect(user).toEqual(fakeUser)
-      expect(mockLogin2FA).toHaveBeenCalledWith({
-        temp_token: 'temp-123',
-        totp_code: '654321',
-      })
+      expect(mockLogin2FA).toHaveBeenCalledWith(
+        {
+          temp_token: 'temp-123',
+          totp_code: '654321',
+        },
+        true
+      )
     })
 
     it('2FA 验证失败时清除状态并抛出错误', async () => {
@@ -130,6 +150,27 @@ describe('useAuthStore', () => {
       await expect(store.login2FA('temp-123', '000000')).rejects.toThrow('Invalid TOTP')
       expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
+    })
+
+    it('未勾选记住我时 2FA 完成后仍仅保存到当前浏览器会话', async () => {
+      mockLogin.mockResolvedValue({ requires_2fa: true, temp_token: 'temp-123' })
+      mockLogin2FA.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      await store.login({ email: 'test@example.com', password: '123456' }, false)
+      await store.login2FA('temp-123', '654321')
+
+      expect(mockLogin2FA).toHaveBeenCalledWith(
+        {
+          temp_token: 'temp-123',
+          totp_code: '654321',
+        },
+        false
+      )
+      expect(sessionStorage.getItem('auth_token')).toBe('test-token-123')
+      expect(sessionStorage.getItem('auth_user')).toBe(JSON.stringify(fakeUser))
+      expect(localStorage.getItem('auth_token')).toBeNull()
+      expect(localStorage.getItem('auth_user')).toBeNull()
     })
   })
 
@@ -209,6 +250,20 @@ describe('useAuthStore', () => {
       const store = useAuthStore()
       store.checkAuth()
 
+      expect(store.isAuthenticated).toBe(true)
+    })
+
+    it('从 sessionStorage 恢复未勾选记住我的会话', () => {
+      sessionStorage.setItem('auth_storage_mode', 'session')
+      sessionStorage.setItem('auth_token', 'session-token')
+      sessionStorage.setItem('auth_user', JSON.stringify(fakeUser))
+      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
+
+      const store = useAuthStore()
+      store.checkAuth()
+
+      expect(store.token).toBe('session-token')
+      expect(store.user).toEqual(fakeUser)
       expect(store.isAuthenticated).toBe(true)
     })
 

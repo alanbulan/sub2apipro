@@ -1,5 +1,8 @@
 <template>
   <div class="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+    <div class="absolute right-4 top-4 z-20">
+      <ThemeSwitcher />
+    </div>
     <!-- Background -->
     <div
       class="absolute inset-0 bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
@@ -20,7 +23,7 @@
 
       <!-- Grid Pattern -->
       <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
+        class="auth-grid-pattern absolute inset-0"
       ></div>
     </div>
 
@@ -66,12 +69,13 @@
 import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
+import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
 
 const appStore = useAppStore()
 
-const siteName = computed(() => appStore.siteName || 'Sub2API')
+const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'Subscription to API Conversion Platform')
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'API Gateway Platform')
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 const currentYear = computed(() => new Date().getFullYear())
@@ -84,5 +88,12 @@ onMounted(() => {
 <style scoped>
 .text-gradient {
   @apply bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent;
+}
+
+.auth-grid-pattern {
+  background-image:
+    linear-gradient(rgb(var(--primary-500-rgb) / 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--primary-500-rgb) / 0.03) 1px, transparent 1px);
+  background-size: 64px 64px;
 }
 </style>

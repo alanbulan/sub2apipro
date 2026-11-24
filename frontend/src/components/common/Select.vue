@@ -45,8 +45,8 @@
       </span>
     </button>
 
-    <!-- Teleport dropdown to body to escape stacking context -->
-    <Teleport to="body">
+    <!-- Fullscreen pages can keep the dropdown inside their fullscreen element. -->
+    <Teleport :to="teleportTarget">
       <Transition name="select-dropdown">
         <div
           v-if="isOpen"
@@ -155,6 +155,7 @@ interface Props {
   id?: string
   ariaLabel?: string
   ariaDescribedby?: string
+  teleportTo?: string | HTMLElement
   /** 远程搜索模式：输入不在本地过滤 options，而是防抖后 emit('search', query)，由父组件请求数据更新 options */
   remote?: boolean
   /** 远程搜索模式下的加载态：options 为空时下拉显示 loading 文案 */
@@ -183,6 +184,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const isOpen = ref(false)
+const teleportTarget = computed(() => props.teleportTo
+  ?? (isOpen.value && typeof document !== 'undefined' ? document.fullscreenElement : null)
+  ?? 'body')
 const searchQuery = ref('')
 const focusedIndex = ref(-1)
 const containerRef = ref<HTMLElement | null>(null)

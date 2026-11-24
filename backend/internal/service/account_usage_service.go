@@ -329,6 +329,7 @@ type ClaudeUsageFetcher interface {
 
 // AccountUsageService 账号使用量查询服务
 type AccountUsageService struct {
+	poolQuotaRefresh        sync.Map // account ID -> last background quota-read start
 	accountRepo             AccountRepository
 	usageLogRepo            UsageLogRepository
 	usageFetcher            ClaudeUsageFetcher
@@ -1167,7 +1168,10 @@ func (s *AccountUsageService) cachedAntigravityUsage(accountID int64, force bool
 }
 
 // getAntigravityUsage 获取 Antigravity 账户额度；force 跳过缓存（仍经 singleflight 合并并发请求）。
-func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
+// getAntigravityUsage defaults to the cached, non-forced policy for callers
+// that do not request a probe, including the pool quota background refresh.
+func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account, forceProbe ...bool) (*UsageInfo, error) {
+	force := len(forceProbe) > 0 && forceProbe[0]
 	if s.antigravityQuotaFetcher == nil || !s.antigravityQuotaFetcher.CanFetch(account) {
 		now := time.Now()
 		return &UsageInfo{UpdatedAt: &now}, nil

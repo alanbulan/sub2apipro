@@ -60,6 +60,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini   int
 	cfg                        *config.Config
 	settingService             *service.SettingService
+	conversationLogService     *service.ConversationLogService
 }
 
 // NewGatewayHandler creates a new GatewayHandler

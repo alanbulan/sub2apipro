@@ -1,4 +1,5 @@
 import type { SubscriptionBulkActionRequest } from '@/api/admin/subscriptions'
+import { AUTH_USER_KEY, getAuthItem } from '@/utils/authStorage'
 
 export interface BulkSubscriptionOperation {
   request: SubscriptionBulkActionRequest
@@ -11,7 +12,7 @@ const pendingKeys = new Map<string, string>()
 
 function currentAdminId(): number | null {
   try {
-    const user = JSON.parse(globalThis.localStorage?.getItem('auth_user') ?? 'null') as { id?: unknown } | null
+    const user = JSON.parse(getAuthItem(AUTH_USER_KEY) ?? 'null') as { id?: unknown } | null
     const id = user?.id
     return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : null
   } catch {

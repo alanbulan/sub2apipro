@@ -1,6 +1,196 @@
+@import './styles/themes/minimalism.css';
+@import './styles/themes/apple.css';
+@import './styles/themes/notion.css';
+@import './styles/themes/bento.css';
+@import './styles/themes/glass.css';
+@import './styles/themes/neo-brutalism.css';
+@import './styles/themes/swiss.css';
+@import './styles/themes/editorial.css';
+@import './styles/themes/skeuomorphism.css';
+@import './styles/themes/flat.css';
+@import './styles/themes/material.css';
+@import './styles/themes/neumorphism.css';
+@import './styles/themes/saas.css';
+@import './styles/themes/enterprise.css';
+@import './styles/themes/commerce.css';
+@import './styles/themes/dark-tech.css';
+@import './styles/themes/playful.css';
+@import './styles/themes/organic.css';
+@import './styles/themes/y2k.css';
+@import './styles/themes/memphis.css';
+@import './styles/themes/terminal.css';
+@import './styles/themes/wabi-sabi.css';
+@import './styles/themes/bauhaus.css';
+@import './styles/themes/art-deco.css';
+@import './styles/theme-readability.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --color-primary: var(--primary-500);
+  --shadow-glass: 0 8px 32px var(--shadow-color);
+  --shadow-glass-sm: 0 4px 16px var(--shadow-color);
+  --glow: 0 0 20px color-mix(in srgb, var(--primary-500) 25%, transparent);
+  --glow-lg: 0 0 40px color-mix(in srgb, var(--primary-500) 35%, transparent);
+  --shadow-card: 0 1px 3px var(--shadow-color);
+  --shadow-card-hover: 0 10px 40px var(--shadow-color);
+  --inner-glow: inset 0 1px 0 color-mix(in srgb, var(--surface-raised) 10%, transparent);
+  --glass-tint: color-mix(in srgb, var(--surface-raised) 10%, transparent);
+  --glass-tint-strong: color-mix(in srgb, var(--surface-raised) 5%, transparent);
+  --mesh-a: color-mix(in srgb, var(--primary-500) 12%, transparent);
+  --mesh-b: color-mix(in srgb, var(--accent-500) 8%, transparent);
+  --mesh-c: color-mix(in srgb, var(--primary-400) 8%, transparent);
+  --glow-sm: 0 0 0 1px color-mix(in srgb, var(--primary-500) 20%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--muted) 50%, transparent);
+  --scrollbar-thumb-dark: color-mix(in srgb, var(--dark-500) 50%, transparent);
+  --stripe-base: #635bff;
+  --stripe-hover: #5851ea;
+  --stripe-dark: #7a73ff;
+  --airwallex-base: #14171a;
+  --airwallex-hover: #20252a;
+  --airwallex-dark: #7af0c4;
+  --airwallex-dark-hover: #62d9ad;
+  --alipay-base: #00aeef;
+  --alipay-hover: #009dd6;
+  --alipay-active: #008cbe;
+  --wxpay-base: #2bb741;
+  --wxpay-hover: #24a038;
+  --wxpay-active: #1d8a2f;
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --control-radius: 0.75rem;
+  --density-scale: 1;
+  --app-content-max: 100%;
+}
+
+/* Appearance preferences. These selectors are deliberately outside the
+   individual source files: they are user controls layered over any design. */
+:root[data-radius='sharp'] {
+  --radius-xs: 0;
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+  --radius-3xl: 1rem;
+  --control-radius: 0.375rem;
+  --radius: 0.25rem;
+}
+
+:root[data-radius='soft'] {
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+  --radius-3xl: 1.5rem;
+  --control-radius: 0.75rem;
+  --radius: 0.75rem;
+}
+
+:root[data-radius='round'] {
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+  --control-radius: 1.25rem;
+  --radius: 1.25rem;
+}
+
+:root[data-font-preset='humanist'] {
+  --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+:root[data-font-preset='serif'] {
+  --font-ui: Georgia, 'Times New Roman', 'Songti SC', SimSun, serif;
+}
+
+:root[data-font-preset='mono'] {
+  --font-ui: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Noto Sans Mono', monospace;
+}
+
+:root[data-density='compact'] {
+  --density-scale: 0.88;
+}
+
+:root[data-density='spacious'] {
+  --density-scale: 1.14;
+}
+
+:root[data-content-width='standard'] { --app-content-max: 100%; }
+:root[data-content-width='wide'] { --app-content-max: 92rem; }
+:root[data-content-width='full'] { --app-content-max: none; }
+
+[data-app-theme]:not(.dark) {
+  color-scheme: light;
+}
+
+[data-app-theme].dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.card,
+.modal-content,
+.dialog-container,
+.sidebar {
+  border-radius: var(--radius, 0.75rem);
+  background: var(--surface-raised);
+  border-color: var(--border-color, currentColor);
+  box-shadow: var(--card-shadow, 0 1px calc(var(--hard-offset, 0px) + 3px) var(--shadow-color));
+  backdrop-filter: var(--backdrop-filter, none);
+}
+
+[data-app-theme='neoBrutalism'] .card,
+[data-app-theme='neoBrutalism'] .modal-content,
+[data-app-theme='neoBrutalism'] .dialog-container,
+[data-app-theme='neoBrutalism'] .sidebar,
+[data-app-theme='neoBrutalism'] .btn-secondary,
+[data-app-theme='neoBrutalism'] .input {
+  border-width: var(--outline-width) !important;
+  border-style: solid !important;
+  box-shadow: var(--hard-offset) var(--hard-offset) 0 var(--shadow-color) !important;
+}
+
+[data-app-theme='neoBrutalism'] .btn:not(:disabled):hover,
+[data-app-theme='neoBrutalism'] .card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: calc(var(--hard-offset) + 2px) calc(var(--hard-offset) + 2px) 0 var(--shadow-color) !important;
+}
+
+[data-app-theme='neoBrutalism'] .btn:not(:disabled):active,
+[data-app-theme='neoBrutalism'] .card:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--shadow-color) !important;
+}
+
+[data-app-theme='wabiSabi'] .btn-primary {
+  background-image: none;
+}
+
+.theme-grid-pattern {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary-500) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary-500) 3%, transparent) 1px, transparent 1px);
+}
 
 @layer base {
   * {
@@ -30,12 +220,12 @@
 
     *:hover,
     *:focus-within {
-      scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
     }
 
     .dark *:hover,
     .dark *:focus-within {
-      scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+      scrollbar-color: var(--scrollbar-thumb-dark) transparent;
     }
   }
 
@@ -120,32 +310,45 @@
   }
 
   .btn-stripe {
-    @apply bg-[#635bff] text-white shadow-md shadow-[#635bff]/25;
-    @apply hover:bg-[#5851ea] hover:shadow-lg hover:shadow-[#635bff]/30;
-    @apply dark:bg-[#7a73ff] dark:shadow-[#7a73ff]/20;
-    @apply dark:hover:bg-[#635bff];
+    background-color: var(--stripe-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
+
+  .btn-stripe:hover { background-color: var(--stripe-hover); }
+  .dark .btn-stripe { background-color: var(--stripe-dark); }
+  .dark .btn-stripe:hover { background-color: var(--stripe-base); }
 
   .btn-airwallex {
-    @apply bg-[#14171A] text-white shadow-md shadow-emerald-500/20;
-    @apply hover:bg-[#20252a] hover:shadow-lg hover:shadow-emerald-500/25;
-    @apply dark:bg-[#7AF0C4] dark:text-gray-950 dark:shadow-emerald-500/20;
-    @apply dark:hover:bg-[#62d9ad];
+    background-color: var(--airwallex-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
+
+  .btn-airwallex:hover { background-color: var(--airwallex-hover); }
+  .dark .btn-airwallex {
+    background-color: var(--airwallex-dark);
+    color: var(--gray-950);
+  }
+  .dark .btn-airwallex:hover { background-color: var(--airwallex-dark-hover); }
 
   .btn-alipay {
-    @apply bg-[#00AEEF] text-white shadow-md shadow-[#00AEEF]/25;
-    @apply hover:bg-[#009dd6] hover:shadow-lg hover:shadow-[#00AEEF]/30;
-    @apply active:bg-[#008cbe];
-    @apply dark:shadow-[#00AEEF]/20;
+    background-color: var(--alipay-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
 
+  .btn-alipay:hover { background-color: var(--alipay-hover); }
+  .btn-alipay:active { background-color: var(--alipay-active); }
+
   .btn-wxpay {
-    @apply bg-[#2BB741] text-white shadow-md shadow-[#2BB741]/25;
-    @apply hover:bg-[#24a038] hover:shadow-lg hover:shadow-[#2BB741]/30;
-    @apply active:bg-[#1d8a2f];
-    @apply dark:shadow-[#2BB741]/20;
+    background-color: var(--wxpay-base);
+    @apply text-white shadow-md;
+    box-shadow: var(--glow-sm), var(--shadow-card);
   }
+
+  .btn-wxpay:hover { background-color: var(--wxpay-hover); }
+  .btn-wxpay:active { background-color: var(--wxpay-active); }
 
   .btn-sm {
     @apply rounded-lg px-3 py-1.5 text-xs;
@@ -276,11 +479,23 @@
   }
 
   .stat-icon-success {
-    @apply bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400;
+    background-color: color-mix(in srgb, var(--status-success) 10%, transparent);
+    @apply text-status-success;
+
+    .dark & {
+      background-color: color-mix(in srgb, var(--status-success) 20%, transparent);
+      @apply text-status-success;
+    }
   }
 
   .stat-icon-warning {
-    @apply bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400;
+    background-color: color-mix(in srgb, var(--status-warning) 10%, transparent);
+    @apply text-status-warning;
+
+    .dark & {
+      background-color: color-mix(in srgb, var(--status-warning) 20%, transparent);
+      @apply text-status-warning;
+    }
   }
 
   .stat-icon-danger {
@@ -776,3 +991,798 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* Theme-aware semantic surfaces. The utility names are kept for existing
+   views, but their broad page surfaces follow the selected design tokens. */
+[data-app-theme] .bg-gray-50 {
+  background-color: var(--surface);
+}
+
+[data-app-theme] .bg-gray-100 {
+  background-color: var(--surface-muted);
+}
+
+/* White is intentionally still a literal Tailwind text color because white
+   labels on status buttons must remain white. Remap only background utilities;
+   explicit dark variants keep their own token and QR/knob surfaces opt out. */
+[data-app-theme]:not(.dark) [class~='bg-white']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: var(--surface-raised) !important;
+}
+
+[data-app-theme].dark [class~='bg-white']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: var(--surface-raised) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/10']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 10%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/20']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 20%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/40']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 40%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/50']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 50%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/60']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 60%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/70']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 70%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/80']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 80%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/85']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 85%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/90']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 90%, transparent) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='bg-white/95']:not([class~='pointer-events-none']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 95%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/10']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 10%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/20']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 20%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/40']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 40%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/50']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 50%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/60']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 60%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/70']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 70%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/80']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 80%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/85']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 85%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/90']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 90%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/95']:not([class~='pointer-events-none']):not([class*='dark:bg-dark-']):not(.theme-preserve-white) {
+  background-color: color-mix(in srgb, var(--surface-raised) 95%, transparent) !important;
+}
+
+[data-app-theme] .theme-preserve-white[class~='bg-white'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/10'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/20'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/40'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/50'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/60'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/70'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/80'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/85'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/90'],
+[data-app-theme] .theme-preserve-white[class~='bg-white/95'] {
+  background-color: #fff !important;
+}
+
+/* A literal white dark-mode surface is intentional for a few public actions.
+   Keep its matching dark variant from being replaced by the active theme. */
+[data-app-theme].dark [class~='bg-white'][class*='dark:bg-white'] {
+  background-color: #fff !important;
+}
+
+[data-app-theme].dark [class~='bg-white/10'][class*='dark:bg-white/10'] {
+  background-color: rgb(255 255 255 / 10%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/20'][class*='dark:bg-white/20'] {
+  background-color: rgb(255 255 255 / 20%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/40'][class*='dark:bg-white/40'] {
+  background-color: rgb(255 255 255 / 40%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/50'][class*='dark:bg-white/50'] {
+  background-color: rgb(255 255 255 / 50%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/60'][class*='dark:bg-white/60'] {
+  background-color: rgb(255 255 255 / 60%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/70'][class*='dark:bg-white/70'] {
+  background-color: rgb(255 255 255 / 70%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/80'][class*='dark:bg-white/80'] {
+  background-color: rgb(255 255 255 / 80%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/85'][class*='dark:bg-white/85'] {
+  background-color: rgb(255 255 255 / 85%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/90'][class*='dark:bg-white/90'] {
+  background-color: rgb(255 255 255 / 90%) !important;
+}
+
+[data-app-theme].dark [class~='bg-white/95'][class*='dark:bg-white/95'] {
+  background-color: rgb(255 255 255 / 95%) !important;
+}
+
+/* Keep legacy dark-gray surface utilities dark when a source theme maps gray
+   text utilities to its readable ink color. Alpha variants retain their
+   original translucency. */
+[data-app-theme].dark [class*='dark:bg-gray-800/80'] {
+  background-color: color-mix(in srgb, var(--surface-raised) 80%, transparent) !important;
+}
+
+[data-app-theme].dark [class*='dark:bg-gray-900/30'] {
+  background-color: color-mix(in srgb, var(--surface) 30%, transparent) !important;
+}
+
+[data-app-theme].dark [class*='dark:bg-gray-500/20'] {
+  background-color: color-mix(in srgb, var(--surface-muted) 20%, transparent) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-500'] {
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-600'] {
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-700'] {
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-800'] {
+  background-color: var(--surface-raised) !important;
+}
+
+[data-app-theme].dark [class~='dark:bg-gray-900'] {
+  background-color: var(--surface) !important;
+}
+
+/* Raw gray-900/950 surfaces are used for code and tooltip layers. Keep them
+   dark in dark mode instead of allowing a theme's ink token to turn them
+   light. Explicit dark background variants above still win for their own
+   surfaces. */
+[data-app-theme].dark :is(
+  [class~='bg-gray-900']:not([class*='dark:bg-']),
+  [class~='bg-gray-950']:not([class*='dark:bg-'])
+) {
+  background-color: var(--dark-base) !important;
+}
+
+[data-app-theme].dark [class*='dark:bg-white']:is(
+  [class~='dark:text-gray-100'], [class~='dark:text-gray-200'], [class~='dark:text-gray-300'],
+  [class~='dark:text-gray-400'], [class~='dark:text-gray-500'], [class~='dark:text-gray-600'],
+  [class~='dark:text-gray-700'], [class~='dark:text-gray-800'], [class~='dark:text-gray-900'],
+  [class~='dark:text-gray-950']
+) {
+  color: #111827 !important;
+}
+
+/* Status text has a separate contrast-safe value from status fills. The fill
+   keeps each source's visual language, while labels remain readable on light
+   and dark surfaces. */
+[data-app-theme]:not(.dark) {
+  --status-success-text: #166534;
+  --status-warning-text: #92400e;
+  --status-danger-text: #b91c1c;
+  --on-status-success: #ffffff;
+  --on-status-warning: #ffffff;
+  --on-status-danger: #ffffff;
+}
+
+[data-app-theme].dark {
+  --status-success-text: #86efac;
+  --status-warning-text: #fcd34d;
+  --status-danger-text: #fca5a5;
+  --on-status-success: #052e16;
+  --on-status-warning: #1c1917;
+  --on-status-danger: #3f0a0a;
+}
+
+/* Primary colors are also used for links and compact labels. Keep those
+   foregrounds separate from decorative or solid fills so a bright source
+   palette cannot turn a readable link into low-contrast text. */
+[data-app-theme]:not(.dark) {
+  --readable-primary: var(--primary-700);
+}
+
+[data-app-theme].dark {
+  --readable-primary: var(--primary-400);
+}
+
+[data-app-theme='neoBrutalism']:not(.dark),
+[data-app-theme='terminal']:not(.dark) {
+  --readable-primary: var(--primary-800);
+}
+
+[data-app-theme='neumorphism'].dark,
+[data-app-theme='skeuomorphism'].dark {
+  --readable-primary: var(--primary-300);
+}
+
+[data-app-theme='apple']:not(.dark),
+[data-app-theme='minimalism']:not(.dark),
+[data-app-theme='neoBrutalism']:not(.dark),
+[data-app-theme='notion']:not(.dark) {
+  --on-status-success: #020617;
+  --on-status-warning: #020617;
+  --on-status-danger: #020617;
+}
+
+[data-app-theme='wabiSabi']:not(.dark) {
+  --on-status-warning: #020617;
+}
+
+[data-app-theme='neoBrutalism'].dark {
+  --on-status-danger: #020617;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-status-success'],
+  [class~='text-green-400'], [class~='text-green-500'], [class~='text-green-600'], [class~='text-green-700'], [class~='text-green-800'], [class~='text-green-900'],
+  [class~='text-emerald-400'], [class~='text-emerald-500'], [class~='text-emerald-600'], [class~='text-emerald-700'], [class~='text-emerald-800'], [class~='text-emerald-900']
+) {
+  color: var(--status-success-text) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-status-warning'],
+  [class~='text-orange-400'], [class~='text-orange-500'], [class~='text-orange-600'], [class~='text-orange-700'], [class~='text-orange-800'], [class~='text-orange-900'],
+  [class~='text-amber-400'], [class~='text-amber-500'], [class~='text-amber-600'], [class~='text-amber-700'], [class~='text-amber-800'], [class~='text-amber-900'],
+  [class~='text-yellow-400'], [class~='text-yellow-500'], [class~='text-yellow-600'], [class~='text-yellow-700'], [class~='text-yellow-800'], [class~='text-yellow-900']
+) {
+  color: var(--status-warning-text) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-status-danger'],
+  [class~='text-red-400'], [class~='text-red-500'], [class~='text-red-600'], [class~='text-red-700'], [class~='text-red-800'], [class~='text-red-900']
+) {
+  color: var(--status-danger-text) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-status-success'],
+  [class~='text-green-400'], [class~='text-green-500'], [class~='text-green-600'], [class~='text-green-700'], [class~='text-green-800'], [class~='text-green-900'],
+  [class~='text-emerald-400'], [class~='text-emerald-500'], [class~='text-emerald-600'], [class~='text-emerald-700'], [class~='text-emerald-800'], [class~='text-emerald-900']
+) {
+  color: var(--status-success-text) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-status-warning'],
+  [class~='text-orange-400'], [class~='text-orange-500'], [class~='text-orange-600'], [class~='text-orange-700'], [class~='text-orange-800'], [class~='text-orange-900'],
+  [class~='text-amber-400'], [class~='text-amber-500'], [class~='text-amber-600'], [class~='text-amber-700'], [class~='text-amber-800'], [class~='text-amber-900'],
+  [class~='text-yellow-400'], [class~='text-yellow-500'], [class~='text-yellow-600'], [class~='text-yellow-700'], [class~='text-yellow-800'], [class~='text-yellow-900']
+) {
+  color: var(--status-warning-text) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-status-danger'],
+  [class~='text-red-400'], [class~='text-red-500'], [class~='text-red-600'], [class~='text-red-700'], [class~='text-red-800'], [class~='text-red-900']
+) {
+  color: var(--status-danger-text) !important;
+}
+
+/* Code surfaces intentionally keep a stable dark canvas and light ink in
+   every design source. This is separate from page text token remapping. */
+[data-app-theme] :is(
+  .code-block,
+  pre[class~='bg-gray-900'], pre[class~='bg-gray-950'],
+  [class~='bg-gray-900'][class~='text-gray-100'],
+  [class~='bg-gray-950'][class~='text-gray-100']
+) {
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+}
+
+[data-app-theme] :is(.code-block, pre[class~='bg-gray-900'], pre[class~='bg-gray-950']) :is(code, [class~='text-gray-100']) {
+  color: #f3f4f6 !important;
+}
+
+/* Solid status actions can use the source's bright status fill in light mode,
+   but a white label would disappear on several of the referenced palettes. */
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-green-400'], [class~='text-white'][class~='bg-green-500'], [class~='text-white'][class~='bg-green-600'], [class~='text-white'][class~='bg-green-700'],
+  [class~='text-white'][class~='bg-emerald-400'], [class~='text-white'][class~='bg-emerald-500'], [class~='text-white'][class~='bg-emerald-600'], [class~='text-white'][class~='bg-emerald-700']
+) {
+  color: var(--on-status-success) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-orange-400'], [class~='text-white'][class~='bg-orange-500'], [class~='text-white'][class~='bg-orange-600'], [class~='text-white'][class~='bg-orange-700'],
+  [class~='text-white'][class~='bg-amber-400'], [class~='text-white'][class~='bg-amber-500'], [class~='text-white'][class~='bg-amber-600'], [class~='text-white'][class~='bg-amber-700'],
+  [class~='text-white'][class~='bg-yellow-400'], [class~='text-white'][class~='bg-yellow-500'], [class~='text-white'][class~='bg-yellow-600'], [class~='text-white'][class~='bg-yellow-700']
+) {
+  color: var(--on-status-warning) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-red-400'], [class~='text-white'][class~='bg-red-500'], [class~='text-white'][class~='bg-red-600'], [class~='text-white'][class~='bg-red-700']
+) {
+  color: var(--on-status-danger) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-green-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-green-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-green-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-green-700']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-emerald-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-emerald-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-emerald-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-emerald-700']:not([class*='dark:bg-'])
+) {
+  color: var(--on-status-success) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-orange-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-orange-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-orange-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-orange-700']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-amber-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-amber-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-amber-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-amber-700']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-yellow-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-yellow-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-yellow-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-yellow-700']:not([class*='dark:bg-'])
+) {
+  color: var(--on-status-warning) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-red-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-red-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-red-600']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-red-700']:not([class*='dark:bg-'])
+) {
+  color: var(--on-status-danger) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class*='dark:bg-green-400'], [class~='text-white'][class*='dark:bg-green-500'], [class~='text-white'][class*='dark:bg-green-600'], [class~='text-white'][class*='dark:bg-green-700'],
+  [class~='text-white'][class*='dark:bg-emerald-400'], [class~='text-white'][class*='dark:bg-emerald-500'], [class~='text-white'][class*='dark:bg-emerald-600'], [class~='text-white'][class*='dark:bg-emerald-700']
+) {
+  color: var(--on-status-success) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class*='dark:bg-orange-400'], [class~='text-white'][class*='dark:bg-orange-500'], [class~='text-white'][class*='dark:bg-orange-600'], [class~='text-white'][class*='dark:bg-orange-700'],
+  [class~='text-white'][class*='dark:bg-amber-400'], [class~='text-white'][class*='dark:bg-amber-500'], [class~='text-white'][class*='dark:bg-amber-600'], [class~='text-white'][class*='dark:bg-amber-700'],
+  [class~='text-white'][class*='dark:bg-yellow-400'], [class~='text-white'][class*='dark:bg-yellow-500'], [class~='text-white'][class*='dark:bg-yellow-600'], [class~='text-white'][class*='dark:bg-yellow-700']
+) {
+  color: var(--on-status-warning) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class*='dark:bg-red-400'], [class~='text-white'][class*='dark:bg-red-500'], [class~='text-white'][class*='dark:bg-red-600'], [class~='text-white'][class*='dark:bg-red-700']
+) {
+  color: var(--on-status-danger) !important;
+}
+
+/* Bright source palettes need dark labels on solid primary actions. Keep the
+   rule tied to the background utility so white remains available elsewhere. */
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-500'] {
+  color: var(--on-primary-500, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-500']:not([class*='dark:bg-']) {
+  color: var(--on-primary-500, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-600'] {
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-600']:not([class*='dark:bg-']) {
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-700'] {
+  color: var(--on-primary-700, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-700']:not([class*='dark:bg-']) {
+  color: var(--on-primary-700, var(--on-primary, #fff)) !important;
+}
+
+/* The component library still has a few fixed Tailwind brand fills. Use a
+   dark foreground on their bright shades, including their dark-mode variants,
+   so small labels and badges remain readable in every source theme. */
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='bg-blue-400'], [class~='text-white'][class~='bg-blue-500'],
+  [class~='text-white'][class~='bg-indigo-400'], [class~='text-white'][class~='bg-indigo-500'],
+  [class~='text-white'][class~='bg-violet-400'], [class~='text-white'][class~='bg-violet-500'],
+  [class~='text-white'][class~='bg-purple-400'], [class~='text-white'][class~='bg-purple-500'],
+  [class~='text-white'][class~='bg-pink-400'], [class~='text-white'][class~='bg-pink-500'],
+  [class~='text-white'][class~='bg-fuchsia-400'], [class~='text-white'][class~='bg-fuchsia-500'],
+  [class~='text-white'][class~='bg-sky-400'], [class~='text-white'][class~='bg-sky-500'], [class~='text-white'][class~='bg-sky-600'],
+  [class~='text-white'][class~='bg-cyan-400'], [class~='text-white'][class~='bg-cyan-500'], [class~='text-white'][class~='bg-cyan-600'],
+  [class~='text-white'][class~='bg-teal-400'], [class~='text-white'][class~='bg-teal-500'], [class~='text-white'][class~='bg-teal-600'],
+  [class~='text-white'][class~='bg-lime-400'], [class~='text-white'][class~='bg-lime-500'], [class~='text-white'][class~='bg-lime-600'],
+  [class~='text-white'][class~='bg-rose-400'], [class~='text-white'][class~='bg-rose-500']
+) {
+  color: #020617 !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='bg-blue-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-blue-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-indigo-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-indigo-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-violet-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-violet-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-purple-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-purple-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-pink-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-pink-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-fuchsia-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-fuchsia-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-sky-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-sky-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-sky-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-cyan-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-cyan-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-cyan-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-teal-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-teal-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-teal-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-lime-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-lime-500']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-lime-600']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='bg-rose-400']:not([class*='dark:bg-']), [class~='text-white'][class~='bg-rose-500']:not([class*='dark:bg-']),
+  [class~='text-white'][class~='dark:bg-blue-400'], [class~='text-white'][class~='dark:bg-blue-500'],
+  [class~='text-white'][class~='dark:bg-indigo-400'], [class~='text-white'][class~='dark:bg-indigo-500'],
+  [class~='text-white'][class~='dark:bg-violet-400'], [class~='text-white'][class~='dark:bg-violet-500'],
+  [class~='text-white'][class~='dark:bg-purple-400'], [class~='text-white'][class~='dark:bg-purple-500'],
+  [class~='text-white'][class~='dark:bg-pink-400'], [class~='text-white'][class~='dark:bg-pink-500'],
+  [class~='text-white'][class~='dark:bg-fuchsia-400'], [class~='text-white'][class~='dark:bg-fuchsia-500'],
+  [class~='text-white'][class~='dark:bg-sky-400'], [class~='text-white'][class~='dark:bg-sky-500'], [class~='text-white'][class~='dark:bg-sky-600'],
+  [class~='text-white'][class~='dark:bg-cyan-400'], [class~='text-white'][class~='dark:bg-cyan-500'], [class~='text-white'][class~='dark:bg-cyan-600'],
+  [class~='text-white'][class~='dark:bg-teal-400'], [class~='text-white'][class~='dark:bg-teal-500'], [class~='text-white'][class~='dark:bg-teal-600'],
+  [class~='text-white'][class~='dark:bg-lime-400'], [class~='text-white'][class~='dark:bg-lime-500'], [class~='text-white'][class~='dark:bg-lime-600'],
+  [class~='text-white'][class~='dark:bg-rose-400'], [class~='text-white'][class~='dark:bg-rose-500']
+) {
+  color: #020617 !important;
+}
+
+/* Warm gradients use the same semantic warning fill as amber/orange buttons,
+   so their foreground follows the already-audited status foreground. */
+[data-app-theme] :is(
+  [class~='text-white'][class~='from-amber-500'],
+  [class~='text-white'][class~='from-orange-500']
+) {
+  color: var(--on-status-warning, #fff) !important;
+}
+
+/* Darken the first stop of the blue announcement gradient. This preserves a
+   white label without leaving it on the low-contrast blue-500 stop. */
+[data-app-theme] :is(
+  [class~='text-white'][class~='from-blue-500'][class*='to-indigo-']
+) {
+  --tw-gradient-from: #2563eb !important;
+}
+
+/* Link and selected-label utilities are allowed to use the source accent, but
+   only through a shade that is readable on the current surface. */
+[data-app-theme]:not(.dark) :is(
+  [class~='text-primary-300'], [class~='text-primary-400'], [class~='text-primary-500'],
+  [class~='text-primary-600'], [class~='text-primary-600/90'], [class~='text-primary-700']
+) {
+  color: var(--readable-primary) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-primary-400'], [class~='text-primary-500'],
+  [class~='text-primary-600'], [class~='text-primary-700'],
+  [class~='dark:text-primary-300'], [class~='dark:text-primary-400'],
+  [class~='dark:text-primary-400/90']
+) {
+  color: var(--readable-primary) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='hover:text-primary-400'], [class~='hover:text-primary-500'],
+  [class~='focus:text-primary-400'], [class~='focus:text-primary-500']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--readable-primary) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='hover:text-primary-400'], [class~='hover:text-primary-500'],
+  [class~='focus:text-primary-400'], [class~='focus:text-primary-500'],
+  [class~='dark:hover:text-primary-400'], [class~='dark:hover:text-primary-500'],
+  [class~='dark:focus:text-primary-400'], [class~='dark:focus:text-primary-500']
+):is(:hover, :focus, :focus-visible) {
+  color: var(--readable-primary) !important;
+}
+
+/* The balance banner uses one audited solid shade. A gradient beginning at
+   primary-500 is too bright for light foreground text in several sources. */
+[data-app-theme] .theme-primary-banner {
+  background-image: none !important;
+  background-color: var(--primary-600) !important;
+}
+
+[data-app-theme] .theme-primary-banner-foreground {
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+/* Select is teleported to body and its @apply rules produce structural
+   selectors, so utility-class remapping alone cannot protect its text. */
+[data-app-theme] :is(.select-trigger, .select-dropdown-portal, .select-dropdown) {
+  color: var(--ink) !important;
+}
+
+[data-app-theme] :is(.select-trigger, .select-dropdown-portal, .select-dropdown) {
+  border-color: var(--border-color) !important;
+}
+
+[data-app-theme] :is(.select-trigger, .select-dropdown-portal, .select-dropdown) {
+  background-color: var(--surface-raised) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-option {
+  color: var(--ink) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-option-selected {
+  color: var(--readable-primary) !important;
+  background-color: color-mix(in srgb, var(--readable-primary) 12%, var(--surface-raised)) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-option-group {
+  color: var(--muted) !important;
+  background-color: var(--surface-muted) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-search-input,
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-value {
+  color: var(--ink) !important;
+}
+
+[data-app-theme] :is(.select-dropdown-portal, .select-dropdown) .select-empty {
+  color: var(--muted) !important;
+}
+
+/* Theme-owned form colors keep dark inputs readable when gray utility shades
+   resolve to a surface color instead of a text color. */
+[data-app-theme] :is(
+  input.input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea.input,
+  select.input,
+  .date-picker-input
+) {
+  color: var(--ink) !important;
+  background-color: var(--surface-raised) !important;
+  caret-color: var(--ink);
+}
+
+[data-app-theme] :is(
+  input.input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea.input,
+  select.input,
+  .date-picker-input,
+  .select-dropdown-portal .select-search-input,
+  .select-dropdown .select-search-input
+)::placeholder {
+  color: var(--muted) !important;
+  opacity: 1;
+}
+
+[data-app-theme] :is(
+  input.input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea.input,
+  select.input,
+  .date-picker-input
+):disabled {
+  color: var(--muted) !important;
+  background-color: var(--surface-muted) !important;
+  -webkit-text-fill-color: var(--muted);
+}
+
+/* Action buttons use one audited shade, while decorative gradients elsewhere
+   keep their source-specific appearance. */
+[data-app-theme] .btn-primary {
+  background-image: none !important;
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme] .btn-primary:hover {
+  background-image: none !important;
+  background-color: var(--primary-700) !important;
+  color: var(--on-primary-700, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) [class~='text-white'][class~='bg-primary-400'],
+[data-app-theme].dark [class~='text-white'][class~='bg-primary-400']:not([class*='dark:bg-']) {
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme]:not(.dark) :is(
+  [class~='text-white'][class~='from-primary-400'],
+  [class~='text-white'][class~='from-primary-500']
+) {
+  background-image: none !important;
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme].dark :is(
+  [class~='text-white'][class~='from-primary-400'],
+  [class~='text-white'][class~='from-primary-500']
+):not([class*='dark:bg-']) {
+  background-image: none !important;
+  background-color: var(--primary-600) !important;
+  color: var(--on-primary-600, var(--on-primary, #fff)) !important;
+}
+
+[data-app-theme] .btn-success,
+[data-app-theme] .btn-warning,
+[data-app-theme] .btn-danger {
+  background-image: none !important;
+}
+
+[data-app-theme] .btn-success {
+  background-color: var(--status-success) !important;
+  color: var(--on-status-success, #fff) !important;
+}
+
+[data-app-theme] .btn-success:hover {
+  background-color: color-mix(in srgb, var(--status-success) 96%, var(--dark-base)) !important;
+}
+
+[data-app-theme] .btn-warning {
+  background-color: var(--status-warning) !important;
+  color: var(--on-status-warning, #fff) !important;
+}
+
+[data-app-theme] .btn-warning:hover {
+  background-color: color-mix(in srgb, var(--status-warning) 96%, var(--dark-base)) !important;
+}
+
+[data-app-theme] .btn-danger {
+  background-color: var(--status-danger) !important;
+  color: var(--on-status-danger, #fff) !important;
+}
+
+[data-app-theme] .btn-danger:hover {
+  background-color: color-mix(in srgb, var(--status-danger) 96%, var(--dark-base)) !important;
+}
+
+[data-app-theme] .btn,
+[data-app-theme] .input,
+[data-app-theme] .tabs,
+[data-app-theme] .dropdown,
+[data-app-theme] .modal-content,
+[data-app-theme] .dialog-container,
+[data-app-theme] .toast {
+  border-radius: var(--control-radius);
+}
+
+[data-density='compact'] .btn {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+[data-density='compact'] .input {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+[data-density='spacious'] .btn {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+[data-density='spacious'] .input {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+[data-density='compact'] .sidebar-link {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+[data-density='spacious'] .sidebar-link {
+  padding-top: 0.8rem;
+  padding-bottom: 0.8rem;
+}
+
+[data-density='compact'] .table th,
+[data-density='compact'] .table td {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+[data-density='spacious'] .table th,
+[data-density='spacious'] .table td {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.app-main-shell {
+  min-width: 0;
+}
+
+.app-main {
+  width: 100%;
+  max-width: var(--app-content-max);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+[data-content-width='full'] .app-main {
+  max-width: none;
+}
+
+[data-sidebar-style='compact'] .sidebar {
+  width: 14rem;
+}
+
+[data-sidebar-style='floating'] .sidebar {
+  border-radius: var(--control-radius);
+  box-shadow: 0 1rem 3rem color-mix(in srgb, var(--dark-base) 18%, transparent);
+}
+
+@media (min-width: 1024px) {
+  .app-main-shell.app-sidebar-expanded {
+    margin-left: 16rem;
+  }
+
+  .app-main-shell.app-sidebar-collapsed {
+    margin-left: 72px;
+  }
+
+  [data-sidebar-style='compact'] .app-main-shell.app-sidebar-expanded {
+    margin-left: 14rem;
+  }
+
+  [data-sidebar-style='floating'] .sidebar {
+    inset: 1rem auto 1rem 1rem;
+    width: 16rem;
+    height: calc(100vh - 2rem);
+  }
+
+  [data-sidebar-style='floating'] .app-main-shell.app-sidebar-expanded {
+    margin-left: 18rem;
+  }
+
+  [data-sidebar-style='floating'] .app-main-shell.app-sidebar-collapsed {
+    margin-left: calc(72px + 2rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
+}
+.modal-fullscreen { width: 100vw !important; max-width: none !important; height: 100vh !important; max-height: none !important; border-radius: 0 !important; }
+.modal-fullscreen .modal-body { max-height: none !important; }

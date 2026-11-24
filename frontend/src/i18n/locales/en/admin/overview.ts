@@ -219,7 +219,7 @@ export default {
         step1: {
           title: 'Create an R2 Bucket',
           line1: 'Log in to the Cloudflare Dashboard (dash.cloudflare.com), select "R2 Object Storage" from the sidebar',
-          line2: 'Click "Create bucket", enter a name (e.g. sub2api-backups), choose a region',
+          line2: 'Click "Create bucket", enter a bucket name, choose a region',
           line3: 'Click create to finish'
         },
         step2: {
@@ -494,6 +494,39 @@ export default {
 
     // Users
     users: {
+      bulkRecharge: {
+  "title": "Bulk recharge",
+  "action": "Bulk recharge",
+  "count": "{count} users selected",
+  "amount": "Amount per user ($)",
+  "total": "Total recharge: ${total}",
+  "hint": "Credits and ledger entries are saved in one transaction. Any failure rolls back the entire batch.",
+  "pending": "The previous result is unconfirmed. Retry uses the same operation; avoid creating another recharge.",
+  "confirm": "Credit {count} users ${amount} each, ${total} in total?",
+  "success": "Recharged {count} users",
+  "failed": "Recharge failed. Retry the same operation.",
+  "sessionRequired": "Sign in again before recharging"
+},
+      feishuSync: {
+  "action": "Sync Feishu users",
+  "running": "Syncing…",
+  "retryStatus": "Unable to read progress. Retry",
+  "confirm": "Sync active employees from this Feishu enterprise? Create ordinary users and update names, avatars and available emails. Existing balances and roles are preserved. A Feishu administrator may need to approve directory access.",
+  "preparing": "Checking Feishu permissions…",
+  "reading": "Reading the complete enterprise directory…",
+  "syncing": "Progress: {processed}/{total}",
+  "succeeded": "Completed: {created} created, {updated} updated, {skipped} skipped",
+  "partial": "Partially completed: {created} created, {updated} updated, {failed} failed. Sync again to retry.",
+  "failed": "Sync incomplete.",
+  "approval_required": "Awaiting Feishu administrator approval.",
+  "errors": {
+    "permission_required": "Approve read permissions and the full directory range in the Feishu developer console, then retry.",
+    "expired": "Task expired or the service restarted. Sync again.",
+    "config_changed": "App configuration changed. Sync again.",
+    "upstream_error": "Feishu is temporarily unavailable. Retry later.",
+    "service_error": "Service unavailable. Retry later."
+  }
+},
       title: 'User Management',
       description: 'Manage users and their permissions',
       createUser: 'Create User',
@@ -1264,9 +1297,9 @@ export default {
       openaiLive: {
         title: 'OpenAI Live',
         allow: 'Allow Live access',
-        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The Sub2API server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
+        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
         unsupportedTitle: 'Current server does not support Live',
-        unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
+        unsupportedMessage: 'This server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
       },
       openaiFast: {

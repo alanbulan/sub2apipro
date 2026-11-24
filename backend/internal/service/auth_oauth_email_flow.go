@@ -19,7 +19,7 @@ func normalizeOAuthSignupSource(signupSource string) string {
 	switch signupSource {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc", "github", "google", "dingtalk":
+	case "linuxdo", "wechat", "oidc", "github", "google", "dingtalk", "feishu":
 		return signupSource
 	default:
 		return "email"
@@ -46,7 +46,7 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 		return nil, err
 	}
 
-	siteName := "Sub2API"
+	siteName := defaultSiteName
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -483,6 +483,9 @@ func (s *AuthService) ValidatePasswordCredentials(ctx context.Context, email, pa
 	}
 	if !s.CheckPassword(password, user.PasswordHash) {
 		return nil, ErrInvalidCredentials
+	}
+	if err := s.requireEmailAuthentication(ctx, user); err != nil {
+		return nil, err
 	}
 	return user, nil
 }
