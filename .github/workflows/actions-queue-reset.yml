@@ -17,9 +17,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
-          EXPECTED_MAIN_SHA: fa8c9ee8388c38b7b1462d9210380257db96b4c1
-          OLD_SHA: 48658705dfa6fa4748cfd2c4ccb70c8161c5aa59
-          OLD_RUN_ID: '45346776204'
+          EXPECTED_MAIN_SHA: 60866db2336c96ec26f3902837d0fc2a60aaea6a
+          OLD_SHA: fa8c9ee8388c38b7b1462d9210380257db96b4c1
+          OLD_RUN_ID: '45347323248'
         shell: python {0}
         run: |
           import json, os, time, urllib.error, urllib.request
