@@ -255,7 +255,7 @@ test('wrapper repairs state after a crash between remote promotion and state wri
   assert.ok(!fs.existsSync(f.checkpointFile));
 });
 
-test('wrapper quarantines a stale index lock and recovers an interrupted merge', async t => {
+test('wrapper quarantines a stale lock but preserves dirty user work', async t => {
   const f = await fixture(t, { withChecker: true });
   fs.rmSync(f.checkpointFile);
   fs.writeFileSync(path.join(f.stateDir, 'in-progress-head'), `${f.before}\n`);
@@ -266,10 +266,11 @@ test('wrapper quarantines a stale index lock and recovers an interrupted merge',
   const old = new Date(Date.now() - 600000);
   fs.utimesSync(indexLock, old, old);
 
-  assert.equal(await f.invoke(), 0, f.state.log);
+  assert.notEqual(await f.invoke(), 0);
   assert.equal(git(f.repo, ['rev-parse', 'HEAD']), f.before);
-  assert.equal(git(f.repo, ['status', '--porcelain']), '');
-  assert.ok(!fs.existsSync(path.join(f.stateDir, 'in-progress-head')));
+  assert.notEqual(git(f.repo, ['status', '--porcelain']), '');
+  assert.equal(fs.readFileSync(path.join(f.repo, 'feature.txt'), 'utf8'), 'interrupted merge content\n');
+  assert.ok(fs.existsSync(path.join(f.stateDir, 'in-progress-head')));
   assert.ok(fs.readdirSync(f.stateDir).some(name => name.startsWith('stale-index-lock.')));
 });
 

@@ -19,12 +19,12 @@ func TestPoolDiagnosticStreamRedactsAcrossChunksAndDropsAdminMetadata(t *testing
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest("POST", "/test", nil).WithContext(context.WithValue(context.Background(), poolTestStreamKey{}, stream))
 	svc := &AccountTestService{}
-	svc.sendEvent(c, TestEvent{Type: "test_start", Model: "private-model", RequestID: "private-request", Data: "private-data"})
+	svc.sendEvent(c, TestEvent{Type: "test_start", Model: "private-model", Data: map[string]any{"request_id": "private-request", "secret": "private-data"}})
 	svc.sendEvent(c, TestEvent{Type: "content", Text: "private-split-"})
 	svc.sendEvent(c, TestEvent{Type: "content", Text: "token https://private.example/api person@company.com <svg xmlns=\"http://www.w3.org/2000/svg\">answer</svg>"})
 	svc.sendEvent(c, TestEvent{Type: "image", ImageURL: "https://private.example/image", Data: "private-data"})
 	require.NotContains(t, recorder.Body.String(), "private-split")
-	svc.sendEvent(c, TestEvent{Type: "test_complete", Success: true, UpstreamModel: "private-model", UpstreamStatus: 200})
+	svc.sendEvent(c, TestEvent{Type: "test_complete", Success: true, Model: "private-model", Data: map[string]any{"upstream_status": 200}})
 	raw := recorder.Body.String()
 	for _, secret := range []string{"private-split-token", "private.example", "person@company.com", "private-model", "private-data", "private-request", "upstream_status", "image_url"} {
 		require.NotContains(t, raw, secret)

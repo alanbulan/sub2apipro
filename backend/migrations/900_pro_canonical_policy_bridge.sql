@@ -23,6 +23,17 @@ BEGIN
         FROM api_key_groups edge
         WHERE key.id = edge.api_key_id AND key.group_id IS NULL;
     END IF;
+    -- Old extension restrictions cannot be silently ignored by canonical code.
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='account_groups' AND column_name='allowed_models') THEN
+        IF EXISTS (SELECT 1 FROM account_groups WHERE allowed_models IS NOT NULL AND allowed_models NOT IN ('[]'::jsonb, 'null'::jsonb)) THEN
+            RAISE EXCEPTION 'Pro canonical migration requires review: retired per-account-group model restrictions';
+        END IF;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='user_group_rate_multipliers' AND column_name='denied_models') THEN
+        IF EXISTS (SELECT 1 FROM user_group_rate_multipliers WHERE denied_models IS NOT NULL AND denied_models NOT IN ('[]'::jsonb, 'null'::jsonb)) THEN
+            RAISE EXCEPTION 'Pro canonical migration requires review: retired per-user-group model restrictions';
+        END IF;
+    END IF;
     IF to_regclass('public.auto_credit_config') IS NOT NULL THEN
         IF EXISTS (SELECT 1 FROM auto_credit_config WHERE enabled) THEN
             RAISE EXCEPTION 'Pro canonical migration requires review: enabled retired automatic-credit policies';

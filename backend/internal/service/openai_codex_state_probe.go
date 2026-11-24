@@ -98,12 +98,10 @@ type openAICodexStateShot struct {
 // 两发必须都是 HTTP 200 且回复流完整结束才下结论，否则一律判「无法判断」，避免误报降智。
 // 返回值永不为 nil。model 为空时用 gpt-6-astra，并按账号模型映射转成上游模型名。
 func (s *OpenAIGatewayService) ProbeOpenAICodexState(ctx context.Context, account *Account, model string) *OpenAICodexStateProbeResult {
-	return s.probeOpenAICodexState(ctx, account, model, false)
+	return s.probeOpenAICodexState(ctx, account, model)
 }
 
-// ignoreBPS 只给「降智后开 BPS」质量规则用：规则开了 BPS 后仍要探直连门票通道，
-// 才能知道账号何时恢复满血。探针本身不经过 BPS，只是跳过「走 BPS 不适用」的拦截。
-func (s *OpenAIGatewayService) probeOpenAICodexState(ctx context.Context, account *Account, model string, ignoreBPS bool) *OpenAICodexStateProbeResult {
+func (s *OpenAIGatewayService) probeOpenAICodexState(ctx context.Context, account *Account, model string) *OpenAICodexStateProbeResult {
 	started := time.Now()
 	result := &OpenAICodexStateProbeResult{Verdict: OpenAICodexStateInconclusive, StartedAt: started}
 	defer func() {
@@ -126,7 +124,7 @@ func (s *OpenAIGatewayService) probeOpenAICodexState(ctx context.Context, accoun
 	}
 	result.Model = upstreamModel
 
-	if reason := openAICodexStateProbeUnsupportedReason(account, requested, ignoreBPS); reason != "" {
+	if reason := openAICodexStateProbeUnsupportedReason(account); reason != "" {
 		result.fail(OpenAICodexStateFailureUnsupported, reason, "")
 		return result
 	}
@@ -244,7 +242,7 @@ func openAICodexStateVerdictReason(verdict OpenAICodexStateVerdict) string {
 
 // openAICodexStateProbeUnsupportedReason 返回空串表示该账号可以跑探针。
 // 凭证影子账号可以跑：令牌和 chatgpt-account-id 都会解析到母账号。
-func openAICodexStateProbeUnsupportedReason(account *Account, requestedModel string, ignoreBPS bool) string {
+func openAICodexStateProbeUnsupportedReason(account *Account) string {
 	switch {
 	case account == nil:
 		return "账号不存在"
@@ -471,10 +469,16 @@ func openAICodexStateStreamErrorPayload(data []byte) []byte {
 // ProbeOpenAICodexState 按账号 ID 跑一次门票探针。同一账号同一时刻只允许一次探针，
 // 避免并发的两发互相干扰门票判据。
 func (s *AccountTestService) ProbeOpenAICodexState(ctx context.Context, accountID int64, model string) (*OpenAICodexStateProbeResult, error) {
-	return s.probeOpenAICodexState(ctx, accountID, model, false)
+	select {
+	case intelligenceTestSlots <- struct{}{}:
+		defer func() { <-intelligenceTestSlots }()
+	default:
+		return nil, ErrOpenAICodexStateProbeBusy
+	}
+	return s.probeOpenAICodexState(ctx, accountID, model)
 }
 
-func (s *AccountTestService) probeOpenAICodexState(ctx context.Context, accountID int64, model string, ignoreBPS bool) (*OpenAICodexStateProbeResult, error) {
+func (s *AccountTestService) probeOpenAICodexState(ctx context.Context, accountID int64, model string) (*OpenAICodexStateProbeResult, error) {
 	if s == nil || s.accountRepo == nil {
 		return nil, errors.New("account test service unavailable")
 	}
@@ -490,7 +494,7 @@ func (s *AccountTestService) probeOpenAICodexState(ctx context.Context, accountI
 		return nil, ErrOpenAICodexStateProbeBusy
 	}
 	defer release()
-	return s.openaiGatewayService.probeOpenAICodexState(ctx, account, model, ignoreBPS), nil
+	return s.openaiGatewayService.probeOpenAICodexState(ctx, account, model), nil
 }
 
 func (s *AccountTestService) beginOpenAICodexStateProbe(accountID int64) (func(), bool) {

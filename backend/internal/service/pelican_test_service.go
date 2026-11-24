@@ -34,6 +34,13 @@ func pelicanTestOptionsFromContext(ctx context.Context) (pelicanTestOptions, boo
 // Pelican UI. The existing /test endpoint deliberately keeps its historical
 // probe payload; only this endpoint opts into the user prompt and reasoning.
 func (s *AccountTestService) TestPelicanAccountConnection(c *gin.Context, accountID int64, modelID, prompt, reasoningEffort string) error {
+	select {
+	case intelligenceTestSlots <- struct{}{}:
+		defer func() { <-intelligenceTestSlots }()
+	default:
+		s.sendEvent(c, TestEvent{Type: "error", Error: "Too many intelligence tests; try again"})
+		return fmt.Errorf("intelligence test capacity reached")
+	}
 	options, _ := pelicanTestOptionsFromContext(c.Request.Context())
 	options.prompt = strings.TrimSpace(prompt)
 	options.reasoningEffort = normalizePelicanReasoningEffort(reasoningEffort)

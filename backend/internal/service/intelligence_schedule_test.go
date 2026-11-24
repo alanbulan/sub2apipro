@@ -69,3 +69,11 @@ func TestIntelligenceProbeRequiresBothCompleteResponses(t *testing.T) {
 	require.Equal(t, OpenAICodexStateInconclusive, failed.Verdict)
 	require.Equal(t, OpenAICodexStateFailureStreamError, failed.Failure)
 }
+
+func TestIntelligenceSchedulesRequireSuccessfulCompletion(t *testing.T) {
+	_, failure := parseIntelligenceSSEOutput("data: {\"type\":\"content\",\"text\":\"partial\"}\n\n")
+	require.NotEmpty(t, failure)
+	text, failure := parseIntelligenceSSEOutput("data: {\"type\":\"content\",\"text\":\"42\"}\n\ndata: {\"type\":\"test_complete\",\"success\":true}\n\n")
+	require.Equal(t, "42", text)
+	require.Empty(t, failure)
+}

@@ -369,7 +369,7 @@ func RegisterGatewayRoutes(
 		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		gemini.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
 		// Gin treats ":" as a param marker, but Gemini uses "{model}:{action}" in the same segment.
-		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		gemini.POST("/models/*modelAction", h.Gateway.ConversationCapture("gemini_generate_content"), h.Gateway.GeminiV1BetaModels)
 		// 显式上下文缓存：网关自管资源 ID 与账号绑定，list/get 只读本地记录。
 		gemini.POST("/cachedContents", h.Gateway.GeminiCachedContentsCreate)
 		gemini.GET("/cachedContents", h.Gateway.GeminiCachedContentsList)
@@ -410,8 +410,8 @@ func RegisterGatewayRoutes(
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
-		codexDirect.POST("/responses", responsesHandler)
-		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
+		codexDirect.POST("/responses", h.Gateway.ConversationCapture("openai_responses"), responsesHandler)
+		codexDirect.POST("/responses/*subpath", h.Gateway.ConversationCapture("openai_responses"), guardResponsesSubpath(responsesHandler))
 		codexDirect.POST("/alpha/search", h.OpenAIGateway.AlphaSearch)
 		codexDirect.GET("/responses", func(c *gin.Context) {
 			h.OpenAIGateway.ResponsesWebSocket(c)

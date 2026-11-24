@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 
 const OpenAICodexStateProbeQuestionKind = "state_probe"
 const intelligenceMaxOutputBytes = 2 << 20
+
+var intelligenceTestSlots = make(chan struct{}, 8)
 
 func ValidateIntelligenceConfig(c *PelicanTestConfig) error {
 	if c == nil {
@@ -143,7 +146,7 @@ func (s *AccountTestService) runIntelligenceOnce(parent context.Context, id int6
 		c.Request = (&http.Request{Header: make(http.Header)}).WithContext(ctx)
 		c.Set(accountTestBackgroundKey, true)
 		err := s.TestPelicanAccountConnection(c, id, model, intelligencePrompt(cfg), cfg.ReasoningEffort)
-		result.ResponseText, result.ErrorMessage = parseTestSSEOutput(w.Body.String())
+		result.ResponseText, result.ErrorMessage = parseIntelligenceSSEOutput(w.Body.String())
 		if w.overflow {
 			result.ErrorMessage = "intelligence output limit reached"
 		} else if err != nil && result.ErrorMessage == "" {
@@ -156,4 +159,32 @@ func (s *AccountTestService) runIntelligenceOnce(parent context.Context, id int6
 	result.FinishedAt = time.Now()
 	result.LatencyMs = result.FinishedAt.Sub(started).Milliseconds()
 	return result
+}
+
+// Require the explicit successful terminator. Partial text is never a pass.
+func parseIntelligenceSSEOutput(body string) (string, string) {
+	text, failure := parseTestSSEOutput(body)
+	complete := false
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var event TestEvent
+		if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event) != nil {
+			if failure == "" {
+				failure = "invalid intelligence event"
+			}
+			continue
+		}
+		if event.Type == "test_complete" {
+			complete = event.Success
+			if !complete && failure == "" {
+				failure = "intelligence test failed"
+			}
+		}
+	}
+	if !complete && failure == "" {
+		failure = "intelligence response did not complete"
+	}
+	return text, failure
 }

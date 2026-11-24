@@ -13,7 +13,6 @@ import (
 
 type poolGroupReader interface {
 	PoolSourceGroups(context.Context, int64) ([]service.Group, error)
-	GetUserGroupDeniedModels(context.Context, int64) (map[int64][]string, error)
 }
 type poolQuotaCacheEntry struct {
 	expires  time.Time

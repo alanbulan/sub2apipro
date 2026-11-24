@@ -19,7 +19,7 @@ import (
 type poolDiagnosticTarget struct {
 	userID, groupID int64
 	account         *service.Account
-	denied          []string
+	group           service.Group
 }
 
 // Recheck live key/group permissions AND account membership for every operation.
@@ -48,8 +48,10 @@ func (h *AccountHandler) authorizePoolDiagnostic(c *gin.Context) *poolDiagnostic
 		return nil
 	}
 	permitted := false
+	var sourceGroup service.Group
 	for _, group := range groups {
 		if group.ID == groupID {
+			sourceGroup = group
 			permitted = true
 			break
 		}
@@ -79,12 +81,7 @@ func (h *AccountHandler) authorizePoolDiagnostic(c *gin.Context) *poolDiagnostic
 		response.NotFound(c, "Account not found")
 		return nil
 	}
-	denied, err := h.poolGroupReader.GetUserGroupDeniedModels(ctx, subject.UserID)
-	if err != nil {
-		response.Error(c, http.StatusServiceUnavailable, "Model permissions are unavailable")
-		return nil
-	}
-	return &poolDiagnosticTarget{userID: subject.UserID, groupID: groupID, account: account, denied: denied[groupID]}
+	return &poolDiagnosticTarget{userID: subject.UserID, groupID: groupID, account: account, group: sourceGroup}
 }
 
 type poolDiagnosticModel struct {
@@ -94,13 +91,10 @@ type poolDiagnosticModel struct {
 }
 
 func (target *poolDiagnosticTarget) allowsModel(id string) bool {
-	if id == "" || strings.ContainsAny(id, "*\r\n") || !target.account.IsModelSupportedInGroup(&target.groupID, id) {
+	if id == "" || strings.ContainsAny(id, "*\r\n") || !target.account.IsModelSupported(id) || !target.group.ModelAllowlist.Allows(id) {
 		return false
 	}
 	mapped := target.account.GetMappedModel(id)
-	if service.FirstUserGroupDeniedModel(target.denied, []string{id, mapped}) != "" {
-		return false
-	}
 	// User diagnostics use the shared TEXT tests only. Media/upload/compact and
 	// administrative probes remain on the administrator routes.
 	for _, model := range []string{id, mapped} {

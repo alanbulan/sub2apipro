@@ -6,7 +6,7 @@
     </button>
     <button type="button" class="btn btn-secondary min-w-0 gap-1.5 !px-2 !text-xs" data-test="test-intelligence" @click="emit('intelligence')">
       <Icon name="brain" size="sm" class="shrink-0" aria-hidden="true" />
-      {{ t('admin.accounts.pelicanTest.title') }}
+      {{ t('intelligence.title') }}
     </button>
   </div>
 </template>

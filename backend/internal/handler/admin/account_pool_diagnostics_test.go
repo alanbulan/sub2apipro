@@ -75,11 +75,10 @@ func TestPoolDiagnosticLiveAuthorizationAndCatalogAllowlist(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 }
 
-func TestPoolDiagnosticModelGroupAndUserRestrictions(t *testing.T) {
+func TestPoolDiagnosticCanonicalGroupAndAccountRestrictions(t *testing.T) {
 	target := &poolDiagnosticTarget{groupID: 1, account: &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
-		Credentials:   map[string]any{"model_mapping": map[string]any{"alias": "blocked-target", "allowed": "allowed", "other": "other"}},
-		AccountGroups: []service.AccountGroup{{GroupID: 1, AllowedModels: []string{"alias", "allowed"}}},
-	}, denied: []string{"blocked-*"}}
+		Credentials: map[string]any{"model_mapping": map[string]any{"alias": "blocked-target", "allowed": "allowed", "other": "other"}},
+	}, group: service.Group{ModelAllowlist: service.GroupModelAllowlist{Enabled: true, Models: []string{"allowed"}}}}
 	require.True(t, target.allowsModel("allowed"))
 	require.False(t, target.allowsModel("alias"))
 	require.False(t, target.allowsModel("other"))

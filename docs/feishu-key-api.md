@@ -14,7 +14,7 @@
 
 分组、首次赠额、Key 上限和有效期默认使用用户管理页「一键发送 Key」旁齿轮中的共享配置。也可以在请求里传一个 `group_id`，覆盖首次创建时的分组。
 
-尚未保存共享配置时，传 `group_id` 即可使用默认参数：不赠额、不限 Key 总额度、长期有效、并发继承用户限制。不需要为纯 API 调用填写邮件标题或 API 地址；账户仍需已有可用余额、订阅或符合站点的自动垫付条件。
+尚未保存共享配置时，传 `group_id` 即可使用默认参数：不赠额、不限 Key 总额度、长期有效、并发继承用户限制。不需要为纯 API 调用填写邮件标题或 API 地址；账户仍需已有可用余额或有效订阅。
 
 可用分组 ID 可用同一管理员 Token 调用 `GET /api/v1/admin/groups/all` 查询，取返回分组的 `id`；不要把来源账号 ID 当作分组 ID。
 
@@ -206,7 +206,7 @@ HTTP 200 和 `code:0` 表示批次已处理，**仍须检查 `failed` 和每条 
 
 复用保留原 Key 的实际分组、限额、使用量和有效期。如果显式传了 `group_id`，而已有专用 Key 不恰好绑定这个单一分组，返回 `group_mismatch`，由管理员明确调整；接口不会暗中换 Key 或重置额度。
 
-当前企业身份、启用状态、分组权限、有效订阅和余额/自动垫付条件都会校验。纯 Key 发放不要求员工邮箱有效；身份以当前飞书应用和企业下的绑定关系判断。
+当前企业身份、启用状态、分组权限、有效订阅和余额条件都会校验。纯 Key 发放不要求员工邮箱有效；身份以当前飞书应用和企业下的绑定关系判断。
 
 ## 4. cURL 示例
 
@@ -312,7 +312,7 @@ def issue_keys(token, user_ids, group_id=None):
 | 批次内 `identity_mismatch` | 此 ID 没有当前应用/企业的唯一飞书绑定；从员工接口重新取 ID |
 | `inactive_employee` / `inactive_user` | 飞书员工或本站用户不可用 |
 | `group_unavailable` / `group_not_allowed` | 分组停用、权限或订阅不足 |
-| `balance_insufficient` | 余额不足且无可用自动垫付；按站内规则充值或设置首次赠额 |
+| `balance_insufficient` | 余额不足；按站内规则充值或设置首次赠额 |
 | `key_unavailable` | 原专用 Key 被删除、禁用、过期或耗尽；管理员先处理原 Key |
 | `key_rate_limited` / `key_ip_restricted` | 原 Key 的窗口额度或 IP 限制阻止直接可用 |
 | `group_mismatch` | 显式请求的分组与原专用 Key 不一致 |

@@ -47,8 +47,8 @@ const getUserTimezone = (): string => {
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Attach token from localStorage
-    const token = localStorage.getItem('auth_token')
+    // Attach the token from the selected login persistence scope
+    const token = getAuthItem(AUTH_TOKEN_KEY)
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
