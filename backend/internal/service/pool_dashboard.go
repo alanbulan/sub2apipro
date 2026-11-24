@@ -139,8 +139,8 @@ func BuildPoolQuotaAccounts(accounts []Account, parents map[int64]*Account, now 
 				case "USD", "CNY", "EUR", "credits", "tokens":
 					r.Balance, r.BalanceUnit = balance.Balance, balance.Unit
 					r.UpdatedAt = balance.ReceivedAt
-					if snap := decodeUpstreamBillingProbeSnapshot(source.Extra); snap != nil && snap.Balance != nil {
-						r.BalanceFreshUntil = snap.Balance.FreshUntil
+					if snap := poolBalanceSnapshot(source); snap != nil {
+						r.BalanceFreshUntil = snap.FreshUntil
 					}
 					if *r.Balance <= 0 {
 						r.Available = false

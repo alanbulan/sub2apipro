@@ -90,6 +90,7 @@ func (h *AccountHandler) SharedPoolDashboard(c *gin.Context) {
 					}
 				}
 			}
+			h.upstreamBillingProbe.RefreshPoolBalances(accounts)
 			entry = poolQuotaCacheEntry{expires: time.Now().Add(30 * time.Second), accounts: h.accountUsageService.PoolQuotaAccounts(accounts, parents, time.Now().UTC())}
 			h.poolDashboard.groups[group.ID] = entry
 		}

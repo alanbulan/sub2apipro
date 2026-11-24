@@ -23,9 +23,10 @@ const (
 	SettingKeyFeishuConnectRedirectURL = "feishu_connect_redirect_url"
 )
 
-// Follow the existing runtime-role policy for fork-owned background jobs.
+// Canonical services run background workers in each instance. The delivery
+// worker uses durable leases to coordinate recipients across replicas.
 func (s *SettingService) RunsFeishuBackgroundJobs() bool {
-	return s != nil && (s.cfg == nil || s.cfg.RunsBackgroundJobs())
+	return s != nil
 }
 
 type FeishuConnectSettings struct {

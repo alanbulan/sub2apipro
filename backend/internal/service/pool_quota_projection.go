@@ -83,11 +83,10 @@ func opsBalanceAccount(a *Account, now time.Time) AccountOpsBalanceAccount {
 		return item
 	}
 	item.ProbeEnabled = upstreamBillingProbeEnabled(a)
-	snap := decodeUpstreamBillingProbeSnapshot(a.Extra)
-	if snap == nil || snap.Balance == nil {
+	b := poolBalanceSnapshot(a)
+	if b == nil {
 		return item
 	}
-	b := snap.Balance
 	item.BalanceStatus = b.Status
 	item.ReceivedAt = b.ReceivedAt
 	if unit, ok := b.Data["unit"].(string); ok && unit != "" {

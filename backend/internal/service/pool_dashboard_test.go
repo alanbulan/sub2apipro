@@ -37,13 +37,11 @@ func TestPoolSourceGroupsIntersectOwnerKeysWithCurrentPermissions(t *testing.T) 
 	require.NoError(t, err)
 	require.Len(t, groups, 1)
 	require.Equal(t, int64(1), groups[0].ID)
-	// Upstream multi-group keys must expose all permitted sources, while a
-	// forged primary group outside current permissions remains invisible.
-	svc.apiKeyRepo = &poolKeysRepo{keys: []APIKey{{UserID: 1, GroupID: &group2, GroupIDs: []int64{2, 1}, Status: StatusActive}}}
+	// A key whose group is no longer permitted must not expose that source.
+	svc.apiKeyRepo = &poolKeysRepo{keys: []APIKey{{UserID: 1, GroupID: &group2, Status: StatusActive}}}
 	groups, err = svc.PoolSourceGroups(context.Background(), 1)
 	require.NoError(t, err)
-	require.Len(t, groups, 1)
-	require.Equal(t, int64(1), groups[0].ID)
+	require.Empty(t, groups)
 }
 
 func TestPoolQuotaAccountsRedactSecretsAndRejectExpiredObservations(t *testing.T) {

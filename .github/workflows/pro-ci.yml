@@ -1,0 +1,75 @@
+name: Pro regressions
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Check source and deployment contracts
+        run: |
+          python3 scripts/check-pro-contract.py
+          bash -n scripts/check-upstream.sh
+          sh -n deploy/cron/upstream-sync
+          node --test deploy/tests/upstream-sync-ci.test.cjs
+
+  database-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: pro_fixture
+          POSTGRES_PASSWORD: isolated_fixture_only
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pro_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Export exact pre-migration schema history
+        run: |
+          mkdir -p "$RUNNER_TEMP/pro-previous-schema"
+          git archive 0226a1f40e4019243544c19c476e8b537394809d backend/migrations | tar -x -C "$RUNNER_TEMP/pro-previous-schema"
+      - name: Fresh install and canonical upgrade rehearsal
+        working-directory: backend
+        env:
+          CANONICAL_UPGRADE_DSN: postgres://pro_fixture:isolated_fixture_only@localhost:5432/postgres?sslmode=disable
+          CANONICAL_PREVIOUS_MIGRATIONS: ${{ runner.temp }}/pro-previous-schema/backend/migrations
+        run: go test -count=1 -v ./internal/repository -run '^TestCanonicalMigration'
+
+  frontend-pro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - name: Pro themes, authentication, Feishu, keys, pool and IQ regressions
+        working-directory: frontend
+        run: |
+          pnpm exec vitest run src/__tests__/rememberMePro.spec.ts src/__tests__/useAppTheme.spec.ts src/components/settings/FeishuSettings.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts src/components/layout/__tests__/AppHeader.feishu.spec.ts src/views/user/__tests__/PoolDashboardView.spec.ts src/components/admin/account/__tests__/PoolDiagnostics.spec.ts src/views/admin/__tests__/ConversationLogsView.spec.ts src/api/__tests__/intelligence.spec.ts
+      - name: Build production frontend
+        working-directory: frontend
+        run: pnpm build

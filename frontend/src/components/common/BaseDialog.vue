@@ -69,6 +69,7 @@ interface Props {
   closeOnClickOutside?: boolean
   showCloseButton?: boolean
   zIndex?: number
+  teleportTo?: string | HTMLElement
 }
 
 interface Emits {

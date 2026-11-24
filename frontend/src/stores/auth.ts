@@ -20,6 +20,7 @@ import {
   TOKEN_EXPIRES_AT_KEY,
   clearAuthStorage,
   getAuthItem,
+  getAuthStorage,
   setAuthItem,
   setAuthStorageMode
 } from '@/utils/authStorage'
@@ -89,6 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
   const tokenExpiresAt = ref<number | null>(null) // 过期时间戳（毫秒）
   const runMode = ref<'standard' | 'simple'>('standard')
   const pendingAuthSession = ref<PendingAuthSessionSummary | null>(null)
+  let pendingRememberMe = true
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -113,10 +115,10 @@ export const useAuthStore = defineStore('auth', () => {
    * Also starts auto-refresh and immediately fetches latest user data
    */
   function checkAuth(): void {
-    const savedToken = localStorage.getItem(AUTH_TOKEN_KEY)
-    const savedUser = localStorage.getItem(AUTH_USER_KEY)
-    const savedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
-    const savedExpiresAt = localStorage.getItem(TOKEN_EXPIRES_AT_KEY)
+    const savedToken = getAuthItem(AUTH_TOKEN_KEY)
+    const savedUser = getAuthItem(AUTH_USER_KEY)
+    const savedRefreshToken = getAuthItem(REFRESH_TOKEN_KEY)
+    const savedExpiresAt = getAuthItem(TOKEN_EXPIRES_AT_KEY)
     pendingAuthSession.value = getPersistedPendingAuthSession()
 
     if (savedToken && savedUser) {
@@ -206,7 +208,7 @@ export const useAuthStore = defineStore('auth', () => {
   function scheduleTokenRefresh(expiresInSeconds: number): void {
     const expiresAtMs = Date.now() + expiresInSeconds * 1000
     tokenExpiresAt.value = expiresAtMs
-    localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(expiresAtMs))
+    setAuthItem(TOKEN_EXPIRES_AT_KEY, String(expiresAtMs))
     scheduleTokenRefreshAt(expiresAtMs)
   }
 
@@ -309,7 +311,10 @@ export const useAuthStore = defineStore('auth', () => {
    * Set auth state from an AuthResponse
    * Internal helper function
    */
-  function setAuthFromResponse(response: AuthResponse): void {
+  function setAuthFromResponse(response: AuthResponse, rememberMe?: boolean): void {
+    const storage = typeof rememberMe === 'boolean'
+      ? setAuthStorageMode(rememberMe)
+      : getAuthStorage()
     // Store token and user
     token.value = response.access_token
 

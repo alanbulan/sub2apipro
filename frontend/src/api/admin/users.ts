@@ -446,6 +446,7 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   batchUpdateLimits,
+  batchRecharge,
   findBlacklistedEmailUsers,
   batchDisable,
   toggleStatus,

@@ -109,15 +109,18 @@ type UpstreamBillingProbeSettings struct {
 // UpstreamBillingProbeSnapshot is persisted in accounts.extra. Data is kept as
 // a sanitized map so future response fields do not require a database change.
 type UpstreamBillingProbeSnapshot struct {
-	Status        string         `json:"status"`
-	Data          map[string]any `json:"data,omitempty"`
-	ReceivedAt    *time.Time     `json:"received_at,omitempty"`
-	FreshUntil    *time.Time     `json:"fresh_until,omitempty"`
-	LastAttemptAt time.Time      `json:"last_attempt_at"`
-	NextProbeAt   time.Time      `json:"next_probe_at"`
-	FailureCount  int            `json:"failure_count,omitempty"`
-	HTTPStatus    int            `json:"http_status,omitempty"`
-	LastError     string         `json:"last_error,omitempty"`
+	// Balance is retained when reading historical Pro snapshots. New quota reads
+	// use the independent pool balance cache, leaving canonical rate probing intact.
+	Balance       *UpstreamBalanceSnapshot `json:"balance,omitempty"`
+	Status        string                   `json:"status"`
+	Data          map[string]any           `json:"data,omitempty"`
+	ReceivedAt    *time.Time               `json:"received_at,omitempty"`
+	FreshUntil    *time.Time               `json:"fresh_until,omitempty"`
+	LastAttemptAt time.Time                `json:"last_attempt_at"`
+	NextProbeAt   time.Time                `json:"next_probe_at"`
+	FailureCount  int                      `json:"failure_count,omitempty"`
+	HTTPStatus    int                      `json:"http_status,omitempty"`
+	LastError     string                   `json:"last_error,omitempty"`
 	// SyncedRateMultiplier records the value this probe wrote into
 	// accounts.rate_multiplier. It is only set when the account opted into rate
 	// sync and the declared value passed the write-back range check, so the
