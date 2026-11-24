@@ -15,11 +15,17 @@ jobs:
         env:
           APP_IMAGE: ghcr.io/alanbulan/sub2apipro:sha-${{ github.sha }}
           POSTGRES_PASSWORD: isolated_fixture_only
+          DATABASE_HOST: isolated-fixture-postgres
+          DATABASE_PASSWORD: isolated_fixture_only
+          REDIS_HOST: isolated-fixture-redis
           REDIS_PASSWORD: isolated_fixture_only
         run: |
           for manifest in deploy/docker-compose.yml deploy/docker-compose.local.yml deploy/docker-compose.standalone.yml; do
-            resolved_image=$(docker compose -f "$manifest" config --images sub2api)
-            test "$resolved_image" = "$APP_IMAGE"
+            resolved_image=$(docker compose -f "$manifest" config --format json | python3 -c 'import json, sys; print(json.load(sys.stdin)["services"]["sub2api"]["image"])')
+            if [ "$resolved_image" != "$APP_IMAGE" ]; then
+              echo "::error file=$manifest::Application image does not match this Pro commit: $resolved_image"
+              exit 1
+            fi
           done
       - name: Check source and deployment contracts
         run: |

@@ -74,7 +74,7 @@ check_space() {
 
 # Validate and download before interrupting traffic. Dependencies remain running.
 compose_new config --quiet
-resolved_image=$(compose_new config --images sub2api)
+resolved_image=$(compose_new config --format json | python3 -c 'import json, sys; print(json.load(sys.stdin)["services"]["sub2api"]["image"])')
 [ "$resolved_image" = "$app_image" ] || {
   echo 'The deployment manifest does not resolve to the requested immutable Pro image; leaving the application running.' >&2
   exit 1
