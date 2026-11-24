@@ -100,7 +100,7 @@ jobs:
         working-directory: frontend
         run: |
           set -o pipefail
-          pnpm exec vitest run src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/settings/FeishuSettings.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee tests.log
+          pnpm exec vitest run src/views/admin/__tests__/UsersView.spec.ts src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/settings/FeishuSettings.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee tests.log
       - name: Build frontend
         working-directory: frontend
         run: |
