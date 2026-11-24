@@ -1276,6 +1276,8 @@ func registerFeishuSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 	admin.GET("/users/feishu-sync", h.Admin.Setting.GetFeishuDirectorySync)
 	admin.POST("/users/feishu-sync", gin.HandlerFunc(stepUp), h.Admin.Setting.StartFeishuDirectorySync)
 	delivery := admin.Group("/users/feishu-key-delivery")
+	delivery.GET("/employees", h.Admin.Setting.ListFeishuKeyEmployees)
+	delivery.POST("/issue", gin.HandlerFunc(stepUp), h.Admin.Setting.IssueFeishuKeys)
 	delivery.GET("/config", h.Admin.Setting.GetFeishuKeyDeliveryConfig)
 	delivery.PUT("/config", gin.HandlerFunc(stepUp), h.Admin.Setting.SaveFeishuKeyDeliveryConfig)
 	delivery.POST("/preview", gin.HandlerFunc(stepUp), h.Admin.Setting.PreviewFeishuKeyDelivery)

@@ -96,3 +96,11 @@ frontend/src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts
 frontend/src/i18n/locales/zh/feishuKeyDelivery.ts
 frontend/src/i18n/locales/en/feishuKeyDelivery.ts
 docs/feishu-key-distribution.md
+
+# API-only enterprise issuance shares the receipt and never sends email.
+backend/internal/service/feishu_key_api.go
+backend/internal/service/feishu_key_provision.go
+backend/internal/service/feishu_key_api_test.go
+backend/internal/handler/admin/feishu_key_api.go
+backend/internal/handler/admin/feishu_key_api_test.go
+docs/feishu-key-api.md

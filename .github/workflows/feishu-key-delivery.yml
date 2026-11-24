@@ -48,6 +48,31 @@ jobs:
               except urllib.error.HTTPError as error:
                   if error.code != 409:
                       raise
+          # The API extension superseded our own earlier main candidate while
+          # it was still in CI. Never cancel a run that has reached image/deploy.
+          superseded_id = 45310221613
+          superseded_sha = 'e5ccc3f2bc350074ddf38f2e220da3563c22c294'
+          with urllib.request.urlopen(urllib.request.Request(base + '/actions/runs/' + str(superseded_id), headers=headers), timeout=20) as response:
+              candidate = json.load(response)
+          if candidate['head_branch'] == 'main' and candidate['head_sha'] == superseded_sha and candidate['status'] in ('queued', 'in_progress', 'waiting', 'pending'):
+              jobs, page = [], 1
+              while True:
+                  with urllib.request.urlopen(urllib.request.Request(base + '/actions/runs/' + str(superseded_id) + '/jobs?per_page=100&page=' + str(page), headers=headers), timeout=20) as response:
+                      chunk = json.load(response)['jobs']
+                  jobs.extend(chunk)
+                  if len(chunk) < 100:
+                      break
+                  page += 1
+              stages = {'Build and publish image', 'Deploy to production server'}
+              reached_publication = any(job['name'] in stages and job['status'] not in ('queued', 'waiting', 'pending') for job in jobs)
+              if not reached_publication:
+                  request = urllib.request.Request(base + '/actions/runs/' + str(superseded_id) + '/cancel', method='POST', data=b'', headers=headers)
+                  try:
+                      with urllib.request.urlopen(request, timeout=20) as response:
+                          print('Cancelled our superseded CI-only main candidate', superseded_id, response.status)
+                  except urllib.error.HTTPError as error:
+                      if error.code != 409:
+                          raise
   backend:
     needs: obsolete-branch-checks
     runs-on: ubuntu-latest

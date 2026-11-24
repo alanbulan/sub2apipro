@@ -23,7 +23,7 @@ const feishuKeyConfigKey = "feishu_key_delivery_config"
 const feishuKeyActiveJob = "feishu_key_delivery_active"
 const feishuKeyJobPrefix = "feishu_key_job:"
 
-var ErrFeishuKeyInvalid = infraerrors.BadRequest("FEISHU_KEY_INVALID", "Check delivery settings, active groups and the HTTPS API address")
+var ErrFeishuKeyInvalid = infraerrors.BadRequest("FEISHU_KEY_INVALID", "Check request parameters, delivery settings and active groups")
 var ErrFeishuKeyStale = infraerrors.Conflict("FEISHU_KEY_STALE", "Configuration or recipient changed; generate a new preview")
 
 type FeishuKeyDeliveryConfig struct {
@@ -189,7 +189,7 @@ func (s *FeishuKeyDeliveryService) Config(ctx context.Context) (*FeishuKeyDelive
 	return &FeishuKeyDeliverySettings{Config: cfg, SMTPConfigured: configured}, nil
 }
 
-func validateFeishuKeyConfig(v *FeishuKeyDeliveryConfig) error {
+func validateFeishuKeyProvisionConfig(v *FeishuKeyDeliveryConfig) error {
 	if v == nil || len(v.GroupIDs) == 0 || len(v.GroupIDs) > maxAPIKeyGroups {
 		return ErrFeishuKeyInvalid
 	}
@@ -205,13 +205,24 @@ func validateFeishuKeyConfig(v *FeishuKeyDeliveryConfig) error {
 		return ErrFeishuKeyInvalid
 	}
 	v.InitialBalance = math.Round(v.InitialBalance*1e8) / 1e8
+	v.NameSuffix = strings.TrimSpace(v.NameSuffix)
+	if v.NameSuffix == "" || len(v.NameSuffix) > 100 || v.ExpiresInDays < 0 || v.ExpiresInDays > 3650 || v.Concurrency < 0 || v.Concurrency > 10000 {
+		return ErrFeishuKeyInvalid
+	}
+	return nil
+}
+
+func validateFeishuKeyConfig(v *FeishuKeyDeliveryConfig) error {
+	if err := validateFeishuKeyProvisionConfig(v); err != nil {
+		return err
+	}
 	u, err := url.Parse(strings.TrimSpace(v.APIURL))
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.ContainsAny(v.APIURL, "\r\n") {
 		return ErrFeishuKeyInvalid
 	}
 	v.APIURL = strings.TrimRight(u.String(), "/")
 	v.Subject, v.NameSuffix = strings.TrimSpace(v.Subject), strings.TrimSpace(v.NameSuffix)
-	if v.Subject == "" || len(v.Subject) > 200 || strings.ContainsAny(v.Subject, "\r\n") || len(v.Introduction) > 4000 || v.NameSuffix == "" || len(v.NameSuffix) > 100 || v.ExpiresInDays < 0 || v.ExpiresInDays > 3650 || v.Concurrency < 0 || v.Concurrency > 10000 {
+	if v.Subject == "" || len(v.Subject) > 200 || strings.ContainsAny(v.Subject, "\r\n") || len(v.Introduction) > 4000 {
 		return ErrFeishuKeyInvalid
 	}
 	return nil
@@ -405,6 +416,18 @@ func (s *FeishuKeyDeliveryService) evaluateRecipient(ctx context.Context, c *dbe
 	}
 	if conflict {
 		return "email_conflict"
+	}
+	return s.evaluateEmployee(ctx, c, b, r, m, allowNew)
+}
+
+// Key provisioning uses current Feishu membership, never an email as identity.
+// API-only issuance deliberately does not require a deliverable mailbox.
+func (s *FeishuKeyDeliveryService) evaluateEmployee(ctx context.Context, c *dbent.Client, b *feishuKeyBatch, r *feishuKeyRecipient, m feishu.DirectoryMember, allowNew bool) string {
+	if !m.Active() {
+		return "inactive_employee"
+	}
+	if r.UserID == 0 {
+		return "sync_required"
 	}
 	u, err := s.keys.userRepo.GetByID(ctx, r.UserID)
 	if err != nil || !u.IsActive() || u.Role != RoleUser {

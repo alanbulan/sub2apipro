@@ -255,3 +255,5 @@ tools/local-worker/
 !/.github/scripts/free-ultrafast-browser.mjs
 
 !docs/feishu-key-distribution.md
+
+!docs/feishu-key-api.md
