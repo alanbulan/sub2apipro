@@ -8,7 +8,7 @@ export interface IntelligenceEvent { type: string; text?: string; error?: string
 // and require an explicit successful completion instead of treating EOF as success.
 export async function streamIntelligence(path: string, body: object, signal: AbortSignal, onEvent: (event: IntelligenceEvent) => void, admin = true) {
   const headers: Record<string, string> = { Authorization: `Bearer ${getAuthItem(AUTH_TOKEN_KEY) || ''}`, 'Content-Type': 'application/json' }
-  if (admin) headers[ADMIN_UI_REQUEST_HEADER] = 'true'
+  if (admin) headers[ADMIN_UI_REQUEST_HEADER] = '1'
   const response = await fetch(buildApiUrl(path), { method: 'POST', credentials: 'include', headers, body: JSON.stringify(body), signal })
   if (!response.ok) {
     const error = await response.json().catch(() => null)

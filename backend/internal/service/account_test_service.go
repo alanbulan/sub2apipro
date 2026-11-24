@@ -745,8 +745,10 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	bedrockPayload := buildBedrockTestPayload(testModelID)
 	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
 		bedrockPayload["max_tokens"] = pelicanClaudeMaxTokens
-		messages := bedrockPayload["messages"].([]map[string]any)
-		messages[0]["content"].([]map[string]any)[0]["text"] = options.prompt
+		bedrockPayload["messages"] = []map[string]any{{
+			"role":    "user",
+			"content": []map[string]any{{"type": "text", "text": options.prompt}},
+		}}
 	}
 	bedrockBody, _ := json.Marshal(bedrockPayload)
 
