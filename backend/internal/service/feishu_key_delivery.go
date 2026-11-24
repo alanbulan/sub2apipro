@@ -580,8 +580,13 @@ func (s *FeishuKeyDeliveryService) Retry(ctx context.Context, actor int64, id st
 		if err != nil {
 			return err
 		}
-		if !ok || b.Status == "running" {
+		if !ok {
 			return ErrFeishuKeyStale
+		}
+		// Retrying after a lost response observes the batch already resumed by
+		// the first request, without resetting any recipient a second time.
+		if b.Status == "running" {
+			return nil
 		}
 		cfg, err := s.directory.setup.settings.GetFeishuOAuthConfig(ctx)
 		if err != nil || cfg.Fingerprint() != b.Fingerprint {

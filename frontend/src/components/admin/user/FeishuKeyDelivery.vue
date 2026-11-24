@@ -104,7 +104,7 @@ async function poll() {
 async function open() {
   show.value = true
   if (!running.value) { scope.value = props.selectedIds.length ? 'selected' : 'all'; preview.value = null }
-  try { settings.value = await getFeishuKeyConfig(); if (!settings.value.config.group_ids.length) settingsOpen.value = true }
+  try { await poll(); settings.value = await getFeishuKeyConfig(); if (!settings.value.config.group_ids.length) settingsOpen.value = true }
   catch (error) { report(error) }
 }
 function onSaved(value: FeishuKeySettings) { settings.value = value; preview.value = null }

@@ -239,6 +239,8 @@ func TestFeishuKeyDeliveryRollbackAndFailedSMTPReuse(t *testing.T) {
 	s.send = func(context.Context, string, string, string) error { return errors.New("smtp auth: rejected") }
 	_, err = s.Retry(ctx, 1, p.ID, false)
 	require.NoError(t, err)
+	_, err = s.Retry(ctx, 1, p.ID, false)
+	require.NoError(t, err, "a lost retry response must observe the same running job")
 	s.workOne(ctx)
 	s.workOne(ctx)
 	key := f.client.APIKey.Query().OnlyX(ctx)
