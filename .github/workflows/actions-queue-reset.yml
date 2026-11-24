@@ -31,6 +31,7 @@ jobs:
           CONTROL_RUN: ${{ github.run_id }}
           CONTROL_BRANCH: ${{ github.ref_name }}
           EXPECTED_MAIN_SHA: 0226a1f40e4019243544c19c476e8b537394809d
+          RESTART_CANDIDATE: 'false'
           PYTHONUNBUFFERED: '1'
         shell: python {0}
         run: |
@@ -128,6 +129,9 @@ jobs:
           else:
               raise SystemExit('The old queue did not clear; no replacement runs were started.')
           summary('Queue cleared. Cancellation requested for ' + str(len(cancelled)) + ' outstanding runs.')
+          if os.environ.get('RESTART_CANDIDATE') == 'false':
+              summary('Queue cleanup only: the canonical-upstream migration requires review before production deployment.')
+              raise SystemExit(0)
           assert_candidate()
 
           def workflow_runs(filename):
