@@ -8,6 +8,10 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"sync"
+	"sync/atomic"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -171,4 +175,98 @@ func TestCanonicalMigrationFreshInstall(t *testing.T) {
 	files, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	require.Equal(t, len(files), n)
+	testCanonicalPolicyBridge(t, ctx, db)
+	testCanonicalIntelligenceLease(t, ctx, db)
+}
+
+func testCanonicalPolicyBridge(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+	_, err := db.ExecContext(ctx, `
+INSERT INTO users(id,email,password_hash,role) VALUES(68001,'synthetic-policy@example.invalid','fixture','user');
+INSERT INTO groups(id,name,platform) VALUES(68001,'fixture-group','openai'),(68002,'other-fixture-group','openai');
+INSERT INTO api_keys(id,user_id,key,name) VALUES(68001,68001,'sk-fixture-policy','policy-fixture');
+CREATE TABLE api_key_groups(api_key_id BIGINT, group_id BIGINT);
+INSERT INTO api_key_groups VALUES(68001,68001),(68001,68002);`)
+	require.NoError(t, err)
+	bridge, err := migrations.FS.ReadFile("900_pro_canonical_policy_bridge.sql")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(bridge))
+	require.ErrorContains(t, err, "active multi-group API keys")
+	var assigned sql.NullInt64
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT group_id FROM api_keys WHERE id=68001").Scan(&assigned))
+	require.False(t, assigned.Valid, "ambiguous legacy permissions must remain untouched")
+	_, err = db.ExecContext(ctx, "DELETE FROM api_key_groups WHERE group_id=68002")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(bridge))
+	require.NoError(t, err)
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT group_id FROM api_keys WHERE id=68001").Scan(&assigned))
+	require.Equal(t, int64(68001), assigned.Int64)
+	_, err = db.ExecContext(ctx, "UPDATE api_key_groups SET group_id=68002")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(bridge))
+	require.ErrorContains(t, err, "conflicting API key group bindings")
+	_, err = db.ExecContext(ctx, `DELETE FROM api_key_groups;
+ALTER TABLE account_groups ADD COLUMN allowed_models JSONB;
+INSERT INTO accounts(id,name,platform,type,credentials) VALUES(68001,'fixture-source','openai','apikey','{}');
+INSERT INTO account_groups(account_id,group_id,allowed_models) VALUES(68001,68001,'["restricted-model"]');`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(bridge))
+	require.ErrorContains(t, err, "retired per-account-group model restrictions")
+	_, err = db.ExecContext(ctx, `UPDATE account_groups SET allowed_models=NULL;
+ALTER TABLE user_group_rate_multipliers ADD COLUMN denied_models JSONB;
+INSERT INTO user_group_rate_multipliers(user_id,group_id,denied_models) VALUES(68001,68001,'["blocked-model"]');`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(bridge))
+	require.ErrorContains(t, err, "retired per-user-group model restrictions")
+	_, err = db.ExecContext(ctx, "UPDATE user_group_rate_multipliers SET denied_models=NULL")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(bridge))
+	require.NoError(t, err)
+}
+
+func testCanonicalIntelligenceLease(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+	repo := &scheduledTestPlanRepository{db: db}
+	now := time.Now().UTC()
+	due := now.Add(-time.Minute)
+	plan, err := repo.Create(ctx, &service.ScheduledTestPlan{AccountID: 68001, ModelID: "fixture-model", CronExpression: "0 */6 * * *", Enabled: true, MaxResults: 50, NextRunAt: &due, PelicanConfig: &service.PelicanTestConfig{QuestionKind: "candy", ParallelCount: 1}})
+	require.NoError(t, err)
+	var winners atomic.Int64
+	var wg sync.WaitGroup
+	failures := make(chan error, 24)
+	for range 24 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, err := repo.ClaimRun(ctx, plan.ID, now, now.Add(10*time.Minute))
+			if err != nil {
+				failures <- err
+			}
+			if ok {
+				winners.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	close(failures)
+	for err := range failures {
+		require.NoError(t, err)
+	}
+	require.Equal(t, int64(1), winners.Load(), "replicas must claim a charged IQ schedule only once")
+	duePlans, err := repo.ListDue(ctx, now)
+	require.NoError(t, err)
+	require.Empty(t, duePlans)
+	next := now.Add(time.Hour)
+	require.NoError(t, repo.UpdateAfterRun(ctx, plan.ID, now, next))
+	loaded, err := repo.GetByID(ctx, plan.ID)
+	require.NoError(t, err)
+	require.Equal(t, "candy", loaded.PelicanConfig.QuestionKind)
+	acquired, err := repo.ClaimRun(ctx, plan.ID, now, now.Add(time.Minute))
+	require.NoError(t, err)
+	require.False(t, acquired)
+	_, err = db.ExecContext(ctx, "UPDATE scheduled_test_plans SET next_run_at=$2 WHERE id=$1", plan.ID, due)
+	require.NoError(t, err)
+	acquired, err = repo.ClaimRun(ctx, plan.ID, now, now.Add(time.Minute))
+	require.NoError(t, err)
+	require.True(t, acquired, "completed plan releases its old lease")
 }

@@ -11,6 +11,7 @@ const mockRegister = vi.fn()
 const mockRefreshToken = vi.fn()
 
 vi.mock('@/api', () => ({
+  passkeyAPI: { login: vi.fn() },
   authAPI: {
     login: (...args: any[]) => mockLogin(...args),
     login2FA: (...args: any[]) => mockLogin2FA(...args),

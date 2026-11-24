@@ -21,7 +21,7 @@ BEGIN
         END IF;
         UPDATE api_keys key SET group_id = edge.group_id
         FROM api_key_groups edge
-        WHERE key.id = edge.api_key_id AND key.group_id IS NULL;
+        WHERE key.id = edge.api_key_id AND key.group_id IS NULL AND key.deleted_at IS NULL;
     END IF;
     -- Old extension restrictions cannot be silently ignored by canonical code.
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='account_groups' AND column_name='allowed_models') THEN

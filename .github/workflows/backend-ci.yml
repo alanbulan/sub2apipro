@@ -44,10 +44,14 @@ jobs:
           go version | grep -q 'go1.27.4'
       - name: Unit tests
         working-directory: backend
-        run: make test-unit
+        run: make test-unit 2>&1 | tee "$RUNNER_TEMP/pro-unit.log"
       - name: Integration tests
         working-directory: backend
-        run: make test-integration
+        run: make test-integration 2>&1 | tee "$RUNNER_TEMP/pro-integration.log"
+
+      - name: Annotate remote test failures
+        if: failure()
+        run: python3 scripts/ci-failure-summary.py "$RUNNER_TEMP/pro-unit.log" "$RUNNER_TEMP/pro-integration.log"
 
   frontend:
     runs-on: ubuntu-latest
