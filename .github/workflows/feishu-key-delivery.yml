@@ -14,7 +14,8 @@ concurrency:
 
 jobs:
   obsolete-branch-checks:
-    runs-on: ubuntu-latest
+    # Keep this small API-only cleanup outside the saturated Linux test queue.
+    runs-on: macos-15
     timeout-minutes: 3
     permissions:
       contents: read
@@ -26,7 +27,7 @@ jobs:
           GH_REPOSITORY: ${{ github.repository }}
           GH_BRANCH: ${{ github.ref_name }}
           GH_SHA: ${{ github.sha }}
-        shell: python
+        shell: python3 {0}
         run: |
           import json, os, urllib.parse, urllib.request
           branch = os.environ['GH_BRANCH']
