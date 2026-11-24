@@ -55,6 +55,7 @@ func firstNonEmpty(values ...string) string {
 type SettingHandler struct {
 	feishuSetup              *service.FeishuSetupService
 	feishuDirectory          *service.FeishuDirectoryService
+	feishuKeyDelivery        *service.FeishuKeyDeliveryService
 	keyRisk                  *keyrisk.Service
 	keyRiskKeys              keyRiskAPIKeys
 	ipAuditPenaltyRelease    func(context.Context, int64, int64, string) (service.SecurityPenaltySummary, error)

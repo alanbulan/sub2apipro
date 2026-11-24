@@ -176,6 +176,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/poolDashboard.spec.ts \
 	src/components/admin/user/__tests__/BulkRechargeUserModal.spec.ts \
 	src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts \
+	src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts \
 	src/utils/__tests__/userEmail.spec.ts \
 	src/components/admin/user/__tests__/BulkEditUserModal.spec.ts \
 	src/components/settings/FeishuSettings.spec.ts \

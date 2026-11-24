@@ -26,7 +26,7 @@ func (s *AuthService) EnsureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 	return user, err
 }
 
-func (s *AuthService) ensureFeishuEnterpriseUser(ctx context.Context, cfg *FeishuConnectSettings, info *feishu.UserInfo, synchronizeProfile bool) (*User, bool, error) {
+func (s *AuthService) ensureFeishuEnterpriseUser(ctx context.Context, cfg *FeishuConnectSettings, info *feishu.UserInfo, synchronizeProfile bool, reports ...*FeishuEmailSyncResult) (*User, bool, error) {
 	if s == nil || s.userRepo == nil || s.entClient == nil || s.settingService == nil {
 		return nil, false, ErrServiceUnavailable
 	}
@@ -80,7 +80,7 @@ func (s *AuthService) ensureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 		if !user.IsActive() {
 			return nil, false, ErrUserNotActive
 		}
-		if err := s.syncFeishuContactEmail(txCtx, user, info); err != nil {
+		if err := s.syncFeishuContactEmail(txCtx, user, info, reports...); err != nil {
 			return nil, false, err
 		}
 		if synchronizeProfile {
@@ -136,7 +136,7 @@ func (s *AuthService) ensureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 	if err := s.userRepo.Create(txCtx, user); err != nil {
 		return nil, false, err
 	}
-	if err := s.syncFeishuContactEmail(txCtx, user, info); err != nil {
+	if err := s.syncFeishuContactEmail(txCtx, user, info, reports...); err != nil {
 		return nil, false, err
 	}
 	if _, err := tx.Client().AuthIdentity.Create().
@@ -166,12 +166,27 @@ func (s *AuthService) ensureFeishuEnterpriseUser(ctx context.Context, cfg *Feish
 
 // Feishu's email field is an administrator-supplied contact, not proof of
 // mailbox ownership. Store it as profile data without creating an email login.
-func (s *AuthService) syncFeishuContactEmail(ctx context.Context, user *User, info *feishu.UserInfo) error {
+type FeishuEmailSyncResult struct{ Status string }
+
+func (s *AuthService) syncFeishuContactEmail(ctx context.Context, user *User, info *feishu.UserInfo, reports ...*FeishuEmailSyncResult) error {
+	setStatus := func(status string) {
+		for _, r := range reports {
+			if r != nil {
+				r.Status = status
+			}
+		}
+	}
 	if user.SignupSource != "feishu" || !strings.HasSuffix(strings.ToLower(user.Email), FeishuConnectSyntheticEmailDomain) {
+		if user.Email == feishuContactEmail(info) {
+			setStatus("unchanged")
+		} else {
+			setStatus("protected")
+		}
 		return nil
 	}
 	email := feishuContactEmail(info)
 	if email == "" {
+		setStatus("missing")
 		return nil
 	}
 	guard, ok := s.userRepo.(interface {
@@ -183,12 +198,16 @@ func (s *AuthService) syncFeishuContactEmail(ctx context.Context, user *User, in
 	updated, err := guard.FillFeishuContactEmail(ctx, user.ID, email)
 	if err != nil {
 		if errors.Is(err, ErrEmailExists) {
+			setStatus("conflict")
 			return nil
 		}
 		return err
 	}
 	if updated {
 		user.Email = email
+		setStatus("filled")
+	} else {
+		setStatus("protected")
 	}
 	return nil
 }
@@ -198,11 +217,18 @@ func feishuContactEmail(info *feishu.UserInfo) string {
 		return ""
 	}
 	for _, raw := range []string{info.EnterpriseEmail, info.Email} {
-		email := strings.ToLower(strings.TrimSpace(raw))
-		address, err := mail.ParseAddress(email)
-		if err == nil && address.Address == email && len(email) <= 255 && !strings.HasSuffix(email, ".invalid") {
+		if email := validFeishuContactEmail(raw); email != "" {
 			return email
 		}
+	}
+	return ""
+}
+
+func validFeishuContactEmail(raw string) string {
+	email := strings.ToLower(strings.TrimSpace(raw))
+	address, err := mail.ParseAddress(email)
+	if err == nil && address.Address == email && len(email) <= 255 && !strings.HasSuffix(email, ".invalid") {
+		return email
 	}
 	return ""
 }

@@ -6,6 +6,47 @@ import (
 	"net/url"
 )
 
+// DirectoryUser uses the same app-scoped identity as OAuth. Never resolve a
+// recipient by name or by an unverified contact email.
+func (c *Client) DirectoryUser(ctx context.Context, token, openID string) (*DirectoryMember, error) {
+	var out struct {
+		Data *struct {
+			User *DirectoryMember `json:"user"`
+		} `json:"data"`
+	}
+	if err := c.request(ctx, "directory_user", http.MethodGet, APIURL+"/contact/v3/users/"+url.PathEscape(openID)+"?user_id_type=open_id", token, nil, "", &out); err != nil {
+		return nil, err
+	}
+	if out.Data == nil || out.Data.User == nil || out.Data.User.OpenID != openID || out.Data.User.Status == nil {
+		return nil, &Error{"directory_user", "missing_member_fields"}
+	}
+	return out.Data.User, nil
+}
+
+// EnrichContact is optional: missing directory permissions must not break an
+// otherwise valid OAuth login. Explicitly inactive employees are rejected.
+func (c *Client) EnrichContact(ctx context.Context, appID, secret string, info *UserInfo) (bool, error) {
+	if info == nil || info.EnterpriseEmail != "" {
+		return true, nil
+	}
+	token, err := c.TenantToken(ctx, appID, secret)
+	if err != nil {
+		return true, err
+	}
+	member, err := c.DirectoryUser(ctx, token, info.OpenID)
+	if err != nil {
+		return true, err
+	}
+	if !member.Active() {
+		return false, nil
+	}
+	info.EnterpriseEmail = member.EnterpriseEmail
+	if member.Email != "" {
+		info.Email = member.Email
+	}
+	return true, nil
+}
+
 var directoryScopes = []string{
 	"contact:contact.base:readonly",
 	"contact:user.base:readonly",

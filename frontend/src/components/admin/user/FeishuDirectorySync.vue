@@ -5,6 +5,7 @@
     </button>
     <p v-if="job" class="mt-1 max-w-xs text-xs text-gray-500" role="status" data-test="sync-status">
       {{ t(`admin.users.feishuSync.${job.status}`, job) }}
+      <span v-if="job.emails_filled !== undefined" class="block">{{ t('feishuKeyDelivery.emailSummary', { filled: job.emails_filled || 0, missing: job.emails_missing || 0, conflict: job.emails_conflict || 0, protected: job.emails_protected || 0 }) }}</span>
       <span v-if="job.error_code">{{ t(`admin.users.feishuSync.errors.${job.error_code}`) }}</span>
     </p>
     <button v-if="pollFailed" class="mt-1 text-xs text-red-600 underline" @click="poll">

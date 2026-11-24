@@ -44,3 +44,41 @@ func TestDirectoryRejectsIncompleteSnapshots(t *testing.T) {
 		})
 	}
 }
+
+func TestFeishuDirectoryEnrichesEnterpriseEmailWhenOAuthOmitsIt(t *testing.T) {
+	api := testClient(func(r *http.Request) string {
+		switch r.URL.Path {
+		case "/open-apis/auth/v3/tenant_access_token/internal":
+			return `{"code":0,"tenant_access_token":"tenant-token"}`
+		case "/open-apis/contact/v3/users/ou_member":
+			require.Equal(t, "open_id", r.URL.Query().Get("user_id_type"))
+			require.Equal(t, "Bearer tenant-token", r.Header.Get("Authorization"))
+			return `{"code":0,"data":{"user":{"open_id":"ou_member","enterprise_email":"employee@company.example","email":"contact@company.example","status":{"is_activated":true}}}}`
+		default:
+			t.Fatal(r.URL.Path)
+			return ""
+		}
+	})
+	info := &UserInfo{OpenID: "ou_member", TenantKey: "company"}
+	active, err := api.EnrichContact(context.Background(), "cli_app", "secret", info)
+	require.NoError(t, err)
+	require.True(t, active)
+	require.Equal(t, "employee@company.example", info.EnterpriseEmail)
+}
+
+func TestFeishuDirectoryRejectsDifferentIdentityAndInactiveEmployee(t *testing.T) {
+	api := testClient(func(*http.Request) string {
+		return `{"code":0,"data":{"user":{"open_id":"other","status":{"is_activated":true}}}}`
+	})
+	_, err := api.DirectoryUser(context.Background(), "token", "ou_member")
+	require.Error(t, err)
+	api = testClient(func(r *http.Request) string {
+		if r.URL.Path == "/open-apis/auth/v3/tenant_access_token/internal" {
+			return `{"code":0,"tenant_access_token":"tenant-token"}`
+		}
+		return `{"code":0,"data":{"user":{"open_id":"ou_member","status":{"is_activated":true,"is_resigned":true}}}}`
+	})
+	active, err := api.EnrichContact(context.Background(), "cli_app", "secret", &UserInfo{OpenID: "ou_member"})
+	require.NoError(t, err)
+	require.False(t, active)
+}

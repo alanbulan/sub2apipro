@@ -1,0 +1,60 @@
+name: Feishu key delivery checks
+
+on:
+  push:
+    branches: ['feat/feishu-key-delivery-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Feishu, email and lifecycle regressions
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -tags=unit -count=1 -timeout=10m -run '^(TestFeishu|TestDirectory|TestSMTP|TestEmailService|TestProvideCleanup)' ./internal/pkg/feishu ./internal/service ./internal/repository ./internal/handler ./internal/handler/admin ./internal/server/routes ./cmd/server 2>&1 | tee feishu-key-test.log
+      - name: Save backend test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feishu-key-backend
+          path: backend/feishu-key-test.log
+          retention-days: 7
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Lint and check frontend types
+        working-directory: frontend
+        run: |
+          pnpm run lint:check
+          pnpm run typecheck
+      - name: Feishu user interface regressions
+        working-directory: frontend
+        run: pnpm exec vitest run src/components/admin/user/__tests__/FeishuKeyDelivery.spec.ts src/components/admin/user/__tests__/FeishuDirectorySync.spec.ts src/components/settings/FeishuSettings.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm run build

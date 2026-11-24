@@ -37,6 +37,7 @@ export interface FeishuDirectoryJob {
   id: string
   status: 'preparing' | 'reading' | 'syncing' | 'succeeded' | 'partial' | 'failed' | 'approval_required'
   total: number; processed: number; created: number; updated: number; skipped: number; failed: number
+  emails_filled?: number; emails_missing?: number; emails_conflict?: number; emails_protected?: number; emails_unchanged?: number
   error_code?: string
 }
 export async function getFeishuDirectorySync(): Promise<FeishuDirectoryJob | null> {

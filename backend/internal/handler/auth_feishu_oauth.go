@@ -131,6 +131,10 @@ func (h *AuthHandler) FeishuOAuthCallback(c *gin.Context) {
 		fail("tenant_mismatch", "Only members of the configured Feishu enterprise can sign in")
 		return
 	}
+	if active, _ := api.EnrichContact(c.Request.Context(), cfg.AppID, cfg.AppSecret, info); !active {
+		fail("account_unavailable", "This Feishu employee account is inactive")
+		return
+	}
 	identity := service.PendingAuthIdentityKey{ProviderType: "feishu", ProviderKey: cfg.IdentityKey(), ProviderSubject: info.OpenID}
 	redirect := sanitizeFrontendRedirectPath(readFeishuCookie(c, "redirect"))
 	if redirect == "" {

@@ -250,6 +250,9 @@ func ProvideHandlers(
 ) *Handlers {
 	if adminHandlers != nil && adminHandlers.Setting != nil && authHandler != nil {
 		adminHandlers.Setting.SetFeishuDirectoryAuth(authHandler.authService)
+		if apiKeyHandler != nil {
+			adminHandlers.Setting.SetFeishuKeyDelivery(apiKeyHandler.apiKeyService)
+		}
 	}
 	if adminHandlers != nil && adminHandlers.Account != nil && apiKeyHandler != nil {
 		adminHandlers.Account.SetPoolGroupReader(apiKeyHandler.apiKeyService)

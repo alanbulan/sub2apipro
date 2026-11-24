@@ -17,17 +17,22 @@ const feishuDirectoryTimeout = 15 * time.Minute
 var ErrFeishuSetupStateNotFound = errors.New("feishu state not found")
 
 type FeishuDirectoryJob struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	Total     int    `json:"total"`
-	Processed int    `json:"processed"`
-	Created   int    `json:"created"`
-	Updated   int    `json:"updated"`
-	Skipped   int    `json:"skipped"`
-	Failed    int    `json:"failed"`
-	ErrorCode string `json:"error_code,omitempty"`
-	StartedAt int64  `json:"started_at"`
-	Deadline  int64  `json:"deadline"`
+	ID              string `json:"id"`
+	Status          string `json:"status"`
+	Total           int    `json:"total"`
+	Processed       int    `json:"processed"`
+	Created         int    `json:"created"`
+	Updated         int    `json:"updated"`
+	Skipped         int    `json:"skipped"`
+	Failed          int    `json:"failed"`
+	EmailsFilled    int    `json:"emails_filled"`
+	EmailsMissing   int    `json:"emails_missing"`
+	EmailsConflict  int    `json:"emails_conflict"`
+	EmailsProtected int    `json:"emails_protected"`
+	EmailsUnchanged int    `json:"emails_unchanged"`
+	ErrorCode       string `json:"error_code,omitempty"`
+	StartedAt       int64  `json:"started_at"`
+	Deadline        int64  `json:"deadline"`
 }
 
 func (j *FeishuDirectoryJob) Running() bool {
@@ -195,7 +200,11 @@ func (s *FeishuDirectoryService) execute(ctx context.Context, job *FeishuDirecto
 			job.Skipped++
 		} else {
 			info := &feishu.UserInfo{OpenID: member.OpenID, TenantKey: cfg.TenantKey, Name: member.Name, AvatarURL: member.Avatar.URL, Email: member.Email, EnterpriseEmail: member.EnterpriseEmail}
-			_, created, err := s.auth.ensureFeishuEnterpriseUser(ctx, cfg, info, true)
+			emailResult := &FeishuEmailSyncResult{}
+			_, created, err := s.auth.ensureFeishuEnterpriseUser(ctx, cfg, info, true, emailResult)
+			if err == nil {
+				job.countEmail(emailResult.Status)
+			}
 			switch {
 			case errors.Is(err, ErrUserNotActive):
 				job.Skipped++
@@ -216,6 +225,21 @@ func (s *FeishuDirectoryService) execute(ctx context.Context, job *FeishuDirecto
 		job.Status = "partial"
 	}
 	return nil
+}
+
+func (j *FeishuDirectoryJob) countEmail(status string) {
+	switch status {
+	case "filled":
+		j.EmailsFilled++
+	case "missing":
+		j.EmailsMissing++
+	case "conflict":
+		j.EmailsConflict++
+	case "protected":
+		j.EmailsProtected++
+	case "unchanged":
+		j.EmailsUnchanged++
+	}
 }
 
 func (s *FeishuDirectoryService) prepare(ctx context.Context) (*FeishuConnectSettings, string, error) {

@@ -5,6 +5,7 @@ import autoCredit from './autoCredit'
 import accountPerformance from './accountPerformance'
 import poolDashboard from './poolDashboard'
 import feishu from './feishu'
+import feishuKeyDelivery from './feishuKeyDelivery'
 import apiKeyModelPolicy from './apiKeyModelPolicy'
 import lottery from './lottery'
 import accountTestTiming from './accountTestTiming'
@@ -53,6 +54,7 @@ export default {
   accountPerformance,
   poolDashboard,
   feishu,
+  feishuKeyDelivery,
   lottery,
   accountTestTiming,
   openaiAuth,

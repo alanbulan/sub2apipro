@@ -244,6 +244,7 @@
             </div>
 
             <FeishuDirectorySync @synced="loadUsers" />
+            <FeishuKeyDelivery :selected-ids="selectedIds" @updated="loadUsers" />
 
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
             <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
@@ -823,6 +824,7 @@ import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 import FeishuDirectorySync from '@/components/admin/user/FeishuDirectorySync.vue'
+import FeishuKeyDelivery from '@/components/admin/user/FeishuKeyDelivery.vue'
 import BulkRechargeUserModal from '@/components/admin/user/BulkRechargeUserModal.vue'
 import { shortUserEmail } from '@/utils/userEmail'
 

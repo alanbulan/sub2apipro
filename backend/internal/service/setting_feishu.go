@@ -23,6 +23,11 @@ const (
 	SettingKeyFeishuConnectRedirectURL = "feishu_connect_redirect_url"
 )
 
+// Follow the existing runtime-role policy for fork-owned background jobs.
+func (s *SettingService) RunsFeishuBackgroundJobs() bool {
+	return s != nil && (s.cfg == nil || s.cfg.RunsBackgroundJobs())
+}
+
 type FeishuConnectSettings struct {
 	Enabled          bool   `json:"enabled"`
 	AppID            string `json:"app_id"`

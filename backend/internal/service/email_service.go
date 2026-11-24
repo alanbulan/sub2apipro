@@ -197,6 +197,23 @@ const smtpIOTimeout = 20 * time.Second
 
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	return s.sendEmailWithConfigContext(context.Background(), config, to, subject, body)
+}
+
+// SendEmailContext lets durable delivery workers stop an in-flight SMTP session
+// on shutdown. The caller records interrupted DATA submissions as uncertain.
+func (s *EmailService) SendEmailContext(ctx context.Context, to, subject, body string) error {
+	config, err := s.GetSMTPConfig(ctx)
+	if err != nil {
+		return err
+	}
+	return s.sendEmailWithConfigContext(ctx, config, to, subject, body)
+}
+
+func (s *EmailService) sendEmailWithConfigContext(ctx context.Context, config *SMTPConfig, to, subject, body string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	message, err := buildSMTPMessage(config, to, subject, body)
 	if err != nil {
 		return err
@@ -207,6 +224,8 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 		return err
 	}
 	defer func() { _ = client.Close() }()
+	stopClose := context.AfterFunc(ctx, func() { _ = client.Close() })
+	defer stopClose()
 
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 	if err = client.Auth(auth); err != nil {
