@@ -10,6 +10,8 @@ on:
       # Dedicated Feishu checks cover this implementation branch. Main still
       # runs the complete reusable gate before image publication and deployment.
       - 'feat/feishu-key-delivery-*'
+      # One-time API-only queue maintenance must not enqueue the reusable gate.
+      - 'codex/actions-queue-reset-*'
   pull_request:
 
 permissions:
