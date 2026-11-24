@@ -2,6 +2,7 @@ name: Prepare current repair image
 on:
   push:
     branches: ['codex/actions-queue-reset-20261124']
+    paths: ['.github/repair-image-trigger-60866']
 permissions:
   contents: read
   packages: write

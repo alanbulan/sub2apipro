@@ -1,0 +1,299 @@
+name: Deploy verified repair without repeating checks
+on:
+  push:
+    branches: ['codex/actions-queue-reset-20261124']
+    paths: ['.github/workflows/deploy-verified-repair.yml']
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: deploy-verified-repair-60866
+  cancel-in-progress: false
+jobs:
+  verified-checks:
+    name: Reuse successful checks and the parallel immutable image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      ready: ${{ steps.verify.outputs.ready }}
+    steps:
+      - name: Verify exact source, every required job and prepared image
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        shell: python {0}
+        run: |
+          import json, os, time, urllib.error, urllib.request
+          source = '60866db2336c96ec26f3902837d0fc2a60aaea6a'
+          checks_run = '45349019240'
+          image_run = '45349401897'
+          image_workflow_commit = '14067fc5418c'
+          base = 'https://api.github.com/repos/' + os.environ['GH_REPOSITORY']
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'}
+          required = {
+              'CI gate / shell', 'CI gate / test', 'CI gate / frontend',
+              'CI gate / golangci-lint', 'CI gate / release-helpers',
+              'CI gate / Security / backend-security', 'CI gate / Security / frontend-security',
+              'CI gate / Pro regressions / contracts', 'CI gate / Pro regressions / database-upgrade',
+              'CI gate / Pro regressions / frontend-pro', 'CI gate / Pro regressions / backend-build',
+          }
+          def api(path, method='GET'):
+              req = urllib.request.Request(base + path, headers=headers, method=method, data=None if method == 'GET' else b'')
+              with urllib.request.urlopen(req, timeout=25) as response:
+                  body = response.read()
+                  return json.loads(body) if body else None
+          def output(ready):
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as file:
+                  file.write('ready=' + str(ready).lower() + '\n')
+          def verify_main():
+              if api('/git/ref/heads/main')['object']['sha'] != source:
+                  raise SystemExit('Main changed; deployment is not authorized for that source.')
+          def job_list():
+              return api('/actions/runs/' + checks_run + '/jobs?per_page=100')['jobs']
+          verify_main()
+          deadline = time.monotonic() + 16 * 60
+          while time.monotonic() < deadline:
+              verify_main()
+              checks = api('/actions/runs/' + checks_run)
+              image = api('/actions/runs/' + image_run)
+              if checks['head_sha'] != source or checks['head_branch'] != 'main' or checks['name'] != 'Build and Deploy':
+                  raise SystemExit('Source validation identity changed.')
+              if not image['head_sha'].startswith(image_workflow_commit) or image['head_branch'] != 'codex/actions-queue-reset-20261124' or image['name'] != 'Prepare current repair image':
+                  raise SystemExit('Prepared image workflow identity changed.')
+              jobs = job_list()
+              by_name = {job['name']: job for job in jobs}
+              for name in required:
+                  job = by_name.get(name)
+                  if job and job['status'] == 'completed' and job['conclusion'] != 'success':
+                      raise SystemExit('Required source validation did not pass: ' + name)
+              if image['status'] == 'completed' and image['conclusion'] != 'success':
+                  raise SystemExit('The prepared image did not finish successfully.')
+              existing_deploy = by_name.get('Deploy to production server')
+              if existing_deploy and (existing_deploy['status'] == 'in_progress' or existing_deploy['conclusion'] == 'success'):
+                  print('The original pipeline already started production deployment; preserving it.')
+                  output(False)
+                  break
+              if checks['status'] == 'completed':
+                  raise SystemExit('The original pipeline stopped before reuse was authorized.')
+              passed = sum(by_name.get(name, {}).get('conclusion') == 'success' for name in required)
+              print('Required source checks: ' + str(passed) + '/11; prepared image: ' + image['status'], flush=True)
+              if passed == len(required) and image['conclusion'] == 'success':
+                  verify_main()
+                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as file:
+                      file.write('Reused all 11 successful checks for exact main source `' + source + '`: https://github.com/' + os.environ['GH_REPOSITORY'] + '/actions/runs/' + checks_run + '\n\n')
+                      file.write('Prepared immutable image: https://github.com/' + os.environ['GH_REPOSITORY'] + '/actions/runs/' + image_run + '\n')
+                  # Only duplicate image publication is stopped. Every required
+                  # source check is already successful, and no deploy is running.
+                  try:
+                      api('/actions/runs/' + checks_run + '/cancel', 'POST')
+                  except urllib.error.HTTPError as error:
+                      if error.code != 409:
+                          raise
+                  for attempt in range(36):
+                      time.sleep(5)
+                      stopped = api('/actions/runs/' + checks_run)
+                      if stopped['status'] == 'completed':
+                          if stopped['conclusion'] == 'success':
+                              output(False)
+                              break
+                          if stopped['conclusion'] != 'cancelled':
+                              raise SystemExit('Unexpected original pipeline completion; preserving production.')
+                          current_jobs = {job['name']: job for job in job_list()}
+                          if any(current_jobs.get(name, {}).get('conclusion') != 'success' for name in required):
+                              raise SystemExit('Required checks changed after cancellation.')
+                          verify_main()
+                          output(True)
+                          break
+                  else:
+                      raise SystemExit('Duplicate publication did not stop; no parallel deployment will run.')
+                  break
+              time.sleep(15)
+          else:
+              raise SystemExit('Timed out waiting for real successful checks and the prepared image.')
+
+  deploy:
+        description: Deploy the image to the configured production server
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/backend-ci.yml
+    permissions:
+      contents: read
+
+  image:
+    name: Build and publish image
+    needs: ci
+    if: ${{ needs.verified-checks.outputs.ready == 'true' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require completed migration review
+        run: python3 scripts/check-pro-contract.py --deployment
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "image=$repository:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.repository }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+
+      - name: Read application version
+        id: version
+        shell: bash
+        run: echo "version=$(tr -d '\r\n' < backend/cmd/server/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ github.event.head_commit.timestamp || '' }}
+          cache-from: type=gha,scope=application-image
+          cache-to: type=gha,mode=max,scope=application-image
+
+  deploy:
+    timeout-minutes: 30
+    name: Deploy to production server
+    needs: verified-checks
+    if: ${{ needs.ci.result == 'success' && needs.image.result == 'success' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && vars.DEPLOY_ENABLED == 'true' && (github.event_name != 'workflow_dispatch' || inputs.deploy) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out deployment configuration
+        uses: actions/checkout@v4
+        with:
+          ref: 60866db2336c96ec26f3902837d0fc2a60aaea6a
+
+      - name: Validate deployment inputs
+        env:
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+        shell: bash
+        run: |
+          case "$DEPLOY_COMPOSE_FILE" in
+            docker-compose.yml|docker-compose.local.yml|docker-compose.standalone.yml) ;;
+            *) echo "Unsupported DEPLOY_COMPOSE_FILE: $DEPLOY_COMPOSE_FILE" >&2; exit 1 ;;
+          esac
+          test -f "deploy/$DEPLOY_COMPOSE_FILE"
+          case "$DEPLOY_PATH" in
+            /*) ;;
+            *) echo "DEPLOY_PATH must be an absolute path without shell metacharacters" >&2; exit 1 ;;
+          esac
+          case "$DEPLOY_PATH" in
+            ''|*[!A-Za-z0-9._/-]*) echo "DEPLOY_PATH contains unsupported characters" >&2; exit 1 ;;
+          esac
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          case "$DEPLOY_PORT" in
+            ''|*[!0-9]*) echo 'DEPLOY_PORT must be numeric' >&2; exit 1 ;;
+          esac
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Stage deployment files
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+        shell: bash
+        run: |
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          staging="$DEPLOY_PATH/.deploy/60866db2336c96ec26f3902837d0fc2a60aaea6a"
+          ssh -p "$DEPLOY_PORT" "$target" "umask 077 && mkdir -p '$staging'"
+          scp -P "$DEPLOY_PORT" "deploy/$DEPLOY_COMPOSE_FILE" "$target:$staging/$DEPLOY_COMPOSE_FILE"
+          scp -P "$DEPLOY_PORT" deploy/action-deploy.sh "$target:$staging/action-deploy.sh"
+
+      - name: Log in to GHCR on the server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_REGISTRY_USERNAME: ${{ secrets.DEPLOY_REGISTRY_USERNAME }}
+          DEPLOY_REGISTRY_TOKEN: ${{ secrets.DEPLOY_REGISTRY_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$DEPLOY_REGISTRY_TOKEN" ]; then
+            echo 'DEPLOY_REGISTRY_TOKEN is not configured; assuming the GHCR image is public'
+            exit 0
+          fi
+          test -n "$DEPLOY_REGISTRY_USERNAME"
+          printf '%s' "$DEPLOY_REGISTRY_TOKEN" | ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "docker login ghcr.io --username '$DEPLOY_REGISTRY_USERNAME' --password-stdin"
+
+      - name: Deploy application without backups
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+          APP_IMAGE: ghcr.io/alanbulan/sub2apipro:sha-60866db2336c96ec26f3902837d0fc2a60aaea6a
+        shell: bash
+        run: |
+          staging="$DEPLOY_PATH/.deploy/60866db2336c96ec26f3902837d0fc2a60aaea6a"
+          ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cmp -s '$staging/action-deploy.sh' /usr/local/sbin/sub2api-action-deploy && sudo -n /usr/local/sbin/sub2api-action-deploy '$DEPLOY_PATH' '$DEPLOY_COMPOSE_FILE' '$staging/$DEPLOY_COMPOSE_FILE' '$APP_IMAGE'"
