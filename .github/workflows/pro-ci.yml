@@ -29,10 +29,15 @@ jobs:
           done
       - name: Check source and deployment contracts
         run: |
-          python3 scripts/check-pro-contract.py
+          python3 scripts/check-pro-contract.py > "$RUNNER_TEMP/pro-contract.log" 2>&1 || {
+            cat "$RUNNER_TEMP/pro-contract.log"
+            python3 scripts/ci-failure-summary.py "$RUNNER_TEMP/pro-contract.log"
+            exit 1
+          }
+          cat "$RUNNER_TEMP/pro-contract.log"
           bash -n scripts/check-upstream.sh
           sh -n deploy/cron/upstream-sync
-          node --test deploy/tests/upstream-sync-ci.test.cjs > "$RUNNER_TEMP/pro-sync-tests.log" 2>&1 || {
+          node --test --test-reporter=tap deploy/tests/upstream-sync-ci.test.cjs > "$RUNNER_TEMP/pro-sync-tests.log" 2>&1 || {
             cat "$RUNNER_TEMP/pro-sync-tests.log"
             python3 - "$RUNNER_TEMP/pro-sync-tests.log" <<'PYLOG'
           import pathlib, sys
@@ -76,7 +81,13 @@ jobs:
         env:
           CANONICAL_UPGRADE_DSN: postgres://pro_fixture:isolated_fixture_only@localhost:5432/postgres?sslmode=disable
           CANONICAL_PREVIOUS_MIGRATIONS: ${{ runner.temp }}/pro-previous-schema/backend/migrations
-        run: go test -count=1 -v ./internal/repository -run '^TestCanonicalMigration'
+        run: |
+          go test -count=1 -v ./internal/repository -run '^TestCanonicalMigration' > "$RUNNER_TEMP/pro-database-tests.log" 2>&1 || {
+            cat "$RUNNER_TEMP/pro-database-tests.log"
+            python3 ../scripts/ci-failure-summary.py "$RUNNER_TEMP/pro-database-tests.log"
+            exit 1
+          }
+          cat "$RUNNER_TEMP/pro-database-tests.log"
 
   frontend-pro:
     runs-on: ubuntu-latest

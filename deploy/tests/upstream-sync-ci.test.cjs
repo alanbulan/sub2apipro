@@ -121,7 +121,8 @@ async function fixture(t, { withChecker = false, workflowChange } = {}) {
   fs.copyFileSync(path.join(source, 'scripts/check-pro-contract.py'), path.join(repo, 'scripts/check-pro-contract.py'));
   for (const file of ['.github/workflows/backend-ci.yml','.github/workflows/security-scan.yml','.github/workflows/pro-ci.yml','.github/workflows/build-and-deploy.yml',
     'backend/internal/service/auth_feishu_auto.go','backend/internal/service/feishu_key_api.go','backend/internal/service/intelligence_schedule.go',
-    'backend/internal/service/conversation_log.go','frontend/src/views/user/PoolDashboardView.vue','frontend/src/utils/authStorage.ts']) {
+    'backend/internal/service/conversation_log.go','frontend/src/views/user/PoolDashboardView.vue','frontend/src/utils/authStorage.ts',
+    'backend/internal/repository/feishu_key_transaction_test.go']) {
     fs.mkdirSync(path.dirname(path.join(repo,file)),{recursive:true});fs.copyFileSync(path.join(source,file),path.join(repo,file));
   }
   fs.writeFileSync(path.join(repo, '.gitignore'), '.codex-upstream-sync/\n');
