@@ -11,6 +11,16 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
+      - name: Verify production image selection
+        env:
+          APP_IMAGE: ghcr.io/alanbulan/sub2apipro:sha-${{ github.sha }}
+          POSTGRES_PASSWORD: isolated_fixture_only
+          REDIS_PASSWORD: isolated_fixture_only
+        run: |
+          for manifest in deploy/docker-compose.yml deploy/docker-compose.local.yml deploy/docker-compose.standalone.yml; do
+            resolved_image=$(docker compose -f "$manifest" config --images sub2api)
+            test "$resolved_image" = "$APP_IMAGE"
+          done
       - name: Check source and deployment contracts
         run: |
           python3 scripts/check-pro-contract.py
