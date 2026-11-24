@@ -44,10 +44,16 @@ jobs:
           go version | grep -q 'go1.27.4'
       - name: Unit tests
         working-directory: backend
-        run: make test-unit 2>&1 | tee "$RUNNER_TEMP/pro-unit.log"
+        shell: bash
+        run: |
+          set -o pipefail
+          make test-unit 2>&1 | tee "$RUNNER_TEMP/pro-unit.log"
       - name: Integration tests
         working-directory: backend
-        run: make test-integration 2>&1 | tee "$RUNNER_TEMP/pro-integration.log"
+        shell: bash
+        run: |
+          set -o pipefail
+          make test-integration 2>&1 | tee "$RUNNER_TEMP/pro-integration.log"
 
       - name: Annotate remote test failures
         if: failure()

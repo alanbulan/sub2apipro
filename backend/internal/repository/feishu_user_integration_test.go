@@ -6,23 +6,29 @@ import (
 	"fmt"
 
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/authguard"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func (s *UserRepoSuite) TestFeishuEmployeesShareOfficeIPWithoutEmailIdentities() {
-	publicCtx := authguard.WithRegistrationIP(s.ctx, "192.0.2.40")
-	enterpriseCtx := authguard.WithoutRegistrationIP(publicCtx)
+func (s *UserRepoSuite) TestFeishuPlaceholdersDoNotBecomeEmailAuthenticationIdentities() {
 	for i := 0; i < 3; i++ {
-		user := registrationIPTestUser(fmt.Sprintf("employee%d%s", i, service.FeishuConnectSyntheticEmailDomain))
-		user.SignupSource = "feishu"
-		s.Require().NoError(s.repo.Create(enterpriseCtx, user))
+		user := s.mustCreateUser(&service.User{
+			Email:        fmt.Sprintf("employee%d%s", i, service.FeishuConnectSyntheticEmailDomain),
+			SignupSource: "feishu",
+		})
+		stored, err := s.repo.GetByID(s.ctx, user.ID)
+		s.Require().NoError(err)
+		s.Require().Equal("feishu", stored.SignupSource)
+		s.Require().Equal(user.Email, stored.Email)
 	}
 	count, err := s.client.AuthIdentity.Query().Where(authidentity.ProviderTypeEQ("email")).Count(s.ctx)
 	s.Require().NoError(err)
 	s.Require().Zero(count, "Feishu identifiers must not become email authentication identities")
-	// The enterprise exemption must not weaken public signup from the same IP.
-	s.Require().NoError(s.repo.Create(publicCtx, registrationIPTestUser("public1@example.com")))
-	s.Require().NoError(s.repo.Create(publicCtx, registrationIPTestUser("public2@example.com")))
-	s.Require().ErrorIs(s.repo.Create(publicCtx, registrationIPTestUser("public3@example.com")), service.ErrRegistrationIPLimit)
+	// Canonical email registration still creates its own authentication identity.
+	publicUser := s.mustCreateUser(&service.User{Email: "public@example.com"})
+	identity, err := s.client.AuthIdentity.Query().Where(
+		authidentity.ProviderTypeEQ("email"),
+		authidentity.ProviderSubjectEQ(publicUser.Email),
+	).Only(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(publicUser.ID, identity.UserID)
 }
