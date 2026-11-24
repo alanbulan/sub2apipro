@@ -17,9 +17,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
-          EXPECTED_MAIN_SHA: 60866db2336c96ec26f3902837d0fc2a60aaea6a
-          OLD_SHA: fa8c9ee8388c38b7b1462d9210380257db96b4c1
-          OLD_RUN_ID: '45347323248'
+          EXPECTED_MAIN_SHA: d96fac67e89bf86b4b4e48e50ba8ea1cefd12af8
+          OLD_SHA: d96fac67e89bf86b4b4e48e50ba8ea1cefd12af8
+          OLD_RUN_ID: '45350177519'
         shell: python {0}
         run: |
           import json, os, time, urllib.error, urllib.request
@@ -38,6 +38,9 @@ jobs:
           current = api('/git/ref/heads/main')['object']['sha']
           if current != os.environ['EXPECTED_MAIN_SHA']:
               raise SystemExit('Main changed; preserving every workflow.')
+          comparison = api('/compare/60866db2336c96ec26f3902837d0fc2a60aaea6a...' + current)
+          if {file['filename'] for file in comparison['files']} != {'backend/internal/service/feishu_key_delivery_test.go'}:
+              raise SystemExit('Production sources changed; keeping the full validation pipeline.')
           path = '/actions/runs/' + os.environ['OLD_RUN_ID']
           run = api(path)
           if run['head_sha'] != os.environ['OLD_SHA'] or run['head_branch'] != 'main' or run['name'] != 'Build and Deploy':

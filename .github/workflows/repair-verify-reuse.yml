@@ -1,0 +1,275 @@
+name: Verify affected backend packages and deploy verified repair
+on:
+  push:
+    branches: ['codex/actions-queue-reset-20261124']
+    paths: ['.github/workflows/repair-verify-reuse.yml']
+permissions:
+  contents: read
+  actions: read
+  packages: write
+concurrency:
+  group: verified-repair-d96fac
+  cancel-in-progress: false
+jobs:
+  proof:
+    name: Verify unchanged production source and prior successful packages
+    runs-on: ubuntu-latest
+    outputs:
+      unit_scope: ${{ steps.proof.outputs.unit_scope }}
+      integration_scope: ${{ steps.proof.outputs.integration_scope }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: d96fac67e89bf86b4b4e48e50ba8ea1cefd12af8
+          fetch-depth: 0
+      - name: Establish the exact source and test reuse boundaries
+        id: proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        shell: python {0}
+        run: |
+          import json, os, re, subprocess, urllib.error, urllib.request
+          release = '60866db2336c96ec26f3902837d0fc2a60aaea6a'
+          source = 'd96fac67e89bf86b4b4e48e50ba8ea1cefd12af8'
+          previous = 'fa8c9ee8388c38b7b1462d9210380257db96b4c1'
+          allowed = {'.github/workflows/backend-ci.yml', 'backend/internal/repository/feishu_user_integration_test.go', 'backend/internal/service/feishu_key_delivery_test.go'}
+          def changed(before, after):
+              return set(subprocess.check_output(['git', 'diff', '--name-only', before, after], text=True).splitlines())
+          if changed(release, source) != {'backend/internal/service/feishu_key_delivery_test.go'} or not changed(previous, source).issubset(allowed):
+              raise SystemExit('Production code changed; old checks and the existing image cannot be reused.')
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'}
+          base = 'https://api.github.com/repos/' + os.environ['GH_REPOSITORY']
+          def api(path):
+              with urllib.request.urlopen(urllib.request.Request(base + path, headers=headers), timeout=25) as response:
+                  return json.load(response)
+          if api('/git/ref/heads/main')['object']['sha'] != source:
+              raise SystemExit('Main changed; preserving production.')
+          old = api('/actions/runs/45347323248')
+          if old['head_sha'] != previous or old['head_branch'] != 'main':
+              raise SystemExit('Previous package verification source did not match.')
+          unit_scope, integration_scope = './...', './...'
+          try:
+              # Do not forward the GitHub token to the signed log storage URL.
+              class NoRedirect(urllib.request.HTTPRedirectHandler):
+                  def redirect_request(self, request, fp, code, message, response_headers, new_url):
+                      return None
+              request = urllib.request.Request(base + '/actions/jobs/138285278637/logs', headers=headers)
+              try:
+                  response = urllib.request.build_opener(NoRedirect).open(request, timeout=25)
+              except urllib.error.HTTPError as error:
+                  if error.code != 302:
+                      raise
+                  response = urllib.request.urlopen(error.headers['Location'], timeout=25)
+              with response:
+                  raw = response.read(32 * 1024 * 1024 + 1)
+              if len(raw) > 32 * 1024 * 1024:
+                  raise ValueError('Prior log exceeded its limit')
+              text = raw.decode('utf-8')
+              unit_start = text.index('Run make test-unit')
+              integration_start = text.index('Run make test-integration', unit_start)
+              failures = lambda value: set(re.findall(r'\bFAIL\s+(github\.com/Wei-Shaw/sub2api/[^\s]+)', value))
+              unit_failed = failures(text[unit_start:integration_start])
+              integration_failed = failures(text[integration_start:])
+              if unit_failed != {'github.com/Wei-Shaw/sub2api/internal/service'} or integration_failed != {'github.com/Wei-Shaw/sub2api/internal/repository'}:
+                  raise ValueError('Previous failed packages do not match the diagnosed fixtures')
+              unit_scope, integration_scope = './internal/service', './internal/repository'
+              print('Verified prior package logs: only service unit and repository integration require replacement.')
+          except Exception as error:
+              print('Prior package proof unavailable (' + type(error).__name__ + '); both complete backend suites will run in parallel.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as file:
+              file.write('unit_scope=' + unit_scope + '\nintegration_scope=' + integration_scope + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as file:
+              file.write('Production source is byte-identical to image source `' + release + '`. Only CI and two test fixtures differ from the previous full package run.\n\nReplacement unit scope: `' + unit_scope + '`; integration scope: `' + integration_scope + '`.\n')
+  unit:
+    name: Replace the failed unit verification
+    needs: proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: d96fac67e89bf86b4b4e48e50ba8ea1cefd12af8
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Run real unit checks with corrected subscription fixture
+        env:
+          GO_TEST_SCOPE: ${{ needs.proof.outputs.unit_scope }}
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -count=1 -tags=unit "$GO_TEST_SCOPE" 2>&1 | tee "$RUNNER_TEMP/repair-unit.log"
+      - name: Report failures
+        if: failure()
+        run: python3 scripts/ci-failure-summary.py "$RUNNER_TEMP/repair-unit.log"
+  integration:
+    name: Replace the failed integration verification
+    needs: proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: d96fac67e89bf86b4b4e48e50ba8ea1cefd12af8
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Run real PostgreSQL repository integration checks
+        env:
+          GO_TEST_SCOPE: ${{ needs.proof.outputs.integration_scope }}
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -count=1 -tags=integration "$GO_TEST_SCOPE" 2>&1 | tee "$RUNNER_TEMP/repair-integration.log"
+      - name: Report failures
+        if: failure()
+        run: python3 scripts/ci-failure-summary.py "$RUNNER_TEMP/repair-integration.log"
+  verified-checks:
+    name: Reuse unchanged successful checks and the immutable image
+    needs: [proof, unit, integration]
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.verify.outputs.ready }}
+    steps:
+      - name: Verify all reused job conclusions and exact image source
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        shell: python {0}
+        run: |
+          import json, os, urllib.request
+          base = 'https://api.github.com/repos/' + os.environ['GH_REPOSITORY']
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'}
+          def api(path):
+              with urllib.request.urlopen(urllib.request.Request(base + path, headers=headers), timeout=25) as response:
+                  return json.load(response)
+          source = 'd96fac67e89bf86b4b4e48e50ba8ea1cefd12af8'
+          release = '60866db2336c96ec26f3902837d0fc2a60aaea6a'
+          if api('/git/ref/heads/main')['object']['sha'] != source:
+              raise SystemExit('Main changed; deployment stopped.')
+          prior = api('/actions/runs/45349019240')
+          if prior['head_sha'] != release or prior['head_branch'] != 'main':
+              raise SystemExit('Prior successful check source changed.')
+          required = {'CI gate / shell', 'CI gate / frontend', 'CI gate / golangci-lint', 'CI gate / release-helpers', 'CI gate / Security / backend-security', 'CI gate / Security / frontend-security', 'CI gate / Pro regressions / contracts', 'CI gate / Pro regressions / database-upgrade', 'CI gate / Pro regressions / frontend-pro', 'CI gate / Pro regressions / backend-build'}
+          jobs = {job['name']: job for job in api('/actions/runs/45349019240/jobs?per_page=100')['jobs']}
+          if any(jobs.get(name, {}).get('conclusion') != 'success' for name in required):
+              raise SystemExit('A reused required check did not pass.')
+          image = api('/actions/runs/45349401897')
+          if image['conclusion'] != 'success' or image['name'] != 'Prepare current repair image' or not image['head_sha'].startswith('14067fc5418c'):
+              raise SystemExit('Prepared immutable image was not verified successfully.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as file:
+              file.write('ready=true\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as file:
+              file.write('Reused 10 successful unchanged jobs from https://github.com/' + os.environ['GH_REPOSITORY'] + '/actions/runs/45349019240 ; both affected backend checks were replaced by successful jobs in this workflow.\n\nDeploy immutable image `' + release + '`; production code is identical to current main `' + source + '`.\n')
+
+  deploy:
+    timeout-minutes: 30
+    name: Deploy to production server
+    needs: verified-checks
+    if: ${{ needs.verified-checks.outputs.ready == 'true' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the verified immutable image as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+          docker buildx imagetools create --tag ghcr.io/alanbulan/sub2apipro:latest ghcr.io/alanbulan/sub2apipro:sha-60866db2336c96ec26f3902837d0fc2a60aaea6a
+      - name: Check out deployment configuration
+        uses: actions/checkout@v4
+        with:
+          ref: 60866db2336c96ec26f3902837d0fc2a60aaea6a
+
+      - name: Validate deployment inputs
+        env:
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+        shell: bash
+        run: |
+          case "$DEPLOY_COMPOSE_FILE" in
+            docker-compose.yml|docker-compose.local.yml|docker-compose.standalone.yml) ;;
+            *) echo "Unsupported DEPLOY_COMPOSE_FILE: $DEPLOY_COMPOSE_FILE" >&2; exit 1 ;;
+          esac
+          test -f "deploy/$DEPLOY_COMPOSE_FILE"
+          case "$DEPLOY_PATH" in
+            /*) ;;
+            *) echo "DEPLOY_PATH must be an absolute path without shell metacharacters" >&2; exit 1 ;;
+          esac
+          case "$DEPLOY_PATH" in
+            ''|*[!A-Za-z0-9._/-]*) echo "DEPLOY_PATH contains unsupported characters" >&2; exit 1 ;;
+          esac
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          case "$DEPLOY_PORT" in
+            ''|*[!0-9]*) echo 'DEPLOY_PORT must be numeric' >&2; exit 1 ;;
+          esac
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Stage deployment files
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+        shell: bash
+        run: |
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          staging="$DEPLOY_PATH/.deploy/60866db2336c96ec26f3902837d0fc2a60aaea6a"
+          ssh -p "$DEPLOY_PORT" "$target" "umask 077 && mkdir -p '$staging'"
+          scp -P "$DEPLOY_PORT" "deploy/$DEPLOY_COMPOSE_FILE" "$target:$staging/$DEPLOY_COMPOSE_FILE"
+          scp -P "$DEPLOY_PORT" deploy/action-deploy.sh "$target:$staging/action-deploy.sh"
+
+      - name: Log in to GHCR on the server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_REGISTRY_USERNAME: ${{ secrets.DEPLOY_REGISTRY_USERNAME }}
+          DEPLOY_REGISTRY_TOKEN: ${{ secrets.DEPLOY_REGISTRY_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$DEPLOY_REGISTRY_TOKEN" ]; then
+            echo 'DEPLOY_REGISTRY_TOKEN is not configured; assuming the GHCR image is public'
+            exit 0
+          fi
+          test -n "$DEPLOY_REGISTRY_USERNAME"
+          printf '%s' "$DEPLOY_REGISTRY_TOKEN" | ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "docker login ghcr.io --username '$DEPLOY_REGISTRY_USERNAME' --password-stdin"
+
+      - name: Deploy application without backups
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/sub2api' }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.local.yml' }}
+          APP_IMAGE: ghcr.io/alanbulan/sub2apipro:sha-60866db2336c96ec26f3902837d0fc2a60aaea6a
+        shell: bash
+        run: |
+          staging="$DEPLOY_PATH/.deploy/60866db2336c96ec26f3902837d0fc2a60aaea6a"
+          ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cmp -s '$staging/action-deploy.sh' /usr/local/sbin/sub2api-action-deploy && sudo -n /usr/local/sbin/sub2api-action-deploy '$DEPLOY_PATH' '$DEPLOY_COMPOSE_FILE' '$staging/$DEPLOY_COMPOSE_FILE' '$APP_IMAGE'"
