@@ -76,6 +76,14 @@ func (r *feishuKeyTestGroups) GetByID(ctx context.Context, id int64) (*Group, er
 	return &Group{ID: g.ID, Name: g.Name, Status: g.Status, IsExclusive: g.IsExclusive, SubscriptionType: g.SubscriptionType}, nil
 }
 
+type feishuKeyTestSubscriptions struct {
+	UserSubscriptionRepository
+}
+
+func (*feishuKeyTestSubscriptions) GetActiveByUserIDAndGroupID(context.Context, int64, int64) (*UserSubscription, error) {
+	return nil, ErrSubscriptionNotFound
+}
+
 type feishuKeyTestKeys struct {
 	APIKeyRepository
 	client     *dbent.Client
@@ -133,7 +141,7 @@ func newFeishuKeyFixture(t *testing.T) *feishuKeyFixture {
 	ur := &feishuKeyTestUsers{client: c}
 	kr := &feishuKeyTestKeys{client: c}
 	auth := &AuthService{entClient: c, userRepo: ur, settingService: setup.settings}
-	keys := &APIKeyService{apiKeyRepo: kr, userRepo: ur, groupRepo: &feishuKeyTestGroups{client: c}, cfg: &config.Config{}}
+	keys := &APIKeyService{apiKeyRepo: kr, userRepo: ur, groupRepo: &feishuKeyTestGroups{client: c}, userSubRepo: &feishuKeyTestSubscriptions{}, cfg: &config.Config{}}
 	s := NewFeishuKeyDeliveryService(NewFeishuDirectoryService(auth, setup), keys, NewEmailService(settingsRepo, nil))
 	f := &feishuKeyFixture{service: s, client: c, repo: kr, members: map[string]*feishu.DirectoryMember{}, userID: u.ID, groupID: g.ID}
 	var m feishu.DirectoryMember
