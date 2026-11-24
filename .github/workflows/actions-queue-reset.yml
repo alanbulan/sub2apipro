@@ -17,6 +17,12 @@ jobs:
     # This task only calls GitHub's API; keep it outside the Linux test queue.
     runs-on: windows-latest
     timeout-minutes: 40
+    # Cancel the old production gate before requesting a runner, otherwise its
+    # large matrix can keep this API-only maintenance task behind the queue.
+    # The restarted deployment waits for this job to release the group.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: true
     steps:
       - name: Cancel outstanding runs and restart checks before deployment
         env:
